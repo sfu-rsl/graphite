@@ -17,15 +17,15 @@ template<typename T>
 vec2<T> project_pinhole(const CameraPose<T>& camera, const Point<T>& point, const CameraParams<T> & params) {...}
 
 
-__global__ void reprojection_kernel(CameraPoses* poses, Points* points, Observations* obs, const CameraParams params) {
+__global__ void reprojection_kernel(CameraPoses* poses, Points* points, Observations* obs, Vec2* error, const CameraParams params) {
 
     ...
     auto c = poses[pose_idx];
     auto p = points[points_idx];
     auto o = obs[obs_idx];
 
-    auto err = obs - project_pinhole(c, p);
-
+    error[err_idx] = obs - project_pinhole(c, p);
+    
     ...
 
 }
@@ -37,4 +37,8 @@ auto calc_reprojection_error = [=]() {
 };
 
 ```
-
+Issues 
+- Gradient computation and storage
+  - Vector valued function
+- What if we want analytic derivatives
+- Read/Write Coalescing
