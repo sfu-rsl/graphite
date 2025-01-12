@@ -12,3 +12,6 @@ target_include_directories(glso INTERFACE include)
 add_executable(hello examples/hello.cu)
 target_link_libraries(hello glso)
 # set_property(TARGET hello PROPERTY CUDA_ARCHITECTURES native)
+
+add_executable(optimize examples/optimize.cu)
+target_link_libraries(optimize glso)
