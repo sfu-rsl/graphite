@@ -12,6 +12,7 @@ public:
 
 void update(T* vertex, const T* update) const;
 
+
 };
 
 // V is the number of vertices
@@ -51,16 +52,72 @@ class Graph {
 
     public:
 
-    void add_vertex_descriptor();
-
-    // void add_vertex(Vertex & vertex) {
+    void add_vertex_descriptor() {
         
-    // }
+    }
+
+    bool build_structure() {
+
+        return false;
+    }
+
+    void linearize() {
+
+    }
+
+    bool compute_step() {
+
+        return false;
+    }
+
+    void apply_step() {
+
+    }
+
+    void backup_parameters() {
+
+    }
+
+    void revert_parameters() {
+
+    }
 
 };
 
 class Optimizer {
+public:
+    bool optimize(Graph* graph, const size_t num_iterations) {
 
+        // Initialize something for all iterations
+
+        if (!graph->build_structure()) {
+            return false;
+        }
+
+        for (size_t i = 0; i < num_iterations; i++) {
+
+            graph->linearize();
+
+            if(!graph->compute_step()) {
+                return false;
+            }
+
+            graph->backup_parameters();
+            graph->apply_step();
+
+            // Try step
+            bool step_is_good = true; // make this a real check later
+
+            if (step_is_good) {
+                // update hyperparameters
+            }
+            else {
+                graph->revert_parameters();
+                // update hyperparameters
+            }
+        }
+        return true;
+    }
 
 };
 
