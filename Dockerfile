@@ -11,11 +11,11 @@ libjpeg-dev libpng-dev \
 libavcodec-dev libavutil-dev libavformat-dev libswscale-dev libavdevice-dev
 
 # Install pangolin
-RUN git clone --recursive https://github.com/stevenlovegrove/Pangolin.git && \
-cd Pangolin && \
-cmake -B build -GNinja && \
-cmake --build build && \
-cd build && ninja install
+# RUN git clone --recursive https://github.com/stevenlovegrove/Pangolin.git && \
+# cd Pangolin && \
+# cmake -B build -GNinja && \
+# cmake --build build && \
+# cd build && ninja install
 
 # Install other ORB-SLAM3 and CUDA dependencies
 RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get -y install tzdata
