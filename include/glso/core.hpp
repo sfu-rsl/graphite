@@ -1,59 +1,78 @@
 #pragma once
+#include <vector>
 
 namespace glso {
 
-
-template <typename T, int D>
+template <typename T>
 class VertexDescriptor {
-private:
-
-
 public:
-
-void update(T* vertex, const T* update) const;
-
-
+    virtual ~VertexDescriptor() {};
 };
 
-// V is the number of vertices
-// O is the dimension of the observation
-// E is the dimension of the error vector
-template <typename T, int V, int O, int E>
+template <typename T>
 class FactorDescriptor {
 public:
+    virtual ~FactorDescriptor() {};
 
-// T** get_vertices(Graph* graph);
-// const get_vertex_types() 
-
-void compute_error(const T** vertices, const T* obs, T* error) const;
-
+    virtual void error_func(const T** vertices, const T* obs, T* error) = 0;
+    virtual bool use_autodiff() = 0;
 };
+
+template<typename T>
+class GraphVisitor {
+public:
+    template<typename F>
+    void compute_error() {
+        // Do something with the factor's error function
+        F::error_func();
+    }
+};
+
+// Templated derived class for AutoDiffFactorDescriptor using CRTP
+template <typename T, template <typename> class Derived>
+class AutoDiffFactorDescriptor : public FactorDescriptor<T> {
+public:
+    virtual bool use_autodiff() override {
+        return true;
+    }
+
+    void visit_error(GraphVisitor<T>& visitor) {
+        visitor.template compute_error<Derived<T>>();
+    }
+};
+
+template <typename T>
+class TestFactor : public AutoDiffFactorDescriptor<T, TestFactor> {
+};
+
 
 
 class Vertex {
-    private:
-
+private:
     size_t id;
 
-    public:
-
+public:
     void set_id(size_t id) {
         this->id = id;
     }
-
 };
 
-class Factor {
-
-
-};
-
+template<typename T=double>
 class Graph {
+
+    private:
+
+    std::vector<VertexDescriptor<T>*> vertex_descriptors;
+    std::vector<FactorDescriptor<T>*> factor_descriptors;
 
     public:
 
-    void add_vertex_descriptor() {
-        
+    void add_vertex_descriptor(VertexDescriptor<T>* descriptor) {
+        vertex_descriptors.push_back(descriptor);
+    }
+
+    void add_factor_descriptor(FactorDescriptor<T>* descriptor) {
+        factor_descriptors.push_back(descriptor);
     }
 
     bool build_structure() {
@@ -62,7 +81,15 @@ class Graph {
     }
 
     void linearize() {
-
+        for (auto & factor: factor_descriptors) {
+            // compute error
+            if (factor->use_autodiff()) {
+                // copy gradients into Jacobians
+            }
+            else {
+                // compute Jacobians
+            }
+        }
     }
 
     bool compute_step() {
@@ -84,9 +111,10 @@ class Graph {
 
 };
 
+template<typename T=double>
 class Optimizer {
 public:
-    bool optimize(Graph* graph, const size_t num_iterations) {
+    bool optimize(Graph<T>* graph, const size_t num_iterations) {
 
         // Initialize something for all iterations
 
