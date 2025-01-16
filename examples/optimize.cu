@@ -4,6 +4,12 @@
 #include <numeric>
 #include <glso/core.hpp>
 
+namespace glso {
+template <typename T>
+class TestFactor : public AutoDiffFactorDescriptor<T, TestFactor> {
+};
+} // namespace glso
+
 int main(void) {
 
     using namespace glso;

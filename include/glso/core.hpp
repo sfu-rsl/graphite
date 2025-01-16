@@ -67,10 +67,6 @@ public:
     }
 };
 
-template <typename T>
-class TestFactor : public AutoDiffFactorDescriptor<T, TestFactor> {
-};
-
 
 
 class Vertex {
