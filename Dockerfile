@@ -1,4 +1,5 @@
-FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04
+# FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04
+FROM nvidia/cuda:12.6.3-runtime-ubuntu22.04
 # FROM ubuntu:22.04
 
 # Install git, compiler, cmake
@@ -19,5 +20,9 @@ libavcodec-dev libavutil-dev libavformat-dev libswscale-dev libavdevice-dev
 
 # Install other ORB-SLAM3 and CUDA dependencies
 RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get -y install tzdata
-RUN apt-get -y install libopencv-dev libopencv-core-dev libeigen3-dev libboost-serialization-dev libssl-dev nvidia-cuda-toolkit nvidia-cuda-dev nvidia-cuda-gdb
+RUN apt-get -y install libopencv-dev libopencv-core-dev libeigen3-dev libboost-serialization-dev libssl-dev 
 
+# RUN apt-get -y install nvidia-cuda-toolkit nvidia-cuda-dev nvidia-cuda-gdb
+
+# Install CUDA Toolkit 12.6
+RUN apt-get -y install cuda-toolkit-12-6 cuda-gdb-12-6
