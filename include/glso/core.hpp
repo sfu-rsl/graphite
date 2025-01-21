@@ -1,5 +1,23 @@
 #pragma once
 #include <vector>
+#include <utility>
+#include <unordered_map>
+#include <boost/functional/hash.hpp>
+
+
+// injection for hashing std::pair<size_t, size_t>
+namespace std {
+    template <>
+    struct hash<std::pair<size_t, size_t>> {
+        size_t operator()(const std::pair<size_t, size_t>& p) const {
+            size_t seed = 0;
+            boost::hash_combine(seed, p.first);
+            boost::hash_combine(seed, p.second);
+            return seed;
+            // return std::hash<size_t>()(p.first) ^ std::hash<size_t>()(p.second);
+        }
+    };
+}
 
 namespace glso {
 
@@ -79,6 +97,11 @@ public:
     }
 };
 
+class JacobianStorage {
+public:
+
+};
+
 template<typename T=double>
 class Graph {
 
@@ -86,6 +109,8 @@ class Graph {
 
     std::vector<BaseVertexDescriptor<T>*> vertex_descriptors;
     std::vector<BaseFactorDescriptor<T>*> factor_descriptors;
+
+    std::unordered_map<std::pair<size_t, size_t>, JacobianStorage> jacobians;
 
     public:
 
@@ -132,6 +157,8 @@ class Graph {
     }
 
 };
+
+
 
 template<typename T=double>
 class Optimizer {

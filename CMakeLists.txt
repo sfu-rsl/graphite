@@ -4,9 +4,13 @@ if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
   set(CMAKE_CUDA_ARCHITECTURES 70)
 endif()
 
+# External dependencies
+find_package(Boost 1.74 REQUIRED)
+
 # Libraries
 add_library(glso INTERFACE)
 target_include_directories(glso INTERFACE include)
+target_link_libraries(glso INTERFACE Boost::boost)
 
 # Examples
 add_executable(hello examples/hello.cu)
