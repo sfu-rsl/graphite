@@ -44,8 +44,9 @@ int main(void) {
 
     // Create vertices
     Radius<double>* radius = new Radius<double>();
-    double r = 5.0;
-    const auto vertex_id = radius->add_vertex(&r);
+    const double r = 0.0;
+    const auto vertex_id = 0;
+    radius->add_vertex(vertex_id, &r);
     graph.add_vertex_descriptor(radius);
 
     // Create edges

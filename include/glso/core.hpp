@@ -52,13 +52,20 @@ public:
     virtual T* x() = 0;
     virtual void to_device() = 0;
     virtual void to_host() = 0;
+    virtual void add_vertex(const size_t id, const T* value) = 0;
+
 };
 
 template <typename T, template <typename> class Derived>
 class VertexDescriptor : public BaseVertexDescriptor<T> {
 private:
+    // Vertex values
     thrust::device_vector<T> x_device;
     thrust::host_vector<T> x_host;
+
+    // Mappings
+    std::unordered_map<size_t, size_t> idx_map;
+
 public:
     virtual ~VertexDescriptor() {};
     
@@ -84,13 +91,11 @@ public:
         return x_device.size()/dim;
     }
 
-    int32_t add_vertex(const T* value) {
+    void add_vertex(const size_t id, const T* value) override {
         // TODO: Find a better way to get the dimension
-        const auto dim = dynamic_cast<Derived<T>*>(this)->dimension();
-        
-        int32_t id = x_host.size()/dim;
+        const auto dim = dynamic_cast<Derived<T>*>(this)->dimension();        
         x_host.insert(x_host.end(), value, value+dim);
-        return id;
+        idx_map.insert({id, (x_host.size()/dim) - 1});
     }
 
     void reserve(size_t num_vertices) {
