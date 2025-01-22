@@ -31,7 +31,7 @@ public:
     template<typename F>
     void compute_error() {
         // Do something with the factor's error function
-        F::error_func();
+        F::error_func(nullptr, nullptr, nullptr);
     }
 
     template<typename V>
@@ -83,7 +83,7 @@ class BaseFactorDescriptor {
 public:
     virtual ~BaseFactorDescriptor() {};
 
-    virtual void error_func(const T** vertices, const T* obs, T* error) = 0;
+    // virtual void error_func(const T** vertices, const T* obs, T* error) = 0;
     virtual bool use_autodiff() = 0;
     virtual void visit_error(GraphVisitor<T>& visitor) = 0;
     virtual std::vector<JacobianStorage<T>> & get_jacobians() = 0;
@@ -97,6 +97,13 @@ public:
     void visit_error(GraphVisitor<T>& visitor) override {
         visitor.template compute_error<Derived<T>>();
     }
+
+    std::vector<JacobianStorage<T>> jacobians;
+
+    std::vector<JacobianStorage<T>> &  get_jacobians() override {
+        return jacobians;
+    }
+
 };
 
 // Templated derived class for AutoDiffFactorDescriptor using CRTP
