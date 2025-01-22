@@ -3,6 +3,9 @@
 #include <utility>
 #include <unordered_map>
 #include <boost/functional/hash.hpp>
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h>
+#include <memory>
 
 
 // injection for hashing std::pair<size_t, size_t>
@@ -44,6 +47,10 @@ public:
 
     virtual void update(const T* delta) = 0;
     virtual void visit_update(GraphVisitor<T>& visitor) = 0;
+    virtual size_t dimensions() const = 0;
+    virtual size_t count() const = 0;
+    // virtual thrust::device_vector<T>& x() = 0;
+    virtual T* x() = 0;
 };
 
 template <typename T, template <typename> class Derived>
@@ -56,6 +63,21 @@ public:
     }
 };
 
+template<typename T>
+class JacobianStorage {
+public:
+
+std::pair<size_t, size_t> dimensions;
+
+thrust::device_vector<T> data;
+
+
+};
+
+// class JacobianInfo {
+// public:
+// };
+
 template <typename T>
 class BaseFactorDescriptor {
 public:
@@ -64,6 +86,7 @@ public:
     virtual void error_func(const T** vertices, const T* obs, T* error) = 0;
     virtual bool use_autodiff() = 0;
     virtual void visit_error(GraphVisitor<T>& visitor) = 0;
+    virtual std::vector<JacobianStorage<T>> & get_jacobians() = 0;
 
 };
 
@@ -97,20 +120,24 @@ public:
     }
 };
 
-class JacobianStorage {
-public:
 
-};
 
 template<typename T=double>
 class Graph {
 
     private:
 
+    GraphVisitor<T> visitor;
+
     std::vector<BaseVertexDescriptor<T>*> vertex_descriptors;
     std::vector<BaseFactorDescriptor<T>*> factor_descriptors;
 
-    std::unordered_map<std::pair<size_t, size_t>, JacobianStorage> jacobians;
+    // std::unordered_map<std::pair<size_t, size_t>, std::shared_ptr<JacobianStorage<T>>> jacobians;
+
+    // Solver buffers
+    thrust::device_vector<T> delta_x;
+    thrust::device_vector<T> b;
+    thrust::device_vector<T> x_backup;
 
     public:
 
@@ -120,16 +147,40 @@ class Graph {
 
     void add_factor_descriptor(BaseFactorDescriptor<T>* descriptor) {
         factor_descriptors.push_back(descriptor);
+
+        // Create Jacobian storage for this factor
+        // const auto & info_list = descriptor->get_jacobian_info();
+
+        // for (const auto & info: info_list) {
+        //     jacobians.insert({info.dim, std::make_shared<JacobianStorage<T>>(info.nnz())});
+        // }
+
     }
 
     bool build_structure() {
+        // Allocate storage for Jacobians
+        // Allocate storage for solver vectors
+        size_t size_x = 0;
+        for (const auto & desc: vertex_descriptors) {
+            size_x += desc->dimensions()*desc->count(); 
+        }
+
+        delta_x.resize(size_x);
+        b.resize(size_x);
+        x_backup.resize(size_x);
 
         return false;
     }
 
     void linearize() {
+        // clear delta_x and b
+        thrust::fill(delta_x.begin(), delta_x.end(), 0);
+        thrust::fill(b.begin(), b.end(), 0);
+
+
         for (auto & factor: factor_descriptors) {
             // compute error
+            factor->visit_error(visitor);
             if (factor->use_autodiff()) {
                 // copy gradients into Jacobians
             }
@@ -145,14 +196,30 @@ class Graph {
     }
 
     void apply_step() {
-
+        for (auto & desc: vertex_descriptors) {
+            desc->visit_update(visitor);
+        }
     }
 
     void backup_parameters() {
+        size_t offset = 0;
+        for (const auto & desc: vertex_descriptors) {
+            const size_t param_size = desc->dimensions()*desc->count();
+            const T* x = desc->x();
+            thrust::copy(x, x+param_size, x_backup.begin()+offset);
+            offset += param_size;
+        }
 
     }
 
     void revert_parameters() {
+        size_t offset = 0;
+        for (auto & desc: vertex_descriptors) {
+            const size_t param_size = desc->dimensions()*desc->count();
+            T* x = desc->x();
+            thrust::copy(x_backup.begin()+offset, x_backup.begin(), x);
+            offset += param_size;
+        }
 
     }
 
