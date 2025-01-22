@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <vector>
 #include <utility>
 #include <unordered_map>
@@ -135,7 +136,7 @@ public:
 
 };
 
-template <typename T, template <typename> class Derived>
+template <typename T, int N, int M, template <typename> class Derived>
 class FactorDescriptor : public BaseFactorDescriptor<T> {
 public:
 
@@ -149,11 +150,17 @@ public:
         return jacobians;
     }
 
+    void add_factor(const std::array<size_t, N>& ids, const std::array<T, M>& obs, const T* precision_matrix) {
+        
+    }
+
 };
 
 // Templated derived class for AutoDiffFactorDescriptor using CRTP
-template <typename T, template <typename> class Derived>
-class AutoDiffFactorDescriptor : public FactorDescriptor<T, Derived> {
+// N is the number of vertices involved in the constraint
+// M is the dimension of each observation
+template <typename T, int N, int M, template <typename> class Derived>
+class AutoDiffFactorDescriptor : public FactorDescriptor<T, N, M, Derived> {
 public:
     virtual bool use_autodiff() override {
         return true;

@@ -5,9 +5,6 @@
 #include <glso/core.hpp>
 
 namespace glso {
-// template <typename T>
-// class TestFactor : public AutoDiffFactorDescriptor<T, TestFactor> {
-// };
 
 template<typename T>
 class Radius: public VertexDescriptor<T, Radius> {
@@ -23,7 +20,7 @@ class Radius: public VertexDescriptor<T, Radius> {
 };
 
 template <typename T>
-class CircleFactor : public AutoDiffFactorDescriptor<T, CircleFactor> {
+class CircleFactor : public AutoDiffFactorDescriptor<T, 1, 2, CircleFactor> {
 public:
     static void error_func(const T** vertices, const T* obs, T* error) {
         T r = vertices[0][0];
@@ -45,12 +42,13 @@ int main(void) {
     // Create vertices
     Radius<double>* radius = new Radius<double>();
     const double r = 0.0;
-    const auto vertex_id = 0;
+    const size_t vertex_id = 0;
     radius->add_vertex(vertex_id, &r);
     graph.add_vertex_descriptor(radius);
 
     // Create edges
-    CircleFactor<double> * f = new CircleFactor<double>();
+    auto f = new CircleFactor<double>();
+    f->add_factor({vertex_id}, {4.1, 3.8}, nullptr);
     graph.add_factor_descriptor(f);
     // Optimize
     constexpr size_t iterations = 10;
