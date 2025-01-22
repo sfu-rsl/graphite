@@ -10,8 +10,16 @@ namespace glso {
 // };
 
 template<typename T>
-class Radius {
+class Radius: public VertexDescriptor<T, Radius> {
+    public:
 
+    static void update(T* x, const T* delta) {
+        x[0] += delta[0]; 
+    }
+
+    size_t dimension() const override {
+        return 1;
+    }
 };
 
 template <typename T>
@@ -35,6 +43,10 @@ int main(void) {
 
 
     // Create vertices
+    Radius<double>* radius = new Radius<double>();
+    double r = 5.0;
+    const auto vertex_id = radius->add_vertex(&r);
+    graph.add_vertex_descriptor(radius);
 
     // Create edges
     CircleFactor<double> * f = new CircleFactor<double>();

@@ -36,7 +36,7 @@ public:
 
     template<typename V>
     void apply_step() {
-        V::update();
+        V::update(nullptr, nullptr);
     }
 };
 
@@ -45,22 +45,62 @@ class BaseVertexDescriptor {
 public:
     virtual ~BaseVertexDescriptor() {};
 
-    virtual void update(const T* delta) = 0;
+    // virtual void update(const T* x, const T* delta) = 0;
     virtual void visit_update(GraphVisitor<T>& visitor) = 0;
-    virtual size_t dimensions() const = 0;
+    virtual size_t dimension() const = 0;
     virtual size_t count() const = 0;
-    // virtual thrust::device_vector<T>& x() = 0;
     virtual T* x() = 0;
+    virtual void to_device() = 0;
+    virtual void to_host() = 0;
 };
 
 template <typename T, template <typename> class Derived>
 class VertexDescriptor : public BaseVertexDescriptor<T> {
+private:
+    thrust::device_vector<T> x_device;
+    thrust::host_vector<T> x_host;
 public:
     virtual ~VertexDescriptor() {};
     
     void visit_update(GraphVisitor<T>& visitor) override {
         visitor.template apply_step<Derived<T>>();
     }
+
+    virtual void to_device() override {
+        x_device = x_host;
+    }
+
+    virtual void to_host() override {
+        x_host = x_device;
+    }
+
+    virtual T* x() override {
+        return x_device.data().get();
+    }
+
+    virtual size_t count() const override {
+        // TODO: Find a better way to get the dimension
+        const auto dim = dynamic_cast<const Derived<T>*>(this)->dimension();
+        return x_device.size()/dim;
+    }
+
+    int32_t add_vertex(const T* value) {
+        // TODO: Find a better way to get the dimension
+        const auto dim = dynamic_cast<Derived<T>*>(this)->dimension();
+        
+        int32_t id = x_host.size()/dim;
+        x_host.insert(x_host.end(), value, value+dim);
+        return id;
+    }
+
+    void reserve(size_t num_vertices) {
+        // TODO: Find a better way to get the dimension
+        const auto dim = dynamic_cast<Derived<T>*>(this)->dimension();
+        x_host.reserve(num_vertices*dim);
+        x_device.reserve(num_vertices*dim);
+    }
+
+    
 };
 
 template<typename T>
@@ -169,7 +209,7 @@ class Graph {
         // Allocate storage for solver vectors
         size_t size_x = 0;
         for (const auto & desc: vertex_descriptors) {
-            size_x += desc->dimensions()*desc->count(); 
+            size_x += desc->dimension()*desc->count(); 
         }
 
         delta_x.resize(size_x);
@@ -211,7 +251,7 @@ class Graph {
     void backup_parameters() {
         size_t offset = 0;
         for (const auto & desc: vertex_descriptors) {
-            const size_t param_size = desc->dimensions()*desc->count();
+            const size_t param_size = desc->dimension()*desc->count();
             const T* x = desc->x();
             thrust::copy(x, x+param_size, x_backup.begin()+offset);
             offset += param_size;
@@ -222,7 +262,7 @@ class Graph {
     void revert_parameters() {
         size_t offset = 0;
         for (auto & desc: vertex_descriptors) {
-            const size_t param_size = desc->dimensions()*desc->count();
+            const size_t param_size = desc->dimension()*desc->count();
             T* x = desc->x();
             thrust::copy(x_backup.begin()+offset, x_backup.begin(), x);
             offset += param_size;
