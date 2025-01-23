@@ -54,6 +54,7 @@ public:
     virtual void to_device() = 0;
     virtual void to_host() = 0;
     virtual void add_vertex(const size_t id, const T* value) = 0;
+    virtual const std::unordered_map<size_t, size_t> & get_global_map() const = 0;
 
 };
 
@@ -64,8 +65,10 @@ private:
     thrust::device_vector<T> x_device;
     thrust::host_vector<T> x_host;
 
+public:
+
     // Mappings
-    std::unordered_map<size_t, size_t> idx_map;
+    std::unordered_map<size_t, size_t> global_to_local_map;
 
 public:
     virtual ~VertexDescriptor() {};
@@ -96,7 +99,7 @@ public:
         // TODO: Find a better way to get the dimension
         const auto dim = dynamic_cast<Derived<T>*>(this)->dimension();        
         x_host.insert(x_host.end(), value, value+dim);
-        idx_map.insert({id, (x_host.size()/dim) - 1});
+        global_to_local_map.insert({id, (x_host.size()/dim) - 1});
     }
 
     void reserve(size_t num_vertices) {
@@ -104,6 +107,10 @@ public:
         const auto dim = dynamic_cast<Derived<T>*>(this)->dimension();
         x_host.reserve(num_vertices*dim);
         x_device.reserve(num_vertices*dim);
+    }
+
+    const std::unordered_map<size_t, size_t> & get_global_map() const override {
+        return global_to_local_map;
     }
 
     
@@ -192,7 +199,8 @@ class Graph {
     std::vector<BaseFactorDescriptor<T>*> factor_descriptors;
 
     // std::unordered_map<std::pair<size_t, size_t>, std::shared_ptr<JacobianStorage<T>>> jacobians;
-
+    std::unordered_map<size_t, std::pair<size_t, size_t>> hessian_to_local_map;
+    std::unordered_map<size_t, size_t> hessian_offset;
     // Solver buffers
     thrust::device_vector<T> delta_x;
     thrust::device_vector<T> b;
@@ -214,6 +222,39 @@ class Graph {
         //     jacobians.insert({info.dim, std::make_shared<JacobianStorage<T>>(info.nnz())});
         // }
 
+    }
+
+    bool initialize_optimization() {
+
+        // For each vertex descriptor, take global to local id mapping and transform it into a Hessian 
+        // column to local id mapping.
+        
+        std::vector<std::pair<size_t, std::pair<size_t, size_t>>> global_to_local_combined;
+
+        for (size_t i = 0; i < vertex_descriptors.size(); ++i) {
+            const auto& map = vertex_descriptors[i]->get_global_map();
+            for (const auto& entry : map) {
+            global_to_local_combined.push_back({entry.first, {i, entry.second}});
+            }
+        }
+        
+        // Sort the combined list by global ID
+        std::sort(global_to_local_combined.begin(), global_to_local_combined.end(), 
+            [](const auto& a, const auto& b) { return a.first < b.first; });
+        
+        // Assign Hessian columns to local indices
+        hessian_to_local_map.clear();
+        hessian_offset.clear();
+        size_t hessian_column = 0;
+        size_t offset = 0;
+        for (const auto& entry : global_to_local_combined) {
+            hessian_to_local_map.insert({hessian_column, entry.second});
+            hessian_offset.insert({hessian_column, offset});
+            offset += vertex_descriptors[entry.second.first]->dimension();
+            hessian_column++;
+        }
+
+        return true;
     }
 
     bool build_structure() {
@@ -292,6 +333,10 @@ public:
     bool optimize(Graph<T>* graph, const size_t num_iterations) {
 
         // Initialize something for all iterations
+
+        if (!graph->initialize_optimization()) {
+            return false;
+        }
 
         if (!graph->build_structure()) {
             return false;
