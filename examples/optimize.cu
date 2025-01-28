@@ -7,7 +7,7 @@
 namespace glso {
 
 template<typename T>
-class Radius: public VertexDescriptor<T, Radius> {
+class Radius: public VertexDescriptor<T, T, Radius> {
     public:
 
     static void update(T* x, const T* delta) {

@@ -58,7 +58,7 @@ public:
 
 };
 
-template <typename T, template <typename> class Derived>
+template <typename T, typename V, template <typename> class Derived>
 class VertexDescriptor : public BaseVertexDescriptor<T> {
 private:
     // Vertex values
@@ -69,6 +69,8 @@ public:
 
     // Mappings
     std::unordered_map<size_t, size_t> global_to_local_map;
+
+    using VertexType = V;
 
 public:
     virtual ~VertexDescriptor() {};
