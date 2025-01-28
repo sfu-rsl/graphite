@@ -141,10 +141,19 @@ public:
     virtual void visit_error(GraphVisitor<T>& visitor) = 0;
     virtual std::vector<JacobianStorage<T>> & get_jacobians() = 0;
 
+    virtual void to_device() = 0;
+
 };
 
 template <typename T, int N, int M, template <typename> class Derived>
 class FactorDescriptor : public BaseFactorDescriptor<T> {
+
+private:
+    thrust::host_vector<size_t> host_ids;
+    thrust::host_vector<T> host_obs;
+
+    thrust::device_vector<size_t> device_ids;
+    thrust::device_vector<T> device_obs;
 public:
 
     void visit_error(GraphVisitor<T>& visitor) override {
@@ -152,6 +161,8 @@ public:
     }
 
     std::vector<JacobianStorage<T>> jacobians;
+    
+  
 
     std::vector<JacobianStorage<T>> &  get_jacobians() override {
         return jacobians;
@@ -159,6 +170,14 @@ public:
 
     void add_factor(const std::array<size_t, N>& ids, const std::array<T, M>& obs, const T* precision_matrix) {
         
+        host_ids.insert(host_ids.end(), ids.begin(), ids.end());
+        host_obs.insert(host_obs.end(), obs.begin(), obs.end());
+
+    }
+
+    void to_device() override {
+        device_ids = host_ids;
+        device_obs = host_obs;
     }
 
 };
@@ -252,6 +271,16 @@ class Graph {
             hessian_offset.insert({hessian_column, offset});
             offset += vertex_descriptors[entry.second.first]->dimension();
             hessian_column++;
+        }
+
+        // Copy vertex values to device
+        for (auto & desc: vertex_descriptors) {
+            desc->to_device();
+        }
+
+        // Copy factors to device
+        for (auto & desc: factor_descriptors) {
+            desc->to_device();
         }
 
         return true;
