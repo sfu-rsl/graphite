@@ -25,11 +25,17 @@ namespace std {
 
 namespace glso {
 
-template<typename T, typename F, typename... Ts>
+template<typename T, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
 __global__
-void compute_error_kernel(const T* obs, T* error, Ts... args) {
-    // Compute error
-    F::error2(nullptr, nullptr, args...);
+void compute_error_kernel(const T* obs, T* error, size_t* ids, std::array<T*, sizeof...(Is)> args, std::array<size_t, sizeof...(Is)> stride, std::index_sequence<Is...>) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    for (int i = 0; i < sizeof...(Is); i++) {
+        size_t local_id = ids[idx*N+i];
+        args[i] += local_id*stride[i];
+    }
+
+    F::error(args[Is]..., obs+idx*M, error+idx*E);
 }
 
 template<typename T>
@@ -44,11 +50,21 @@ public:
         
 
         // At this point all necessary data should be on the GPU    
-        std::array<T*, num_vertices+1> verts = {nullptr, nullptr};
-        // F::error2(nullptr, nullptr, nullptr, nullptr);
-        compute_error_kernel<T, F><<<1, 1>>>(nullptr, nullptr, verts[0], verts[1]);
+        std::array<T*, num_vertices> verts = {nullptr};
+        std::array<size_t, num_vertices> stride = {1};
 
-        // F::error_func(nullptr, nullptr, nullptr);
+        
+        constexpr auto observation_dim = F::observation_dim;
+        constexpr auto error_dim = F::error_dim;
+        const auto num_factors = f->count();
+
+        int threads_per_block = 256;
+        int num_blocks = (num_factors + threads_per_block - 1) / threads_per_block;
+
+        compute_error_kernel<T, num_vertices, observation_dim, error_dim, F><<<num_blocks, threads_per_block>>>(thrust::raw_pointer_cast(f->device_obs.data()), 
+        thrust::raw_pointer_cast(f->residuals.data()), 
+        thrust::raw_pointer_cast(f->device_ids.data()),
+        verts, stride, std::make_index_sequence<num_vertices>{});
     }
 
     template<typename V>
@@ -160,6 +176,8 @@ public:
     virtual std::vector<JacobianStorage<T>> & get_jacobians() = 0;
     // virtual size_t get_num_vertices() const = 0;
 
+    virtual size_t count() const = 0;
+
     virtual void to_device() = 0;
 
 };
@@ -183,6 +201,9 @@ public:
     thrust::device_vector<T> residuals;
     std::array<BaseVertexDescriptor<T>*, N> vertex_descriptors;
 
+    static constexpr size_t observation_dim = M;
+    static constexpr size_t error_dim = N;
+
 
     void visit_error(GraphVisitor<T>& visitor) override {
         visitor.template compute_error<Derived<T>>(dynamic_cast<Derived<T>*>(this));
@@ -203,6 +224,10 @@ public:
         global_ids.insert(global_ids.end(), ids.begin(), ids.end());
         host_obs.insert(host_obs.end(), obs.begin(), obs.end());
 
+    }
+
+    size_t count() const override {
+        return device_ids.size()/N;
     }
 
     void to_device() override {
