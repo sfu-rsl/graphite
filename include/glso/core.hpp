@@ -25,14 +25,30 @@ namespace std {
 
 namespace glso {
 
+template<typename T, typename F, typename... Ts>
+__global__
+void compute_error_kernel(const T* obs, T* error, Ts... args) {
+    // Compute error
+    F::error2(nullptr, nullptr, args...);
+}
 
 template<typename T>
 class GraphVisitor {
 public:
     template<typename F>
-    void compute_error() {
-        // Do something with the factor's error function
-        F::error_func(nullptr, nullptr, nullptr);
+    void compute_error(F* f) {
+        // Assume autodiff
+
+        // Then for each vertex, we need to compute the error
+        constexpr auto num_vertices = f->get_num_vertices();
+        
+
+        // At this point all necessary data should be on the GPU    
+        std::array<T*, num_vertices+1> verts = {nullptr, nullptr};
+        // F::error2(nullptr, nullptr, nullptr, nullptr);
+        compute_error_kernel<T, F><<<1, 1>>>(nullptr, nullptr, verts[0], verts[1]);
+
+        // F::error_func(nullptr, nullptr, nullptr);
     }
 
     template<typename V>
@@ -142,6 +158,7 @@ public:
     virtual bool use_autodiff() = 0;
     virtual void visit_error(GraphVisitor<T>& visitor) = 0;
     virtual std::vector<JacobianStorage<T>> & get_jacobians() = 0;
+    // virtual size_t get_num_vertices() const = 0;
 
     virtual void to_device() = 0;
 
@@ -151,20 +168,31 @@ template <typename T, int N, int M, template <typename> class Derived>
 class FactorDescriptor : public BaseFactorDescriptor<T> {
 
 private:
-    thrust::host_vector<size_t> host_ids;
+    std::vector<size_t> global_ids;
+    thrust::host_vector<size_t> host_ids; // local ids
     thrust::host_vector<T> host_obs;
+
+
+    
+
+
+public:
 
     thrust::device_vector<size_t> device_ids;
     thrust::device_vector<T> device_obs;
-public:
+    thrust::device_vector<T> residuals;
+    std::array<BaseVertexDescriptor<T>*, N> vertex_descriptors;
+
 
     void visit_error(GraphVisitor<T>& visitor) override {
-        visitor.template compute_error<Derived<T>>();
+        visitor.template compute_error<Derived<T>>(dynamic_cast<Derived<T>*>(this));
     }
 
     std::vector<JacobianStorage<T>> jacobians;
     
-  
+    static constexpr size_t get_num_vertices() {
+        return N;
+    }
 
     std::vector<JacobianStorage<T>> &  get_jacobians() override {
         return jacobians;
@@ -172,14 +200,24 @@ public:
 
     void add_factor(const std::array<size_t, N>& ids, const std::array<T, M>& obs, const T* precision_matrix) {
         
-        host_ids.insert(host_ids.end(), ids.begin(), ids.end());
+        global_ids.insert(global_ids.end(), ids.begin(), ids.end());
         host_obs.insert(host_obs.end(), obs.begin(), obs.end());
 
     }
 
     void to_device() override {
+
+        // Map constraint ids to local ids
+        for (size_t i = 0; i < global_ids.size(); i++) {
+            host_ids.push_back(vertex_descriptors[i%N]->get_global_map().at(global_ids[i]));
+        }
+
         device_ids = host_ids;
         device_obs = host_obs;
+    }
+
+    void link_factors(const std::array<BaseVertexDescriptor<T>*, N>& vertex_descriptors) {
+        this->vertex_descriptors = vertex_descriptors;
     }
 
 };
@@ -233,8 +271,14 @@ class Graph {
         vertex_descriptors.push_back(descriptor);
     }
 
-    void add_factor_descriptor(BaseFactorDescriptor<T>* descriptor) {
-        factor_descriptors.push_back(descriptor);
+    template<typename F, typename ... Ts>
+    F* add_factor_descriptor(Ts ... vertices) {
+
+        // Link factor to vertices
+        auto factor = new F();
+        factor->link_factors({vertices...});
+
+        factor_descriptors.push_back(factor);
 
         // Create Jacobian storage for this factor
         // const auto & info_list = descriptor->get_jacobian_info();
@@ -242,6 +286,8 @@ class Graph {
         // for (const auto & info: info_list) {
         //     jacobians.insert({info.dim, std::make_shared<JacobianStorage<T>>(info.nnz())});
         // }
+
+        return factor;
 
     }
 
@@ -274,6 +320,12 @@ class Graph {
             offset += vertex_descriptors[entry.second.first]->dimension();
             hessian_column++;
         }
+
+        // Transform global vertex ids into local ids for factors
+        // for (const auto & [global_id, second]: global_to_local_combined) {
+        //     const auto & [vd_idx, local_id] = second;
+        
+        // }
 
         // Copy vertex values to device
         for (auto & desc: vertex_descriptors) {

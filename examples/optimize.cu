@@ -28,6 +28,13 @@ public:
         T y = obs[1];
         error[0] = x*x + y*y - r*r;
     }
+
+    __device__ static void error2(const T* obs, T* error, const T* vertex1, const T* vertex2) {
+        T r = vertex1[0];
+        T x = obs[0];
+        T y = obs[1];
+        error[0] = x*x + y*y - r*r;
+    }
 };
 } // namespace glso
 
@@ -47,9 +54,8 @@ int main(void) {
     graph.add_vertex_descriptor(radius);
 
     // Create edges
-    auto f = new CircleFactor<double>();
+    auto f = graph.add_factor_descriptor<CircleFactor<double>>(radius);
     f->add_factor({vertex_id}, {4.1, 3.8}, nullptr);
-    graph.add_factor_descriptor(f);
     // Optimize
     constexpr size_t iterations = 10;
     Optimizer opt;
