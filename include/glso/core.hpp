@@ -50,8 +50,12 @@ public:
         
 
         // At this point all necessary data should be on the GPU    
-        std::array<T*, num_vertices> verts = {nullptr};
-        std::array<size_t, num_vertices> stride = {1};
+        std::array<T*, num_vertices> verts;
+        std::array<size_t, num_vertices> stride;
+        for (int i = 0; i < num_vertices; i++) {
+            verts[i] = f->vertex_descriptors[i]->x();
+            stride[i] = f->vertex_descriptors[i]->dimension();
+        }
 
         
         constexpr auto observation_dim = F::observation_dim;
