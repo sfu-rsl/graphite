@@ -8,6 +8,7 @@
 #include <thrust/device_vector.h>
 #include <memory>
 
+#include <glso/dual.hpp>
 
 // injection for hashing std::pair<size_t, size_t>
 namespace std {
