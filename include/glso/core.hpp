@@ -7,6 +7,7 @@
 #include <thrust/host_vector.h>
 #include <thrust/device_vector.h>
 #include <memory>
+#include <tuple>
 
 #include <glso/dual.hpp>
 
@@ -28,12 +29,15 @@ namespace glso {
 
 template<typename T, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
 __global__
-void compute_error_kernel(const T* obs, T* error, size_t* ids, std::array<T*, sizeof...(Is)> args, std::array<size_t, sizeof...(Is)> stride, std::index_sequence<Is...>) {
+void compute_error_kernel(const T* obs, T* error, size_t* ids, std::array<T*, sizeof...(Is)> args, std::index_sequence<Is...>) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
+    // constexpr F::VertexTypesTuple vtypes;
+    // std::array<size_t, sizeof...(Is)> strides = {std::get<Is>(F::VertexTypesTuple()).dim...};
+    // std::array<size_t, sizeof...(Is)> strides = {F::VertexTypes::dimension()...};
+    constexpr auto strides = F::get_vertex_sizes();
     for (int i = 0; i < sizeof...(Is); i++) {
         size_t local_id = ids[idx*N+i];
-        args[i] += local_id*stride[i];
+        args[i] += local_id*strides[i];
     }
 
     F::error(args[Is]..., obs+idx*M, error+idx*E);
@@ -42,7 +46,7 @@ void compute_error_kernel(const T* obs, T* error, size_t* ids, std::array<T*, si
 template<typename T>
 class GraphVisitor {
 public:
-    template<typename F>
+    template<typename F, typename... VertexTypes>
     void compute_error(F* f) {
         // Assume autodiff
 
@@ -52,10 +56,10 @@ public:
 
         // At this point all necessary data should be on the GPU    
         std::array<T*, num_vertices> verts;
-        std::array<size_t, num_vertices> stride;
+        // std::array<size_t, num_vertices> stride;
         for (int i = 0; i < num_vertices; i++) {
             verts[i] = f->vertex_descriptors[i]->x();
-            stride[i] = f->vertex_descriptors[i]->dimension();
+            // stride[i] = f->vertex_descriptors[i]->dimension();
         }
 
         
@@ -69,7 +73,7 @@ public:
         compute_error_kernel<T, num_vertices, observation_dim, error_dim, F><<<num_blocks, threads_per_block>>>(thrust::raw_pointer_cast(f->device_obs.data()), 
         thrust::raw_pointer_cast(f->residuals.data()), 
         thrust::raw_pointer_cast(f->device_ids.data()),
-        verts, stride, std::make_index_sequence<num_vertices>{});
+        verts, std::make_index_sequence<num_vertices>{});
     }
 
     template<typename V>
@@ -95,7 +99,7 @@ public:
 
 };
 
-template <typename T, typename V, template <typename> class Derived>
+template <typename T, int D, template <typename> class Derived>
 class VertexDescriptor : public BaseVertexDescriptor<T> {
 private:
     // Vertex values
@@ -107,7 +111,8 @@ public:
     // Mappings
     std::unordered_map<size_t, size_t> global_to_local_map;
 
-    using VertexType = V;
+    // using VertexType = V;
+    static constexpr size_t dim = D;
 
 public:
     virtual ~VertexDescriptor() {};
@@ -152,6 +157,10 @@ public:
         return global_to_local_map;
     }
 
+    size_t dimension() const override {
+        return D;
+    }
+
     
 };
 
@@ -187,7 +196,7 @@ public:
 
 };
 
-template <typename T, int N, int M, template <typename> class Derived>
+template <typename T, int N, int M, template <typename> class Derived, typename... VertexTypes>
 class FactorDescriptor : public BaseFactorDescriptor<T> {
 
 private:
@@ -208,10 +217,11 @@ public:
 
     static constexpr size_t observation_dim = M;
     static constexpr size_t error_dim = N;
-
+    using VertexTypesTuple = std::tuple<VertexTypes...>;
+    VertexTypesTuple vtypes;
 
     void visit_error(GraphVisitor<T>& visitor) override {
-        visitor.template compute_error<Derived<T>>(dynamic_cast<Derived<T>*>(this));
+        visitor.template compute_error<Derived<T>, VertexTypes...>(dynamic_cast<Derived<T>*>(this));
     }
 
     std::vector<JacobianStorage<T>> jacobians;
@@ -250,13 +260,17 @@ public:
         this->vertex_descriptors = vertex_descriptors;
     }
 
+    static constexpr std::array<size_t, N> get_vertex_sizes() {
+        return {VertexTypes::dim...};
+    }
+
 };
 
 // Templated derived class for AutoDiffFactorDescriptor using CRTP
 // N is the number of vertices involved in the constraint
 // M is the dimension of each observation
-template <typename T, int N, int M, template <typename> class Derived>
-class AutoDiffFactorDescriptor : public FactorDescriptor<T, N, M, Derived> {
+template <typename T, int N, int M, template <typename> class Derived, typename... VertexTypes>
+class AutoDiffFactorDescriptor : public FactorDescriptor<T, N, M, Derived, VertexTypes...> {
 public:
     virtual bool use_autodiff() override {
         return true;

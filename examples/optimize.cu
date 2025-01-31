@@ -7,20 +7,20 @@
 namespace glso {
 
 template<typename T>
-class Radius: public VertexDescriptor<T, T, Radius> {
+class Radius: public VertexDescriptor<T, 1, Radius> {
     public:
 
     static void update(T* x, const T* delta) {
         x[0] += delta[0]; 
     }
 
-    size_t dimension() const override {
-        return 1;
-    }
+    // size_t dimension() const override {
+    //     return 1;
+    // }
 };
 
 template <typename T>
-class CircleFactor : public AutoDiffFactorDescriptor<T, 1, 2, CircleFactor> {
+class CircleFactor : public AutoDiffFactorDescriptor<T, 1, 2, CircleFactor, Radius<T>> {
 public:
     // static void error_func(const T** vertices, const T* obs, T* error) {
     //     T r = vertices[0][0];
