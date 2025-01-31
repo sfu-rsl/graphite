@@ -1,5 +1,6 @@
 #pragma once
 #include <cuda/std/limits>
+#include <cuda/std/cmath>
 
 namespace glso {
 
@@ -63,6 +64,28 @@ struct Dual {
         dual = (dual * other.real - real * other.dual) / denominator;
         real = new_real;
         return *this;
+    }
+
+    __host__ __device__ friend Dual<T> sin(const Dual<T>& x) {
+        return Dual<T>(std::sin(x.real), x.dual * std::cos(x.real));
+    }
+
+    __host__ __device__ friend Dual<T> cos(const Dual<T>& x) {
+        return Dual<T>(std::cos(x.real), -x.dual * std::sin(x.real));
+    }
+
+    __host__ __device__ friend Dual<T> exp(const Dual<T>& x) {
+        T exp_real = std::exp(x.real);
+        return Dual<T>(exp_real, x.dual * exp_real);
+    }
+
+    __host__ __device__ friend Dual<T> log(const Dual<T>& x) {
+        return Dual<T>(std::log(x.real), x.dual / x.real);
+    }
+
+    __host__ __device__ friend Dual<T> sqrt(const Dual<T>& x) {
+        T sqrt_real = std::sqrt(x.real);
+        return Dual<T>(sqrt_real, x.dual / (2 * sqrt_real));
     }
 };
 
