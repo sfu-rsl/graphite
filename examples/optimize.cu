@@ -2,6 +2,7 @@
 #include <chrono>
 #include <vector>
 #include <numeric>
+#include <array>
 #include <glso/core.hpp>
 
 namespace glso {
@@ -14,20 +15,11 @@ class Radius: public VertexDescriptor<T, 1, Radius> {
         x[0] += delta[0]; 
     }
 
-    // size_t dimension() const override {
-    //     return 1;
-    // }
 };
 
 template <typename T>
 class CircleFactor : public AutoDiffFactorDescriptor<T, 1, 2, CircleFactor, Radius<T>> {
 public:
-    // static void error_func(const T** vertices, const T* obs, T* error) {
-    //     T r = vertices[0][0];
-    //     T x = obs[0];
-    //     T y = obs[1];
-    //     error[0] = x*x + y*y - r*r;
-    // }
 
     __device__ static void error(const T* vertex1, const T* obs, T* error) {
         T r = vertex1[0];

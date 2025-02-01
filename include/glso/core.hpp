@@ -154,7 +154,6 @@ public:
     // Mappings
     std::unordered_map<size_t, size_t> global_to_local_map;
 
-    // using VertexType = V;
     static constexpr size_t dim = D;
 
 public:
@@ -239,7 +238,7 @@ public:
 
 };
 
-template <typename T, int N, int M, template <typename> class Derived, typename... VertexTypes>
+template <typename T, int E, int M, template <typename> class Derived, typename... VertexTypes>
 class FactorDescriptor : public BaseFactorDescriptor<T> {
 
 private:
@@ -247,21 +246,18 @@ private:
     thrust::host_vector<size_t> host_ids; // local ids
     thrust::host_vector<T> host_obs;
 
-
-    
-
-
 public:
+
+    static constexpr size_t N = sizeof...(VertexTypes);
+    static constexpr size_t observation_dim = M;
+    static constexpr size_t error_dim = E;
+
+    std::array<BaseVertexDescriptor<T>*, N> vertex_descriptors;
+    using VertexTypesTuple = std::tuple<VertexTypes...>;
 
     thrust::device_vector<size_t> device_ids;
     thrust::device_vector<T> device_obs;
     thrust::device_vector<T> residuals;
-    std::array<BaseVertexDescriptor<T>*, N> vertex_descriptors;
-
-    static constexpr size_t observation_dim = M;
-    static constexpr size_t error_dim = N;
-    using VertexTypesTuple = std::tuple<VertexTypes...>;
-    VertexTypesTuple vtypes;
 
     void visit_error(GraphVisitor<T>& visitor) override {
         visitor.template compute_error<Derived<T>, VertexTypes...>(dynamic_cast<Derived<T>*>(this));
@@ -312,8 +308,8 @@ public:
 // Templated derived class for AutoDiffFactorDescriptor using CRTP
 // N is the number of vertices involved in the constraint
 // M is the dimension of each observation
-template <typename T, int N, int M, template <typename> class Derived, typename... VertexTypes>
-class AutoDiffFactorDescriptor : public FactorDescriptor<T, N, M, Derived, VertexTypes...> {
+template <typename T, int E, int M, template <typename> class Derived, typename... VertexTypes>
+class AutoDiffFactorDescriptor : public FactorDescriptor<T, E, M, Derived, VertexTypes...> {
 public:
     virtual bool use_autodiff() override {
         return true;
