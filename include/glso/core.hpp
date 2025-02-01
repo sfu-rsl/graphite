@@ -27,20 +27,63 @@ namespace std {
 
 namespace glso {
 
+    template <typename T>
+    __device__ void device_copy(const T* src, const T* src_end, T* dst) {
+        while (src != src_end) {
+            *dst++ = *src++;
+        }
+    }
+
+    template <typename T, size_t D>
+    __device__ void device_copy(const T* src, T* dst) {
+        #pragma unroll
+        for (size_t i = 0; i < D; i++) {
+            // *dst++ = *src++;
+            dst[i] = src[i];
+        }
+    }
+
 template<typename T, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
 __global__
 void compute_error_kernel(const T* obs, T* error, size_t* ids, std::array<T*, sizeof...(Is)> args, std::index_sequence<Is...>) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    // constexpr F::VertexTypesTuple vtypes;
-    // std::array<size_t, sizeof...(Is)> strides = {std::get<Is>(F::VertexTypesTuple()).dim...};
-    // std::array<size_t, sizeof...(Is)> strides = {F::VertexTypes::dimension()...};
-    constexpr auto strides = F::get_vertex_sizes();
+
+    constexpr auto vertex_sizes = F::get_vertex_sizes();
+
+    #pragma unroll
     for (int i = 0; i < sizeof...(Is); i++) {
         size_t local_id = ids[idx*N+i];
-        args[i] += local_id*strides[i];
+        args[i] += local_id*vertex_sizes[i];
+    }
+    
+    T local_obs[M];
+    T local_error[E];
+
+    #pragma unroll
+    for (int i = 0; i < M; ++i) {
+        local_obs[i] = obs[idx * M + i];
     }
 
-    F::error(args[Is]..., obs+idx*M, error+idx*E);
+    #pragma unroll
+    for (int i = 0; i < E; ++i) {
+        local_error[i] = error[idx * E + i];
+    }
+
+
+    auto v = std::make_tuple(std::array<T, vertex_sizes[Is]>{}...);
+    
+    auto copy_vertices = [&v, &vertex_sizes](auto&&... ptrs) {
+        ((device_copy<T, vertex_sizes[Is]>(ptrs, std::get<Is>(v).data())), ...);
+    };
+
+    std::apply(copy_vertices, args);
+
+    F::error(std::get<Is>(v).data()..., local_obs, local_error);
+
+    #pragma unroll
+    for(int i = 0; i < E; ++i) {
+        error[idx * E + i] = local_error[i];
+    }
 }
 
 template<typename T>
@@ -71,8 +114,8 @@ public:
         int num_blocks = (num_factors + threads_per_block - 1) / threads_per_block;
 
         compute_error_kernel<T, num_vertices, observation_dim, error_dim, F><<<num_blocks, threads_per_block>>>(thrust::raw_pointer_cast(f->device_obs.data()), 
-        thrust::raw_pointer_cast(f->residuals.data()), 
-        thrust::raw_pointer_cast(f->device_ids.data()),
+        f->residuals.data().get(), 
+        f->device_ids.data().get(),
         verts, std::make_index_sequence<num_vertices>{});
     }
 
