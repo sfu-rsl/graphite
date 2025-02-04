@@ -7,7 +7,8 @@
 #include <thrust/host_vector.h>
 #include <thrust/device_vector.h>
 #include <memory>
-#include <tuple>
+// #include <tuple>
+#include <cuda/std/tuple>
 
 #include <glso/dual.hpp>
 
@@ -43,9 +44,17 @@ namespace glso {
         }
     }
 
-template<typename T, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
+    template <typename T, size_t D>
+    __device__ void real_to_dual(const T* src, Dual<T>* dst) {
+        #pragma unroll
+        for (size_t i = 0; i < D; i++) {
+            dst[i] = Dual<T>(src[i]);
+        }
+    }
+
+template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
 __global__
-void compute_error_kernel(const T* obs, T* error, size_t* ids, std::array<T*, sizeof...(Is)> args, std::index_sequence<Is...>) {
+void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, std::array<T*, sizeof...(Is)> args, std::index_sequence<Is...>) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     constexpr auto vertex_sizes = F::get_vertex_sizes();
@@ -56,8 +65,8 @@ void compute_error_kernel(const T* obs, T* error, size_t* ids, std::array<T*, si
         args[i] += local_id*vertex_sizes[i];
     }
     
-    T local_obs[M];
-    T local_error[E];
+    Dual<T> local_obs[M];
+    Dual<T> local_error[E];
 
     #pragma unroll
     for (int i = 0; i < M; ++i) {
@@ -70,24 +79,43 @@ void compute_error_kernel(const T* obs, T* error, size_t* ids, std::array<T*, si
     }
 
 
-    auto v = std::make_tuple(std::array<T, vertex_sizes[Is]>{}...);
+    auto v = cuda::std::make_tuple(std::array<Dual<T>, vertex_sizes[Is]>{}...);
     
     auto copy_vertices = [&v, &vertex_sizes](auto&&... ptrs) {
-        ((device_copy<T, vertex_sizes[Is]>(ptrs, std::get<Is>(v).data())), ...);
+        ((real_to_dual<T, vertex_sizes[Is]>(ptrs, cuda::std::get<Is>(v).data())), ...);
     };
+
+
+    cuda::std::get<I>(v)[idx % vertex_sizes[I]].dual = static_cast<T>(1);
 
     std::apply(copy_vertices, args);
 
-    F::error(std::get<Is>(v).data()..., local_obs, local_error);
+    F::error(cuda::std::get<Is>(v).data()..., local_obs, local_error);
 
     #pragma unroll
     for(int i = 0; i < E; ++i) {
-        error[idx * E + i] = local_error[i];
+        error[idx * E + i] = local_error[i].real;
     }
 }
 
 template<typename T>
 class GraphVisitor {
+private:
+template <typename F, std::size_t... Is>
+void launch_kernel_autodiff(F* f, std::array<T*, F::get_num_vertices()>& verts, const size_t num_factors, std::index_sequence<Is...>) {
+            (([&] {
+            constexpr auto num_vertices = F::get_num_vertices();
+            const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
+            int threads_per_block = 256;
+            int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+            compute_error_kernel_autodiff<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
+                f->device_obs.data().get(),
+                f->residuals.data().get(),
+                f->device_ids.data().get(),
+                verts,
+                std::make_index_sequence<num_vertices>{});
+            }()), ...);
+        };
 public:
     template<typename F, typename... VertexTypes>
     void compute_error(F* f) {
@@ -95,7 +123,7 @@ public:
 
         // Then for each vertex, we need to compute the error
         constexpr auto num_vertices = f->get_num_vertices();
-        
+        constexpr auto vertex_sizes = F::get_vertex_sizes();
 
         // At this point all necessary data should be on the GPU    
         std::array<T*, num_vertices> verts;
@@ -110,13 +138,31 @@ public:
         constexpr auto error_dim = F::error_dim;
         const auto num_factors = f->count();
 
-        int threads_per_block = 256;
-        int num_blocks = (num_factors + threads_per_block - 1) / threads_per_block;
+        // constexpr auto num_vertices_seq = std::make_index_sequence<num_vertices>{};
+        // auto launch_kernel_autodiff = [&](auto... Is) {
+        //     (([&] {
+        //     const auto num_threads = num_factors * vertex_sizes[Is];
+        //     int threads_per_block = 256;
+        //     int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+        //     // compute_error_kernel_autodiff<T, Is, num_vertices, observation_dim, error_dim, F><<<num_blocks, threads_per_block>>>(
+        //     //     f->device_obs.data().get(),
+        //     //     f->residuals.data().get(),
+        //     //     f->device_ids.data().get(),
+        //     //     verts,
+        //     //     std::make_index_sequence<num_vertices>{});
+        //     }()), ...);
+        // };
+        // std::apply(launch_kernel, std::make_index_sequence<num_vertices>{});
+        // launch_kernel(std::make_index_sequence<num_vertices>());
+        launch_kernel_autodiff(f, verts, num_factors, std::make_index_sequence<num_vertices>{});
 
-        compute_error_kernel<T, num_vertices, observation_dim, error_dim, F><<<num_blocks, threads_per_block>>>(thrust::raw_pointer_cast(f->device_obs.data()), 
-        f->residuals.data().get(), 
-        f->device_ids.data().get(),
-        verts, std::make_index_sequence<num_vertices>{});
+        // int threads_per_block = 256;
+        // int num_blocks = (num_factors + threads_per_block - 1) / threads_per_block;
+
+        // compute_error_kernel_autodiff<T, num_vertices, observation_dim, error_dim, F><<<num_blocks, threads_per_block>>>(f->device_obs.data().get(), 
+        // f->residuals.data().get(), 
+        // f->device_ids.data().get(),
+        // verts, std::make_index_sequence<num_vertices>{});
     }
 
     template<typename V>

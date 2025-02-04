@@ -11,6 +11,7 @@ struct Dual {
 
     __host__ __device__ Dual() : real(0), dual(0) {}
     __host__ __device__ Dual(T real, T dual) : real(real), dual(dual) {}
+    __host__ __device__ Dual(T real) : real(real), dual(0) {}
 
     __host__ __device__ Dual<T> operator+(const Dual<T>& other) const {
         return Dual<T>(real + other.real, dual + other.dual);

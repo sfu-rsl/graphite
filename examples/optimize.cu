@@ -21,10 +21,11 @@ template <typename T>
 class CircleFactor : public AutoDiffFactorDescriptor<T, 1, 2, CircleFactor, Radius<T>> {
 public:
 
-    __device__ static void error(const T* vertex1, const T* obs, T* error) {
-        T r = vertex1[0];
-        T x = obs[0];
-        T y = obs[1];
+    template <typename D>
+    __device__ static void error(const D* vertex1, const D* obs, D* error) {
+        D r = vertex1[0];
+        D x = obs[0];
+        D y = obs[1];
         error[0] = x*x + y*y - r*r;
     }
 };
