@@ -54,7 +54,7 @@ namespace glso {
 
 template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
 __global__
-void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, std::array<T*, sizeof...(Is)> args, std::index_sequence<Is...>) {
+void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const size_t* hessian_ids, std::array<T*, sizeof...(Is)> args, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     constexpr auto vertex_sizes = F::get_vertex_sizes();
@@ -92,9 +92,12 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, std::arr
 
     F::error(cuda::std::get<Is>(v).data()..., local_obs, local_error);
 
+
+    constexpr auto j_size = vertex_sizes[I]*E;
     #pragma unroll
     for(int i = 0; i < E; ++i) {
         error[idx * E + i] = local_error[i].real;
+        // jacs[I][j_size*(idx/N)]
     }
 }
 
@@ -102,7 +105,7 @@ template<typename T>
 class GraphVisitor {
 private:
 template <typename F, std::size_t... Is>
-void launch_kernel_autodiff(F* f, std::array<T*, F::get_num_vertices()>& verts, const size_t num_factors, std::index_sequence<Is...>) {
+void launch_kernel_autodiff(F* f, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()>& verts, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
             (([&] {
             constexpr auto num_vertices = F::get_num_vertices();
             const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
@@ -112,7 +115,9 @@ void launch_kernel_autodiff(F* f, std::array<T*, F::get_num_vertices()>& verts, 
                 f->device_obs.data().get(),
                 f->residuals.data().get(),
                 f->device_ids.data().get(),
+                hessian_ids[Is],
                 verts,
+                jacs,
                 std::make_index_sequence<num_vertices>{});
             }()), ...);
         };
@@ -127,10 +132,12 @@ public:
 
         // At this point all necessary data should be on the GPU    
         std::array<T*, num_vertices> verts;
-        // std::array<size_t, num_vertices> stride;
+        std::array<T*, num_vertices> jacs;
+        std::array<const size_t*, num_vertices> hessian_ids;
         for (int i = 0; i < num_vertices; i++) {
             verts[i] = f->vertex_descriptors[i]->x();
-            // stride[i] = f->vertex_descriptors[i]->dimension();
+            jacs[i] = f->jacobians[i].data.data().get();
+            hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
         }
 
         
@@ -154,7 +161,7 @@ public:
         // };
         // std::apply(launch_kernel, std::make_index_sequence<num_vertices>{});
         // launch_kernel(std::make_index_sequence<num_vertices>());
-        launch_kernel_autodiff(f, verts, num_factors, std::make_index_sequence<num_vertices>{});
+        launch_kernel_autodiff(f, hessian_ids, verts, jacs, num_factors, std::make_index_sequence<num_vertices>{});
 
         // int threads_per_block = 256;
         // int num_blocks = (num_factors + threads_per_block - 1) / threads_per_block;
@@ -185,6 +192,8 @@ public:
     virtual void to_host() = 0;
     virtual void add_vertex(const size_t id, const T* value) = 0;
     virtual const std::unordered_map<size_t, size_t> & get_global_map() const = 0;
+    virtual const size_t* get_hessian_ids() const = 0;
+    virtual void set_hessian_column(size_t global_id, size_t hessian_column);
 
 };
 
@@ -199,6 +208,8 @@ public:
 
     // Mappings
     std::unordered_map<size_t, size_t> global_to_local_map;
+    thrust::host_vector<size_t> local_to_hessian_offsets;
+    thrust::device_vector<size_t> hessian_ids;
 
     static constexpr size_t dim = D;
 
@@ -211,6 +222,7 @@ public:
 
     virtual void to_device() override {
         x_device = x_host;
+        hessian_ids = local_to_hessian_offsets;
     }
 
     virtual void to_host() override {
@@ -232,14 +244,15 @@ public:
         const auto dim = dynamic_cast<Derived<T>*>(this)->dimension();        
         x_host.insert(x_host.end(), value, value+dim);
         global_to_local_map.insert({id, (x_host.size()/dim) - 1});
+        local_to_hessian_offsets.push_back(0); // Initialize to 0
     }
 
-    void reserve(size_t num_vertices) {
-        // TODO: Find a better way to get the dimension
-        const auto dim = dynamic_cast<Derived<T>*>(this)->dimension();
-        x_host.reserve(num_vertices*dim);
-        x_device.reserve(num_vertices*dim);
-    }
+    // void reserve(size_t num_vertices) {
+    //     // TODO: Find a better way to get the dimension
+    //     const auto dim = dynamic_cast<Derived<T>*>(this)->dimension();
+    //     x_host.reserve(num_vertices*dim);
+    //     x_device.reserve(num_vertices*dim);
+    // }
 
     const std::unordered_map<size_t, size_t> & get_global_map() const override {
         return global_to_local_map;
@@ -249,7 +262,14 @@ public:
         return D;
     }
 
-    
+    const size_t* get_hessian_ids() const override {
+        return hessian_ids.data().get();
+    }
+
+    void set_hessian_column(size_t global_id, size_t hessian_column) {
+        local_to_hessian_offsets[global_to_local_map.at(global_id)] = hessian_column;
+    }
+
 };
 
 template<typename T>
@@ -275,7 +295,8 @@ public:
     // virtual void error_func(const T** vertices, const T* obs, T* error) = 0;
     virtual bool use_autodiff() = 0;
     virtual void visit_error(GraphVisitor<T>& visitor) = 0;
-    virtual std::vector<JacobianStorage<T>> & get_jacobians() = 0;
+    virtual JacobianStorage<T>* get_jacobians() = 0;
+    virtual void initialize_jacobian_storage() = 0;
     // virtual size_t get_num_vertices() const = 0;
 
     virtual size_t count() const = 0;
@@ -291,6 +312,7 @@ private:
     std::vector<size_t> global_ids;
     thrust::host_vector<size_t> host_ids; // local ids
     thrust::host_vector<T> host_obs;
+    thrust::host_vector<T> host_hessian_ids;
 
 public:
 
@@ -304,19 +326,26 @@ public:
     thrust::device_vector<size_t> device_ids;
     thrust::device_vector<T> device_obs;
     thrust::device_vector<T> residuals;
+    thrust::device_vector<size_t> device_hessian_ids;
+    
 
     void visit_error(GraphVisitor<T>& visitor) override {
         visitor.template compute_error<Derived<T>, VertexTypes...>(dynamic_cast<Derived<T>*>(this));
     }
 
-    std::vector<JacobianStorage<T>> jacobians;
+    // std::vector<JacobianStorage<T>> jacobians;
+    std::array<JacobianStorage<T>, N> jacobians;
     
     static constexpr size_t get_num_vertices() {
         return N;
     }
 
-    std::vector<JacobianStorage<T>> &  get_jacobians() override {
-        return jacobians;
+    // std::vector<JacobianStorage<T>> &  get_jacobians() override {
+    //     return jacobians;
+    // }
+
+    JacobianStorage<T>* get_jacobians() override {
+        return jacobians.data();
     }
 
     void add_factor(const std::array<size_t, N>& ids, const std::array<T, M>& obs, const T* precision_matrix) {
@@ -347,6 +376,13 @@ public:
 
     static constexpr std::array<size_t, N> get_vertex_sizes() {
         return {VertexTypes::dim...};
+    }
+
+    void initialize_jacobian_storage() override {
+        for (size_t i = 0; i < N; i++) {
+            jacobians[i].dimensions = {error_dim, vertex_descriptors[i]->dimension()};
+            jacobians[i].data.resize(error_dim*vertex_descriptors[i]->dimension()*count());
+        }
     }
 
 };
@@ -447,6 +483,7 @@ class Graph {
             hessian_to_local_map.insert({hessian_column, entry.second});
             hessian_offset.insert({hessian_column, offset});
             offset += vertex_descriptors[entry.second.first]->dimension();
+            vertex_descriptors[entry.second.first]->set_hessian_column(entry.first, hessian_column);
             hessian_column++;
         }
 
@@ -466,11 +503,15 @@ class Graph {
             desc->to_device();
         }
 
+        // Initialize Jacobian storage
+        for (auto & f: factor_descriptors) {
+            f->initialize_jacobian_storage();
+        }
+
         return true;
     }
 
     bool build_structure() {
-        // Allocate storage for Jacobians
         // Allocate storage for solver vectors
         size_t size_x = 0;
         for (const auto & desc: vertex_descriptors) {
@@ -493,11 +534,8 @@ class Graph {
         for (auto & factor: factor_descriptors) {
             // compute error
             factor->visit_error(visitor);
-            if (factor->use_autodiff()) {
-                // copy gradients into Jacobians
-            }
-            else {
-                // compute Jacobians
+            if (!factor->use_autodiff()) {
+                // manually compute Jacobians
             }
         }
     }
