@@ -94,10 +94,14 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
 
 
     constexpr auto j_size = vertex_sizes[I]*E;
+    constexpr auto col_offset = I*E;
+    const auto factor_id = idx / vertex_sizes[I];
+    // Store column-major Jacobian blocks.
+    // Write one scalar column (length E) of the Jacobian matrix.
     #pragma unroll
-    for(int i = 0; i < E; ++i) {
+    for(size_t i = 0; i < E; ++i) {
         error[idx * E + i] = local_error[i].real;
-        // jacs[I][j_size*(idx/N)]
+        jacs[I][j_size*factor_id + col_offset + i] = local_error[i].dual;
     }
 }
 
@@ -193,7 +197,7 @@ public:
     virtual void add_vertex(const size_t id, const T* value) = 0;
     virtual const std::unordered_map<size_t, size_t> & get_global_map() const = 0;
     virtual const size_t* get_hessian_ids() const = 0;
-    virtual void set_hessian_column(size_t global_id, size_t hessian_column);
+    virtual void set_hessian_column(size_t global_id, size_t hessian_column) = 0;
 
 };
 
