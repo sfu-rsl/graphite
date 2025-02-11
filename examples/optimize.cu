@@ -35,6 +35,8 @@ int main(void) {
 
     using namespace glso;
 
+    initialize_cuda();
+
     // Create graph
     Graph<double> graph;
 
@@ -50,12 +52,13 @@ int main(void) {
     auto f = graph.add_factor_descriptor<CircleFactor<double>>(radius);
     f->add_factor({vertex_id}, {4.1, 3.8}, nullptr);
     // Optimize
-    constexpr size_t iterations = 10;
+    constexpr size_t iterations = 1;
     Optimizer opt;
     std::cout << "Optimizing!" << std::endl;
 
     opt.optimize(&graph, iterations);
     std::cout << "Done optimizing!" << std::endl;
+
 
     return 0;
 }

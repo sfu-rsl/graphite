@@ -4,6 +4,9 @@
 #include <utility>
 #include <unordered_map>
 #include <boost/functional/hash.hpp>
+#include <cuda_runtime.h>
+#include <device_launch_parameters.h>
+
 #include <thrust/host_vector.h>
 #include <thrust/device_vector.h>
 #include <memory>
@@ -54,8 +57,12 @@ namespace glso {
 
 template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
 __global__
-void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const size_t* hessian_ids, std::array<T*, sizeof...(Is)> args, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
+void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, std::array<T*, sizeof...(Is)> args, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx >= num_threads) {
+        return;
+    }
 
     constexpr auto vertex_sizes = F::get_vertex_sizes();
 
@@ -85,10 +92,9 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
         ((real_to_dual<T, vertex_sizes[Is]>(ptrs, cuda::std::get<Is>(v).data())), ...);
     };
 
+    std::apply(copy_vertices, args);
 
     cuda::std::get<I>(v)[idx % vertex_sizes[I]].dual = static_cast<T>(1);
-
-    std::apply(copy_vertices, args);
 
     F::error(cuda::std::get<Is>(v).data()..., local_obs, local_error);
 
@@ -100,7 +106,7 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
     // Write one scalar column (length E) of the Jacobian matrix.
     #pragma unroll
     for(size_t i = 0; i < E; ++i) {
-        error[idx * E + i] = local_error[i].real;
+        error[factor_id * E + i] = local_error[i].real;
         jacs[I][j_size*factor_id + col_offset + i] = local_error[i].dual;
     }
 }
@@ -113,13 +119,20 @@ void launch_kernel_autodiff(F* f, std::array<const size_t*, F::get_num_vertices(
             (([&] {
             constexpr auto num_vertices = F::get_num_vertices();
             const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
+            std::cout << "Num threads: " << num_threads << std::endl;
             int threads_per_block = 256;
             int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+
+            std::cout << "Checking obs ptr: " << f->device_obs.data().get() << std::endl;
+            std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
+            std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
+
             compute_error_kernel_autodiff<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
                 f->device_obs.data().get(),
                 f->residuals.data().get(),
                 f->device_ids.data().get(),
                 hessian_ids[Is],
+                num_threads,
                 verts,
                 jacs,
                 std::make_index_sequence<num_vertices>{});
@@ -166,7 +179,7 @@ public:
         // std::apply(launch_kernel, std::make_index_sequence<num_vertices>{});
         // launch_kernel(std::make_index_sequence<num_vertices>());
         launch_kernel_autodiff(f, hessian_ids, verts, jacs, num_factors, std::make_index_sequence<num_vertices>{});
-
+        cudaDeviceSynchronize();
         // int threads_per_block = 256;
         // int num_blocks = (num_factors + threads_per_block - 1) / threads_per_block;
 
@@ -372,6 +385,10 @@ public:
 
         device_ids = host_ids;
         device_obs = host_obs;
+
+        // Resize and reset residuals
+        residuals.resize(error_dim*count());
+        thrust::fill(residuals.begin(), residuals.end(), 0);
     }
 
     void link_factors(const std::array<BaseVertexDescriptor<T>*, N>& vertex_descriptors) {
@@ -526,7 +543,7 @@ class Graph {
         b.resize(size_x);
         x_backup.resize(size_x);
 
-        return false;
+        return true;
     }
 
     void linearize() {
@@ -546,7 +563,7 @@ class Graph {
 
     bool compute_step() {
 
-        return false;
+        return true;
     }
 
     void apply_step() {
@@ -622,6 +639,14 @@ public:
     }
 
 };
+
+void initialize_cuda() {
+    cudaSetDevice(0);
+}
+
+void cleanup_cuda() {
+    cudaDeviceReset();
+}
 
 }
 
