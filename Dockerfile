@@ -26,3 +26,6 @@ RUN apt-get -y install libopencv-dev libopencv-core-dev libeigen3-dev libboost-s
 
 # Install CUDA Toolkit 12.6
 RUN apt-get -y install cuda-toolkit-12-6 cuda-gdb-12-6
+
+# Install gdb
+RUN apt update && apt-get -y install gdb
