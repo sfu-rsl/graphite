@@ -26,6 +26,7 @@ public:
     // virtual void error_func(const T** vertices, const T* obs, T* error) = 0;
     virtual bool use_autodiff() = 0;
     virtual void visit_error(GraphVisitor<T>& visitor) = 0;
+    virtual void visit_b(GraphVisitor<T>& visitor) = 0;
     virtual JacobianStorage<T>* get_jacobians() = 0;
     virtual void initialize_jacobian_storage() = 0;
     // virtual size_t get_num_vertices() const = 0;
@@ -33,6 +34,8 @@ public:
     virtual size_t count() const = 0;
 
     virtual void to_device() = 0;
+
+    virtual size_t set_error_offset(size_t offset) = 0;
 
 };
 
@@ -44,6 +47,7 @@ private:
     thrust::host_vector<size_t> host_ids; // local ids
     thrust::host_vector<T> host_obs;
     thrust::host_vector<T> host_hessian_ids;
+    thrust::host_vector<T> host_error_offsets; // we may not need this
 
 public:
 
@@ -58,10 +62,14 @@ public:
     thrust::device_vector<T> device_obs;
     thrust::device_vector<T> residuals;
     thrust::device_vector<size_t> device_hessian_ids;
-    
+    thrust::device_vector<size_t> device_error_offsets; // we may not need this
 
     void visit_error(GraphVisitor<T>& visitor) override {
         visitor.template compute_error<Derived<T>, VertexTypes...>(dynamic_cast<Derived<T>*>(this));
+    }
+
+    void visit_b(GraphVisitor<T>& visitor) override {
+        visitor.template compute_b<Derived<T>, VertexTypes...>(dynamic_cast<Derived<T>*>(this));
     }
 
     // std::vector<JacobianStorage<T>> jacobians;
@@ -99,6 +107,7 @@ public:
 
         device_ids = host_ids;
         device_obs = host_obs;
+        device_error_offsets = host_error_offsets;;
 
         // Resize and reset residuals
         residuals.resize(error_dim*count());
@@ -118,6 +127,20 @@ public:
             jacobians[i].dimensions = {error_dim, vertex_descriptors[i]->dimension()};
             jacobians[i].data.resize(error_dim*vertex_descriptors[i]->dimension()*count());
         }
+    }
+
+    size_t set_error_offset(size_t offset) override {
+        // Just assume all edges are active for now
+        host_error_offsets.clear();
+        host_error_offsets.resize(count());
+
+
+        for (size_t i = 0; i < count(); i++) {
+            host_error_offsets[i] = offset;
+            offset += error_dim;
+        }
+
+        return offset;
     }
 
 };

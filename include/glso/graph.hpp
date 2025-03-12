@@ -22,8 +22,13 @@ class Graph {
     thrust::device_vector<T> delta_x;
     thrust::device_vector<T> b;
     thrust::device_vector<T> x_backup;
+    // thrust::device_vector<T> error;
 
     public:
+
+    Graph(): visitor(b) {
+
+    }
 
     void add_vertex_descriptor(BaseVertexDescriptor<T>* descriptor) {
         vertex_descriptors.push_back(descriptor);
@@ -37,13 +42,6 @@ class Graph {
         factor->link_factors({vertices...});
 
         factor_descriptors.push_back(factor);
-
-        // Create Jacobian storage for this factor
-        // const auto & info_list = descriptor->get_jacobian_info();
-
-        // for (const auto & info: info_list) {
-        //     jacobians.insert({info.dim, std::make_shared<JacobianStorage<T>>(info.nnz())});
-        // }
 
         return factor;
 
@@ -80,10 +78,10 @@ class Graph {
             hessian_column++;
         }
 
-        // Transform global vertex ids into local ids for factors
-        // for (const auto & [global_id, second]: global_to_local_combined) {
-        //     const auto & [vd_idx, local_id] = second;
-        
+        // // Assign global offset into error vector for each factor
+        // size_t error_offset = 0;
+        // for (auto & desc: factor_descriptors) {
+        //     error_offset += desc->set_error_offset(offset);
         // }
 
         // Copy vertex values to device
@@ -111,9 +109,15 @@ class Graph {
             size_x += desc->dimension()*desc->count(); 
         }
 
+        // size_t size_error = 0;
+        // for (const auto & desc: factor_descriptors) {
+        //     size_error += desc->error_dimension()(0)*desc->count();
+        // }
+
         delta_x.resize(size_x);
         b.resize(size_x);
         x_backup.resize(size_x);
+        // error.resize(size_error);
 
         return true;
     }
@@ -135,6 +139,10 @@ class Graph {
 
 
         // TODO: Calculate b=J^T * r
+
+        for (auto & fd: factor_descriptors) {
+            fd->visit_b(visitor);
+        }
     }
 
     bool compute_step() {

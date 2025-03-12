@@ -72,25 +72,67 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
 
 
     constexpr auto j_size = vertex_sizes[I]*E;
-    constexpr auto col_offset = I*E;
+    // constexpr auto col_offset = I*E;
+    const auto col_offset = (idx % vertex_sizes[I])*E;
     const auto factor_id = idx / vertex_sizes[I];
     // Store column-major Jacobian blocks.
     // Write one scalar column (length E) of the Jacobian matrix.
+    // TODO: make sure this only writes to each location once
+    // The Jacobian is stored as E x vertex_size in col major
     #pragma unroll
     for(size_t i = 0; i < E; ++i) {
         error[factor_id * E + i] = local_error[i].real;
         jacs[I][j_size*factor_id + col_offset + i] = local_error[i].dual;
     }
 }
+// The output will be part of b with length of the vertex
+template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
+__global__ 
+void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx >= num_threads) {
+        return;
+    }
+
+    constexpr auto vertex_sizes = F::get_vertex_sizes();
+    constexpr auto jacobian_size = vertex_sizes[I]*E;
+    
+    // Stored as E x N col major, but we need to transpose it to N x E, where N is the vertex size
+    const size_t factor_id = idx / vertex_sizes[I];
+    const auto jacobian_offset = factor_id * jacobian_size;
+    const auto error_offset = factor_id*E;
+    // constexpr auto col_offset = I*E; // for untransposed J
+    const auto col_offset = (idx % vertex_sizes[I])*E; // for untransposed J
+
+
+    T value = 0;
+
+    #pragma unroll
+    for (int i = 0; i < E; i++) {
+        value += jacs[I][jacobian_offset + col_offset + i] * error[error_offset + i];
+    }
+
+    size_t local_id = ids[idx*N+I]; // N is the number of vertices involved in the factor
+    const auto hessian_offset = hessian_ids[local_id]; // each vertex has a hessian_ids array
+    
+    atomicAdd(&b[hessian_offset + (idx % vertex_sizes[I])], value);
+
+}
+
 
 template<typename T>
 class GraphVisitor {
 private:
+
+thrust::device_vector<T>& b;
+
 template <typename F, std::size_t... Is>
 void launch_kernel_autodiff(F* f, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()>& verts, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
             (([&] {
             constexpr auto num_vertices = F::get_num_vertices();
             const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
+            std::cout << "Launching autodiff kernel" << std::endl;
             std::cout << "Num threads: " << num_threads << std::endl;
             int threads_per_block = 256;
             int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
@@ -109,8 +151,38 @@ void launch_kernel_autodiff(F* f, std::array<const size_t*, F::get_num_vertices(
                 jacs,
                 std::make_index_sequence<num_vertices>{});
             }()), ...);
-        };
+        }
+
+template <typename F, std::size_t... Is>
+void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()>& verts, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
+            (([&] {
+            constexpr auto num_vertices = F::get_num_vertices();
+            const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
+            std::cout << "Launching compute b kernel" << std::endl;
+            std::cout << "Num threads: " << num_threads << std::endl;
+            int threads_per_block = 256;
+            int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+
+            std::cout << "Checking obs ptr: " << f->device_obs.data().get() << std::endl;
+            std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
+            std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
+
+            compute_b_kernel<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
+                b,
+                f->residuals.data().get(),
+                f->device_ids.data().get(),
+                hessian_ids[Is],
+                num_threads,
+                jacs,
+                std::make_index_sequence<num_vertices>{});
+            }()), ...);
+        }
+
 public:
+    
+    GraphVisitor(thrust::device_vector<T>& b): b(b) {
+    }
+
     template<typename F, typename... VertexTypes>
     void compute_error(F* f) {
         // Assume autodiff
@@ -159,6 +231,36 @@ public:
         // f->residuals.data().get(), 
         // f->device_ids.data().get(),
         // verts, std::make_index_sequence<num_vertices>{});
+    }
+
+    template<typename F, typename... VertexTypes>
+    void compute_b(F* f) {
+        // Then for each vertex, we need to compute the error
+        constexpr auto num_vertices = f->get_num_vertices();
+        constexpr auto vertex_sizes = F::get_vertex_sizes();
+
+        // At this point all necessary data should be on the GPU    
+        std::array<T*, num_vertices> verts;
+        std::array<T*, num_vertices> jacs;
+        std::array<const size_t*, num_vertices> hessian_ids;
+        for (int i = 0; i < num_vertices; i++) {
+            verts[i] = f->vertex_descriptors[i]->x();
+            jacs[i] = f->jacobians[i].data.data().get();
+            hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
+        }
+
+        
+        constexpr auto observation_dim = F::observation_dim;
+        constexpr auto error_dim = F::error_dim;
+        const auto num_factors = f->count();
+
+        T* b_ptr = b.data().get();
+
+        launch_kernel_compute_b(f, b_ptr, hessian_ids, verts, jacs, num_factors, std::make_index_sequence<num_vertices>{});
+        cudaDeviceSynchronize();
+
+
+
     }
 
     template<typename V>
