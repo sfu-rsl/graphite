@@ -107,7 +107,7 @@ public:
 
         device_ids = host_ids;
         device_obs = host_obs;
-        device_error_offsets = host_error_offsets;;
+        device_error_offsets = host_error_offsets;
 
         // Resize and reset residuals
         residuals.resize(error_dim*count());
