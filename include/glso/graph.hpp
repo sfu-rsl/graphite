@@ -5,6 +5,31 @@
 
 namespace glso {
 
+    class BlockCoordinates {
+        public:
+        size_t row;
+        size_t col;
+    };
+
+    template<typename T>
+    class HessianBlocks {
+        public:
+    
+        std::pair<size_t, size_t> dimensions;
+        size_t num_blocks;
+        thrust::device_vector<T> data;
+        thrust::device_vector<BlockCoordinates> block_coordinates;
+
+
+        void resize(size_t num_blocks, size_t rows, size_t cols) {
+            dimensions = {rows, cols};
+            this->num_blocks = num_blocks;
+            data.resize(rows*cols*num_blocks);
+            block_coordinates.resize(num_blocks);
+        }
+    
+    };
+
 template<typename T=double>
 class Graph {
 
@@ -119,6 +144,14 @@ class Graph {
         x_backup.resize(size_x);
         // error.resize(size_error);
 
+        // // Build Hessian structure
+        // std::unordered_map<std::pair<size_t, size_t>, size_t> block_counts;
+        // for (auto & desc: factor_descriptors) {
+        //     // const auto num_factors = desc->count();
+        //     desc->count_blocks(block_counts);
+        // }
+        
+
         return true;
     }
 
@@ -136,10 +169,7 @@ class Graph {
             }
         }
 
-
-
         // TODO: Calculate b=J^T * r
-
         for (auto & fd: factor_descriptors) {
             fd->visit_b(visitor);
         }

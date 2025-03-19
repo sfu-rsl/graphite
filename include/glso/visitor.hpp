@@ -85,7 +85,10 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
         jacs[I][j_size*factor_id + col_offset + i] = local_error[i].dual;
     }
 }
-// The output will be part of b with length of the vertex
+
+// The output will be part of b with length of the vertex (where b = J^T * r)
+// TODO: Replace with generic J^T x r kernel?
+// Note: The error vector is local to the factor
 template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
 __global__ 
 void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
@@ -98,7 +101,7 @@ void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, co
     constexpr auto vertex_sizes = F::get_vertex_sizes();
     constexpr auto jacobian_size = vertex_sizes[I]*E;
     
-    // Stored as E x N col major, but we need to transpose it to N x E, where N is the vertex size
+    // Stored as E x d col major, but we need to transpose it to d x E, where d is the vertex size
     const size_t factor_id = idx / vertex_sizes[I];
     const auto jacobian_offset = factor_id * jacobian_size;
     const auto error_offset = factor_id*E;
@@ -120,6 +123,74 @@ void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, co
 
 }
 
+template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
+__global__ 
+void compute_Jx_kernel(T*y, T* x, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
+    
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx >= num_threads) {
+        return;
+    }
+
+    constexpr auto vertex_sizes = F::get_vertex_sizes();
+    constexpr auto jacobian_size = vertex_sizes[I]*E;
+    
+    // Stored as E x d col major, where d is the vertex size
+    const size_t factor_id = idx / vertex_sizes[I];
+    const auto jacobian_offset = factor_id * jacobian_size;
+    const auto error_offset = factor_id*E;
+
+
+
+    T value = 0;
+    constexpr auto d = vertex_sizes[I];
+
+    size_t local_id = ids[idx*N+I]; // N is the number of vertices involved in the factor
+    const auto hessian_offset = hessian_ids[local_id]; // each vertex has a hessian_ids array
+    const auto row_offset = (idx % E);
+    // Adding i*E skips to the next column
+    #pragma unroll
+    for (int i = 0; i < d; i++) {
+        value += jacs[I][jacobian_offset + row_offset + i*E] * x[hessian_offset + i];
+    }
+    
+    atomicAdd(&y[idx], value);
+
+}
+
+template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
+__global__ 
+void compute_Jtx_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, const size_t num_threads, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx >= num_threads) {
+        return;
+    }
+
+    constexpr auto vertex_sizes = F::get_vertex_sizes();
+    constexpr auto jacobian_size = vertex_sizes[I]*E;
+    
+    // Stored as E x d col major, but we need to transpose it to d x E, where d is the vertex size
+    const size_t factor_id = idx / vertex_sizes[I];
+    const auto jacobian_offset = factor_id * jacobian_size;
+    const auto error_offset = factor_id*E;
+    const auto col_offset = (idx % vertex_sizes[I])*E; // for untransposed J
+
+
+    T value = 0;
+
+    #pragma unroll
+    for (int i = 0; i < E; i++) {
+        value += jacs[I][jacobian_offset + col_offset + i] * x[error_offset + i];
+    }
+
+    size_t local_id = ids[idx*N+I]; // N is the number of vertices involved in the factor
+    const auto hessian_offset = hessian_ids[local_id]; // each vertex has a hessian_ids array
+    
+    atomicAdd(&y[hessian_offset + (idx % vertex_sizes[I])], value);
+
+}
 
 template<typename T>
 class GraphVisitor {
@@ -167,7 +238,7 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
             std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
             std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
 
-            compute_b_kernel<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
+            compute_Jtx_kernel<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
                 b,
                 f->residuals.data().get(),
                 f->device_ids.data().get(),

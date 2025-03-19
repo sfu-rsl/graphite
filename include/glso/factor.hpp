@@ -14,17 +14,6 @@ thrust::device_vector<T> data;
 
 };
 
-template<typename T>
-class HessianBlocks {
-    public:
-
-    std::pair<size_t, size_t> dimensions;
-    size_t num_blocks;
-    thrust::device_vector<T> data;
-
-};
-
-
 template <typename T>
 class BaseFactorDescriptor {
 public:
