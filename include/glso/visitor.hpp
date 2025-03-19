@@ -238,7 +238,7 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
             std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
             std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
 
-            compute_Jtx_kernel<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
+            compute_b_kernel<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
                 b,
                 f->residuals.data().get(),
                 f->device_ids.data().get(),
