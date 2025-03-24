@@ -259,7 +259,7 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
 
 
         template <typename F, std::size_t... Is>
-        void launch_kernel_compute_Jtx(F* f, T* out, T* in, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()>& verts, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
+        void launch_kernel_compute_Jtx(F* f, T* out, std::array<T*, F::N> & in, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()>& verts, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
                     (([&] {
                     constexpr auto num_vertices = F::get_num_vertices();
                     const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
@@ -274,7 +274,7 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
         
                     compute_Jtx_kernel<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
                         out,
-                        in,
+                        in[Is],
                         f->residuals.data().get(),
                         f->device_ids.data().get(),
                         hessian_ids[Is],
@@ -338,40 +338,16 @@ public:
         constexpr auto error_dim = F::error_dim;
         const auto num_factors = f->count();
 
-        // constexpr auto num_vertices_seq = std::make_index_sequence<num_vertices>{};
-        // auto launch_kernel_autodiff = [&](auto... Is) {
-        //     (([&] {
-        //     const auto num_threads = num_factors * vertex_sizes[Is];
-        //     int threads_per_block = 256;
-        //     int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
-        //     // compute_error_kernel_autodiff<T, Is, num_vertices, observation_dim, error_dim, F><<<num_blocks, threads_per_block>>>(
-        //     //     f->device_obs.data().get(),
-        //     //     f->residuals.data().get(),
-        //     //     f->device_ids.data().get(),
-        //     //     verts,
-        //     //     std::make_index_sequence<num_vertices>{});
-        //     }()), ...);
-        // };
-        // std::apply(launch_kernel, std::make_index_sequence<num_vertices>{});
-        // launch_kernel(std::make_index_sequence<num_vertices>());
         launch_kernel_autodiff(f, hessian_ids, verts, jacs, num_factors, std::make_index_sequence<num_vertices>{});
         cudaDeviceSynchronize();
-        // int threads_per_block = 256;
-        // int num_blocks = (num_factors + threads_per_block - 1) / threads_per_block;
 
-        // compute_error_kernel_autodiff<T, num_vertices, observation_dim, error_dim, F><<<num_blocks, threads_per_block>>>(f->device_obs.data().get(), 
-        // f->residuals.data().get(), 
-        // f->device_ids.data().get(),
-        // verts, std::make_index_sequence<num_vertices>{});
     }
 
     template<typename F, typename... VertexTypes>
     void compute_b(F* f) {
-        // Then for each vertex, we need to compute the error
         constexpr auto num_vertices = f->get_num_vertices();
         constexpr auto vertex_sizes = F::get_vertex_sizes();
 
-        // At this point all necessary data should be on the GPU    
         std::array<T*, num_vertices> verts;
         std::array<T*, num_vertices> jacs;
         std::array<const size_t*, num_vertices> hessian_ids;
@@ -391,7 +367,54 @@ public:
         launch_kernel_compute_b(f, b_ptr, hessian_ids, verts, jacs, num_factors, std::make_index_sequence<num_vertices>{});
         cudaDeviceSynchronize();
 
+    }
 
+    template<typename F, typename... VertexTypes>
+    void compute_Jx(F* f, T* out, T* in) {
+        constexpr auto num_vertices = f->get_num_vertices();
+        constexpr auto vertex_sizes = F::get_vertex_sizes();
+
+        std::array<T*, num_vertices> verts;
+        std::array<T*, num_vertices> jacs;
+        std::array<const size_t*, num_vertices> hessian_ids;
+        for (int i = 0; i < num_vertices; i++) {
+            verts[i] = f->vertex_descriptors[i]->x();
+            jacs[i] = f->jacobians[i].data.data().get();
+            hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
+        }
+
+        
+        constexpr auto observation_dim = F::observation_dim;
+        constexpr auto error_dim = F::error_dim;
+        const auto num_factors = f->count();
+
+        launch_kernel_compute_Jx(f, out, in, hessian_ids, verts, jacs, num_factors, std::make_index_sequence<num_vertices>{});
+        cudaDeviceSynchronize();
+
+    }
+
+
+    template<typename F, typename... VertexTypes>
+    void compute_Jtx(F* f, T* out, std::array<T*, F::N>& in) {
+        constexpr auto num_vertices = f->get_num_vertices();
+        constexpr auto vertex_sizes = F::get_vertex_sizes();
+
+        std::array<T*, num_vertices> verts;
+        std::array<T*, num_vertices> jacs;
+        std::array<const size_t*, num_vertices> hessian_ids;
+        for (int i = 0; i < num_vertices; i++) {
+            verts[i] = f->vertex_descriptors[i]->x();
+            jacs[i] = f->jacobians[i].data.data().get();
+            hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
+        }
+
+        
+        constexpr auto observation_dim = F::observation_dim;
+        constexpr auto error_dim = F::error_dim;
+        const auto num_factors = f->count();
+
+        launch_kernel_compute_Jtx(f, out, in, hessian_ids, verts, jacs, num_factors, std::make_index_sequence<num_vertices>{});
+        cudaDeviceSynchronize();
 
     }
 

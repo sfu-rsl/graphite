@@ -181,6 +181,8 @@ class Graph {
 
     bool compute_step() {
         // Solve for delta_x
+        thrust::fill(delta_x.begin(), delta_x.end(), 0);
+        
         solver.solve(
             visitor, 
             vertex_descriptors, 
