@@ -123,6 +123,10 @@ void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, co
 
 }
 
+// Compute J * x where the length of vector x matches the Hessian dimension
+// Each Jacobian block needs to be accessed just once
+// So we need E threads for each block (error dimension)
+// In total we should hae E*num_factors threads?
 template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
 __global__ 
 void compute_Jx_kernel(T*y, T* x, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
@@ -136,12 +140,9 @@ void compute_Jx_kernel(T*y, T* x, T* error, size_t* ids, const size_t* hessian_i
     constexpr auto vertex_sizes = F::get_vertex_sizes();
     constexpr auto jacobian_size = vertex_sizes[I]*E;
     
-    // Stored as E x d col major, where d is the vertex size
-    const size_t factor_id = idx / vertex_sizes[I];
+    // Each J block is stored as E x d col major, where d is the vertex size
+    const size_t factor_id = idx / E;
     const auto jacobian_offset = factor_id * jacobian_size;
-    const auto error_offset = factor_id*E;
-
-
 
     T value = 0;
     constexpr auto d = vertex_sizes[I];
@@ -164,7 +165,7 @@ void compute_Jx_kernel(T*y, T* x, T* error, size_t* ids, const size_t* hessian_i
 // For each block, we need d threads where d is the vertex size
 // We need to load the x vector location for the corresponding block row of J
 // So this assumes that the x vector has the same layout as the residual vector for this factor (rather than a global residual vector)
-// The output will be H x len(x) where H is hessian dimension
+// The aggregate output will be H x len(x) where H is hessian dimension
 template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
 __global__ 
 void compute_Jtx_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, const size_t num_threads, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
