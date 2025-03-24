@@ -256,6 +256,60 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
             }()), ...);
         }
 
+
+
+        template <typename F, std::size_t... Is>
+        void launch_kernel_compute_Jtx(F* f, T* out, T* in, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()>& verts, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
+                    (([&] {
+                    constexpr auto num_vertices = F::get_num_vertices();
+                    const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
+                    std::cout << "Launching compute Jtx kernel" << std::endl;
+                    std::cout << "Num threads: " << num_threads << std::endl;
+                    int threads_per_block = 256;
+                    int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+        
+                    std::cout << "Checking obs ptr: " << f->device_obs.data().get() << std::endl;
+                    std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
+                    std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
+        
+                    compute_Jtx_kernel<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
+                        out,
+                        in,
+                        f->residuals.data().get(),
+                        f->device_ids.data().get(),
+                        hessian_ids[Is],
+                        num_threads,
+                        jacs,
+                        std::make_index_sequence<num_vertices>{});
+                    }()), ...);
+                }
+
+        template <typename F, std::size_t... Is>
+        void launch_kernel_compute_Jx(F* f, T* out, T* in, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()>& verts, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
+                    (([&] {
+                    constexpr auto num_vertices = F::get_num_vertices();
+                    const auto num_threads = num_factors * F::error_dim;
+                    std::cout << "Launching compute Jx kernel" << std::endl;
+                    std::cout << "Num threads: " << num_threads << std::endl;
+                    int threads_per_block = 256;
+                    int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+        
+                    std::cout << "Checking obs ptr: " << f->device_obs.data().get() << std::endl;
+                    std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
+                    std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
+        
+                    compute_Jtx_kernel<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
+                        out,
+                        in,
+                        f->residuals.data().get(),
+                        f->device_ids.data().get(),
+                        hessian_ids[Is],
+                        num_threads,
+                        jacs,
+                        std::make_index_sequence<num_vertices>{});
+                    }()), ...);
+                }
+
 public:
     
     GraphVisitor(thrust::device_vector<T>& b): b(b) {
