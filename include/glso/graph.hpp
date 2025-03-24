@@ -2,6 +2,7 @@
 #include <glso/visitor.hpp>
 #include <glso/factor.hpp>
 #include <glso/vertex.hpp>
+#include <glso/solver.hpp>
 
 namespace glso {
 
@@ -48,6 +49,9 @@ class Graph {
     thrust::device_vector<T> b;
     thrust::device_vector<T> x_backup;
     // thrust::device_vector<T> error;
+
+    // Make this modular later
+    PCGSolver<T> solver;
 
     public:
 
@@ -176,7 +180,13 @@ class Graph {
     }
 
     bool compute_step() {
-
+        // Solve for delta_x
+        solver.solve(
+            visitor, 
+            vertex_descriptors, 
+            factor_descriptors,
+            delta_x.data().get(), 
+            delta_x.size(), 100);
         return true;
     }
 

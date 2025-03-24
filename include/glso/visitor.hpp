@@ -159,6 +159,12 @@ void compute_Jx_kernel(T*y, T* x, T* error, size_t* ids, const size_t* hessian_i
 
 }
 
+// Compute J^T * x where x is the size of the residual vector
+// Each Jacobian block needs to be accessed just once
+// For each block, we need d threads where d is the vertex size
+// We need to load the x vector location for the corresponding block row of J
+// So this assumes that the x vector has the same layout as the residual vector for this factor (rather than a global residual vector)
+// The output will be H x len(x) where H is hessian dimension
 template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
 __global__ 
 void compute_Jtx_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, const size_t num_threads, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {

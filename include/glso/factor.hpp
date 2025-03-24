@@ -28,6 +28,7 @@ public:
     // virtual size_t get_num_vertices() const = 0;
 
     virtual size_t count() const = 0;
+    virtual size_t get_residual_size() const = 0;
 
     virtual void to_device() = 0;
 
@@ -137,6 +138,10 @@ public:
         }
 
         return offset;
+    }
+
+    virtual size_t get_residual_size() const override {
+        return error_dim*count();
     }
 
 };
