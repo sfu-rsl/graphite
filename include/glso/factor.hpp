@@ -69,6 +69,14 @@ public:
         visitor.template compute_b<Derived<T>, VertexTypes...>(dynamic_cast<Derived<T>*>(this));
     }
 
+    void visit_Jv(GraphVisitor<T>& visitor, T* out, T* in) {
+        visitor.template compute_Jv<Derived<T>, VertexTypes...>(dynamic_cast<Derived<T>*>(this), out, in);
+    }
+
+    void visit_Jtv(GraphVisitor<T>& visitor, T* out, std::array<T*, N>& in) {
+        visitor.template compute_Jtv<Derived<T>, VertexTypes...>(dynamic_cast<Derived<T>*>(this), out, in);
+    }
+
     // std::vector<JacobianStorage<T>> jacobians;
     std::array<JacobianStorage<T>, N> jacobians;
     

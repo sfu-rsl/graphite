@@ -129,7 +129,7 @@ void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, co
 // In total we should hae E*num_factors threads?
 template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
 __global__ 
-void compute_Jx_kernel(T*y, T* x, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
+void compute_Jv_kernel(T*y, T* x, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
     
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -168,7 +168,7 @@ void compute_Jx_kernel(T*y, T* x, T* error, size_t* ids, const size_t* hessian_i
 // The aggregate output will be H x len(x) where H is hessian dimension
 template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
 __global__ 
-void compute_Jtx_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, const size_t num_threads, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
+void compute_Jtv_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, const size_t num_threads, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= num_threads) {
@@ -259,11 +259,11 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
 
 
         template <typename F, std::size_t... Is>
-        void launch_kernel_compute_Jtx(F* f, T* out, std::array<T*, F::N> & in, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()>& verts, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
+        void launch_kernel_compute_Jtv(F* f, T* out, std::array<T*, F::N> & in, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()>& verts, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
                     (([&] {
                     constexpr auto num_vertices = F::get_num_vertices();
                     const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
-                    std::cout << "Launching compute Jtx kernel" << std::endl;
+                    std::cout << "Launching compute Jtv kernel" << std::endl;
                     std::cout << "Num threads: " << num_threads << std::endl;
                     int threads_per_block = 256;
                     int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
@@ -272,7 +272,7 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
                     std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
                     std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
         
-                    compute_Jtx_kernel<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
+                    compute_Jtv_kernel<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
                         out,
                         in[Is],
                         f->residuals.data().get(),
@@ -285,11 +285,11 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
                 }
 
         template <typename F, std::size_t... Is>
-        void launch_kernel_compute_Jx(F* f, T* out, T* in, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()>& verts, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
+        void launch_kernel_compute_Jv(F* f, T* out, T* in, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()>& verts, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
                     (([&] {
                     constexpr auto num_vertices = F::get_num_vertices();
                     const auto num_threads = num_factors * F::error_dim;
-                    std::cout << "Launching compute Jx kernel" << std::endl;
+                    std::cout << "Launching compute Jv kernel" << std::endl;
                     std::cout << "Num threads: " << num_threads << std::endl;
                     int threads_per_block = 256;
                     int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
@@ -298,7 +298,7 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
                     std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
                     std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
         
-                    compute_Jtx_kernel<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
+                    compute_Jv_kernel<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
                         out,
                         in,
                         f->residuals.data().get(),
@@ -370,7 +370,7 @@ public:
     }
 
     template<typename F, typename... VertexTypes>
-    void compute_Jx(F* f, T* out, T* in) {
+    void compute_Jv(F* f, T* out, T* in) {
         constexpr auto num_vertices = f->get_num_vertices();
         constexpr auto vertex_sizes = F::get_vertex_sizes();
 
@@ -388,14 +388,14 @@ public:
         constexpr auto error_dim = F::error_dim;
         const auto num_factors = f->count();
 
-        launch_kernel_compute_Jx(f, out, in, hessian_ids, verts, jacs, num_factors, std::make_index_sequence<num_vertices>{});
+        launch_kernel_compute_Jv(f, out, in, hessian_ids, verts, jacs, num_factors, std::make_index_sequence<num_vertices>{});
         cudaDeviceSynchronize();
 
     }
 
 
     template<typename F, typename... VertexTypes>
-    void compute_Jtx(F* f, T* out, std::array<T*, F::N>& in) {
+    void compute_Jtv(F* f, T* out, std::array<T*, F::N>& in) {
         constexpr auto num_vertices = f->get_num_vertices();
         constexpr auto vertex_sizes = F::get_vertex_sizes();
 
@@ -413,7 +413,7 @@ public:
         constexpr auto error_dim = F::error_dim;
         const auto num_factors = f->count();
 
-        launch_kernel_compute_Jtx(f, out, in, hessian_ids, verts, jacs, num_factors, std::make_index_sequence<num_vertices>{});
+        launch_kernel_compute_Jtv(f, out, in, hessian_ids, verts, jacs, num_factors, std::make_index_sequence<num_vertices>{});
         cudaDeviceSynchronize();
 
     }
