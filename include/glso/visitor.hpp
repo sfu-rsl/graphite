@@ -151,12 +151,14 @@ void compute_Jv_kernel(T*y, T* x, T* error, size_t* ids, const size_t* hessian_i
     const auto hessian_offset = hessian_ids[local_id]; // each vertex has a hessian_ids array
     const auto row_offset = (idx % E);
     // Adding i*E skips to the next column
+    size_t residual_offset = 0; // need to pass this in
+    // it's the offset into the r vector
     #pragma unroll
     for (int i = 0; i < d; i++) {
         value += jacs[I][jacobian_offset + row_offset + i*E] * x[hessian_offset + i];
     }
     
-    atomicAdd(&y[idx], value);
+    atomicAdd(&y[residual_offset + idx], value);
 
 }
 
@@ -259,7 +261,7 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
 
 
         template <typename F, std::size_t... Is>
-        void launch_kernel_compute_Jtv(F* f, T* out, std::array<T*, F::N> & in, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()>& verts, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
+        void launch_kernel_compute_Jtv(F* f, T* out, T* in, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()>& verts, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
                     (([&] {
                     constexpr auto num_vertices = F::get_num_vertices();
                     const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
@@ -274,8 +276,7 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
         
                     compute_Jtv_kernel<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
                         out,
-                        in[Is],
-                        f->residuals.data().get(),
+                        in,
                         f->device_ids.data().get(),
                         hessian_ids[Is],
                         num_threads,
@@ -320,7 +321,7 @@ public:
         // Assume autodiff
 
         // Then for each vertex, we need to compute the error
-        constexpr auto num_vertices = f->get_num_vertices();
+        constexpr auto num_vertices = F::get_num_vertices();
         constexpr auto vertex_sizes = F::get_vertex_sizes();
 
         // At this point all necessary data should be on the GPU    
@@ -331,6 +332,9 @@ public:
             verts[i] = f->vertex_descriptors[i]->x();
             jacs[i] = f->jacobians[i].data.data().get();
             hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
+
+            // Important: Must clear Jacobian storage
+            thrust::fill(f->jacobians[i].data.begin(), f->jacobians[i].data.end(), 0);
         }
 
         
@@ -345,7 +349,7 @@ public:
 
     template<typename F, typename... VertexTypes>
     void compute_b(F* f) {
-        constexpr auto num_vertices = f->get_num_vertices();
+        constexpr auto num_vertices = F::get_num_vertices();
         constexpr auto vertex_sizes = F::get_vertex_sizes();
 
         std::array<T*, num_vertices> verts;
@@ -371,7 +375,7 @@ public:
 
     template<typename F, typename... VertexTypes>
     void compute_Jv(F* f, T* out, T* in) {
-        constexpr auto num_vertices = f->get_num_vertices();
+        constexpr auto num_vertices = F::get_num_vertices();
         constexpr auto vertex_sizes = F::get_vertex_sizes();
 
         std::array<T*, num_vertices> verts;
@@ -395,7 +399,7 @@ public:
 
 
     template<typename F, typename... VertexTypes>
-    void compute_Jtv(F* f, T* out, std::array<T*, F::N>& in) {
+    void compute_Jtv(F* f, T* out, T* in) {
         constexpr auto num_vertices = f->get_num_vertices();
         constexpr auto vertex_sizes = F::get_vertex_sizes();
 

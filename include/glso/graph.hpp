@@ -170,6 +170,7 @@ class Graph {
             factor->visit_error(visitor);
             if (!factor->use_autodiff()) {
                 // manually compute Jacobians
+                throw std::runtime_error("Manual Jacobian computation not implemented");
             }
         }
 
@@ -187,6 +188,7 @@ class Graph {
             visitor, 
             vertex_descriptors, 
             factor_descriptors,
+            b.data().get(),
             delta_x.data().get(), 
             delta_x.size(), 100);
         return true;

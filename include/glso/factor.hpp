@@ -23,6 +23,9 @@ public:
     virtual bool use_autodiff() = 0;
     virtual void visit_error(GraphVisitor<T>& visitor) = 0;
     virtual void visit_b(GraphVisitor<T>& visitor) = 0;
+    virtual void visit_Jv(GraphVisitor<T>& visitor, T* out, T* in) = 0;
+    virtual void visit_Jtv(GraphVisitor<T>& visitor, T* out, T* in) = 0;
+ 
     virtual JacobianStorage<T>* get_jacobians() = 0;
     virtual void initialize_jacobian_storage() = 0;
     // virtual size_t get_num_vertices() const = 0;
@@ -69,11 +72,11 @@ public:
         visitor.template compute_b<Derived<T>, VertexTypes...>(dynamic_cast<Derived<T>*>(this));
     }
 
-    void visit_Jv(GraphVisitor<T>& visitor, T* out, T* in) {
+    void visit_Jv(GraphVisitor<T>& visitor, T* out, T* in) override {
         visitor.template compute_Jv<Derived<T>, VertexTypes...>(dynamic_cast<Derived<T>*>(this), out, in);
     }
 
-    void visit_Jtv(GraphVisitor<T>& visitor, T* out, std::array<T*, N>& in) {
+    void visit_Jtv(GraphVisitor<T>& visitor, T* out, T* in) override {
         visitor.template compute_Jtv<Derived<T>, VertexTypes...>(dynamic_cast<Derived<T>*>(this), out, in);
     }
 
