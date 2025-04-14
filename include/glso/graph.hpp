@@ -190,7 +190,7 @@ class Graph {
             factor_descriptors,
             b.data().get(),
             delta_x.data().get(), 
-            delta_x.size(), 100);
+            delta_x.size(), 100, 1e-6);
         return true;
     }
 
