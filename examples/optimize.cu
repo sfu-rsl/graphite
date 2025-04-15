@@ -11,7 +11,7 @@ template<typename T>
 class Radius: public VertexDescriptor<T, 1, Radius> {
     public:
 
-    static void update(T* x, const T* delta) {
+    __device__ static void update(T* x, const T* delta) {
         x[0] += delta[0]; 
     }
 

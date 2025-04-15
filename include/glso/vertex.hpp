@@ -42,7 +42,7 @@ public:
     virtual ~VertexDescriptor() {};
     
     void visit_update(GraphVisitor<T>& visitor) override {
-        visitor.template apply_step<Derived<T>>();
+        visitor.template apply_step<Derived<T>>(dynamic_cast<Derived<T>*>(this));
     }
 
     virtual void to_device() override {

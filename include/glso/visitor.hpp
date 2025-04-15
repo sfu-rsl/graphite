@@ -27,6 +27,21 @@ namespace glso {
         }
     }
 
+template<typename T, typename V>
+__global__ void apply_update_kernel(T* x, const T* delta_x, const size_t * hessian_ids, const size_t num_threads) {
+    int vertex_id = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (vertex_id >= num_threads) {
+        return;
+    }
+
+    x += vertex_id * V::dim;
+    const T* delta = delta_x + hessian_ids[vertex_id];
+
+    V::update(x, delta);
+
+}
+
 template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
 __global__
 void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, std::array<T*, sizeof...(Is)> args, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
@@ -205,6 +220,7 @@ template<typename T>
 class GraphVisitor {
 private:
 
+thrust::device_vector<T>& delta_x;
 thrust::device_vector<T>& b;
 
 template <typename F, std::size_t... Is>
@@ -212,14 +228,14 @@ void launch_kernel_autodiff(F* f, std::array<const size_t*, F::get_num_vertices(
             (([&] {
             constexpr auto num_vertices = F::get_num_vertices();
             const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
-            std::cout << "Launching autodiff kernel" << std::endl;
-            std::cout << "Num threads: " << num_threads << std::endl;
+            // std::cout << "Launching autodiff kernel" << std::endl;
+            // std::cout << "Num threads: " << num_threads << std::endl;
             int threads_per_block = 256;
             int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
 
-            std::cout << "Checking obs ptr: " << f->device_obs.data().get() << std::endl;
-            std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
-            std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
+            // std::cout << "Checking obs ptr: " << f->device_obs.data().get() << std::endl;
+            // std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
+            // std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
 
             compute_error_kernel_autodiff<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
                 f->device_obs.data().get(),
@@ -238,14 +254,14 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
             (([&] {
             constexpr auto num_vertices = F::get_num_vertices();
             const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
-            std::cout << "Launching compute b kernel" << std::endl;
-            std::cout << "Num threads: " << num_threads << std::endl;
+            // std::cout << "Launching compute b kernel" << std::endl;
+            // std::cout << "Num threads: " << num_threads << std::endl;
             int threads_per_block = 256;
             int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
 
-            std::cout << "Checking obs ptr: " << f->device_obs.data().get() << std::endl;
-            std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
-            std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
+            // std::cout << "Checking obs ptr: " << f->device_obs.data().get() << std::endl;
+            // std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
+            // std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
 
             compute_b_kernel<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
                 b,
@@ -265,14 +281,14 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
                     (([&] {
                     constexpr auto num_vertices = F::get_num_vertices();
                     const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
-                    std::cout << "Launching compute Jtv kernel" << std::endl;
-                    std::cout << "Num threads: " << num_threads << std::endl;
+                    // std::cout << "Launching compute Jtv kernel" << std::endl;
+                    // std::cout << "Num threads: " << num_threads << std::endl;
                     int threads_per_block = 256;
                     int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
         
-                    std::cout << "Checking obs ptr: " << f->device_obs.data().get() << std::endl;
-                    std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
-                    std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
+                    // std::cout << "Checking obs ptr: " << f->device_obs.data().get() << std::endl;
+                    // std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
+                    // std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
         
                     compute_Jtv_kernel<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
                         out,
@@ -290,14 +306,14 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
                     (([&] {
                     constexpr auto num_vertices = F::get_num_vertices();
                     const auto num_threads = num_factors * F::error_dim;
-                    std::cout << "Launching compute Jv kernel" << std::endl;
-                    std::cout << "Num threads: " << num_threads << std::endl;
+                    // std::cout << "Launching compute Jv kernel" << std::endl;
+                    // std::cout << "Num threads: " << num_threads << std::endl;
                     int threads_per_block = 256;
                     int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
         
-                    std::cout << "Checking obs ptr: " << f->device_obs.data().get() << std::endl;
-                    std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
-                    std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
+                    // std::cout << "Checking obs ptr: " << f->device_obs.data().get() << std::endl;
+                    // std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
+                    // std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
         
                     compute_Jv_kernel<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
                         out,
@@ -313,7 +329,7 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
 
 public:
     
-    GraphVisitor(thrust::device_vector<T>& b): b(b) {
+    GraphVisitor(thrust::device_vector<T>& delta_x, thrust::device_vector<T>& b): delta_x(delta_x), b(b) {
     }
 
     template<typename F, typename... VertexTypes>
@@ -423,8 +439,22 @@ public:
     }
 
     template<typename V>
-    void apply_step() {
+    void apply_step(V* v) {
         // V::update(nullptr, nullptr);
+        const size_t num_parameters =  v->count()*v->dimension();
+        const size_t num_threads = v->count();
+        const auto threads_per_block = 256;
+        const auto num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+
+        apply_update_kernel<T, V><<<num_blocks, threads_per_block>>>(
+            v->x(),
+            delta_x.data().get(),
+            v->get_hessian_ids(),
+            num_threads
+        );
+        // cudaDeviceSynchronize();
+
+        // return num_parameters;
     }
 };
 }

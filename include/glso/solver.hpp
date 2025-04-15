@@ -73,7 +73,7 @@ namespace glso {
             // thrust::copy(r.begin(), r.end(), p.begin());
             p = r;
 
-            for (size_t i = 0; i < max_iter; i++) {
+            for (size_t k = 0; k < max_iter; k++) {
 
 
                 // 1. First compute dot(r, r)
@@ -109,7 +109,7 @@ namespace glso {
                 // 7. Check termination criteria
                 T rr_new = thrust::inner_product(r.begin(), r.end(), r.begin(), 0.0);
                 if (sqrt(rr_new) < tol) {
-                    std::cout << "Converged at iteration " << i << std::endl;
+                    std::cout << "Converged at iteration " << k << std::endl;
                     break;
                 }
                 // 8. Compute beta

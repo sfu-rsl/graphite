@@ -55,7 +55,7 @@ class Graph {
 
     public:
 
-    Graph(): visitor(b) {
+    Graph(): visitor(delta_x, b) {
 
     }
 
@@ -198,6 +198,7 @@ class Graph {
         for (auto & desc: vertex_descriptors) {
             desc->visit_update(visitor);
         }
+        cudaDeviceSynchronize();
     }
 
     void backup_parameters() {
