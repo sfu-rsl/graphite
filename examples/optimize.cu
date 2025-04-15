@@ -49,9 +49,27 @@ int main(void) {
     graph.add_vertex_descriptor(point_desc);
 
     const size_t num_vertices = 5;
+    double center[2] = {0.0, 0.0};
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<double> dist(0.0, 2 * M_PI);
+
+    const double radius = 4.0;
+    const double sigma = 0.3;
+
+    std::normal_distribution<double> n1(0.0, sigma);
+    std::normal_distribution<double> n2(0.0, sigma);
 
     for (size_t vertex_id = 0; vertex_id < num_vertices; ++vertex_id) {
-        double point[2] = {4.1, 3.8};
+        double angle = dist(gen);
+        double point[2] = {center[0] + radius * cos(angle), center[1] + radius * sin(angle)};
+        
+
+        point[0] += n1(gen);
+        point[1] += n2(gen);
+
+        std::cout << "Adding point " << vertex_id << "=(" << point[0] << ", " << point[1] << ") with radius=" << sqrt(point[0]*point[0] + point[1]*point[1]) << std::endl;
         point_desc->add_vertex(vertex_id, point);
     }
 
@@ -59,7 +77,6 @@ int main(void) {
     auto factor_desc = graph.add_factor_descriptor<CircleFactor<double>>(point_desc);
 
     for (size_t vertex_id = 0; vertex_id < num_vertices; ++vertex_id) {
-        const double radius = 4.0;
         factor_desc->add_factor({vertex_id}, {radius}, nullptr);
     }
 
@@ -71,6 +88,12 @@ int main(void) {
 
     opt.optimize(&graph, iterations);
     std::cout << "Done optimizing!" << std::endl;
+
+    // Read back optimized values
+    for (size_t vertex_id = 0; vertex_id < num_vertices; ++vertex_id) {
+        const auto point = point_desc->get_vertex(vertex_id);
+        std::cout << "Optimized point " << vertex_id << "=(" << point[0] << ", " << point[1] << ") with radius=" << sqrt(point[0]*point[0] + point[1]*point[1]) << std::endl;
+    }
 
 
     return 0;

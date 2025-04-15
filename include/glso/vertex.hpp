@@ -72,6 +72,14 @@ public:
         local_to_hessian_offsets.push_back(0); // Initialize to 0
     }
 
+    std::array<T, D> get_vertex(const size_t id) {
+        std::array<T, D> vertex_data;
+        const auto local_id = global_to_local_map.at(id);
+        const T* data_ptr = x_host.data() + local_id * D;
+        std::copy(data_ptr, data_ptr + D, vertex_data.begin());
+        return vertex_data;
+    }
+
     // void reserve(size_t num_vertices) {
     //     // TODO: Find a better way to get the dimension
     //     const auto dim = dynamic_cast<Derived<T>*>(this)->dimension();

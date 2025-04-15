@@ -265,6 +265,12 @@ class Graph {
 
     }
 
+    void to_host() {
+        for (auto & desc: vertex_descriptors) {
+            desc->to_host();
+        }
+    }
+
 };
 
 }
