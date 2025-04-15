@@ -51,11 +51,16 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
         return;
     }
 
+
     constexpr auto vertex_sizes = F::get_vertex_sizes();
+    const auto factor_id = idx / vertex_sizes[I];
+    const auto vertex_id = ids[factor_id*N + I];
+
+    // printf("CEAD: Thread %d, Vertex %d, Factor %d\n", idx, vertex_id, factor_id);
 
     #pragma unroll
     for (int i = 0; i < sizeof...(Is); i++) {
-        size_t local_id = ids[idx*N+i];
+        size_t local_id = ids[factor_id*N+i];
         args[i] += local_id*vertex_sizes[i];
     }
     
@@ -64,12 +69,12 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
 
     #pragma unroll
     for (int i = 0; i < M; ++i) {
-        local_obs[i] = obs[idx * M + i];
+        local_obs[i] = obs[factor_id * M + i];
     }
 
     #pragma unroll
     for (int i = 0; i < E; ++i) {
-        local_error[i] = error[idx * E + i];
+        local_error[i] = error[factor_id * E + i];
     }
 
 
@@ -89,7 +94,6 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
     constexpr auto j_size = vertex_sizes[I]*E;
     // constexpr auto col_offset = I*E;
     const auto col_offset = (idx % vertex_sizes[I])*E;
-    const auto factor_id = idx / vertex_sizes[I];
     // Store column-major Jacobian blocks.
     // Write one scalar column (length E) of the Jacobian matrix.
     // TODO: make sure this only writes to each location once
@@ -101,6 +105,7 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
         #pragma unroll
         for(size_t i = 0; i < E; ++i) {
             error[factor_id * E + i] = local_error[i].real;
+            // printf("Error[%d] = %f\n", factor_id * E + i, error[factor_id * E + i]);
         }
     }
 
@@ -108,6 +113,7 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
     #pragma unroll
     for(size_t i = 0; i < E; ++i) {
         jacs[I][j_size*factor_id + col_offset + i] = local_error[i].dual;
+        // printf("Jacobian[%d] = %f\n", j_size*factor_id + col_offset + i, jacs[I][j_size*factor_id + col_offset + i]);
     }
 }
 
@@ -142,9 +148,13 @@ void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, co
         value -= jacs[I][jacobian_offset + col_offset + i] * error[error_offset + i];
     }
 
-    size_t local_id = ids[idx*N+I]; // N is the number of vertices involved in the factor
+    size_t local_id = ids[factor_id*N+I]; // N is the number of vertices involved in the factor
     const auto hessian_offset = hessian_ids[local_id]; // each vertex has a hessian_ids array
     
+    // printf("Hessian offset: %u\n", hessian_offset);
+    // printf("Adding b[%d] += %f\n", hessian_offset + (idx % vertex_sizes[I]), value);
+    // printf("Thread %d, Hessian offset: %u\n", idx, hessian_offset);
+
     atomicAdd(&b[hessian_offset + (idx % vertex_sizes[I])], value);
 
 }
@@ -173,7 +183,7 @@ void compute_Jv_kernel(T*y, T* x, T* error, size_t* ids, const size_t* hessian_i
     T value = 0;
     constexpr auto d = vertex_sizes[I];
 
-    size_t local_id = ids[idx*N+I]; // N is the number of vertices involved in the factor
+    size_t local_id = ids[factor_id*N+I]; // N is the number of vertices involved in the factor
     const auto hessian_offset = hessian_ids[local_id]; // each vertex has a hessian_ids array
     const auto row_offset = (idx % E);
     // Adding i*E skips to the next column
@@ -220,7 +230,7 @@ void compute_Jtv_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, cons
         value += jacs[I][jacobian_offset + col_offset + i] * x[error_offset + i];
     }
 
-    size_t local_id = ids[idx*N+I]; // N is the number of vertices involved in the factor
+    size_t local_id = ids[factor_id*N+I]; // N is the number of vertices involved in the factor
     const auto hessian_offset = hessian_ids[local_id]; // each vertex has a hessian_ids array
     
     atomicAdd(&y[hessian_offset + (idx % vertex_sizes[I])], value);

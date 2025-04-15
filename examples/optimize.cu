@@ -4,28 +4,31 @@
 #include <numeric>
 #include <array>
 #include <glso/core.hpp>
+#include <random>
 
 namespace glso {
 
 template<typename T>
-class Radius: public VertexDescriptor<T, 1, Radius> {
+class Point: public VertexDescriptor<T, 2, Point> {
     public:
 
     __device__ static void update(T* x, const T* delta) {
         x[0] += delta[0]; 
+        x[1] += delta[1];
     }
 
 };
 
 template <typename T>
-class CircleFactor : public AutoDiffFactorDescriptor<T, 1, 2, CircleFactor, Radius<T>> {
+class CircleFactor : public AutoDiffFactorDescriptor<T, 1, 1, CircleFactor, Point<T>> {
 public:
 
     template <typename D>
-    __device__ static void error(const D* vertex1, const D* obs, D* error) {
-        D r = vertex1[0];
-        D x = obs[0];
-        D y = obs[1];
+    __device__ static void error(const D* point, const D* obs, D* error) {
+        D x = point[0];
+        D y = point[1];
+        D r = obs[0];
+
         error[0] = x*x + y*y - r*r;
     }
 };
@@ -42,18 +45,28 @@ int main(void) {
 
 
     // Create vertices
-    Radius<double>* radius = new Radius<double>();
-    const double r = 4.0;
-    const size_t vertex_id = 0;
-    radius->add_vertex(vertex_id, &r);
-    graph.add_vertex_descriptor(radius);
+    Point<double>* point_desc = new Point<double>();
+    graph.add_vertex_descriptor(point_desc);
+
+    const size_t num_vertices = 5;
+
+    for (size_t vertex_id = 0; vertex_id < num_vertices; ++vertex_id) {
+        double point[2] = {4.1, 3.8};
+        point_desc->add_vertex(vertex_id, point);
+    }
 
     // Create edges
-    auto f = graph.add_factor_descriptor<CircleFactor<double>>(radius);
-    f->add_factor({vertex_id}, {4.1, 3.8}, nullptr);
+    auto factor_desc = graph.add_factor_descriptor<CircleFactor<double>>(point_desc);
+
+    for (size_t vertex_id = 0; vertex_id < num_vertices; ++vertex_id) {
+        const double radius = 4.0;
+        factor_desc->add_factor({vertex_id}, {radius}, nullptr);
+    }
+
     // Optimize
     constexpr size_t iterations = 5;
     Optimizer opt;
+    std::cout << "Graph built with " << num_vertices << " vertices and " << factor_desc->count() << " factors." << std::endl;
     std::cout << "Optimizing!" << std::endl;
 
     opt.optimize(&graph, iterations);

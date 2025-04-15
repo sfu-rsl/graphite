@@ -36,17 +36,17 @@ public:
             graph->compute_error();
             T new_chi2 = graph->chi2();
 
-            std::cout << "Iteration " << i << ", chi2: " << chi2 << ", new chi2: " << new_chi2 << std::endl;
+            std::cout << "Iteration " << i << ", chi2: " << chi2 << ", candidate chi2: " << new_chi2 << std::endl;
             bool step_is_good = new_chi2 <= chi2;
 
             if (step_is_good) {
                 // update hyperparameters
-                // std::cout << "Good step, chi2: " << new_chi2 << std::endl;
+                std::cout << "Good step, new chi2: " << new_chi2 << std::endl;
             }
             else {
                 graph->revert_parameters();
                 // update hyperparameters
-                // std::cout << "Bad step, aborting" << std::endl;
+                std::cout << "Bad step, aborting" << std::endl;
                 run = false;
             }
         }

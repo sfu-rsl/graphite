@@ -42,8 +42,8 @@ class Graph {
     std::vector<BaseFactorDescriptor<T>*> factor_descriptors;
 
     // std::unordered_map<std::pair<size_t, size_t>, std::shared_ptr<JacobianStorage<T>>> jacobians;
-    std::unordered_map<size_t, std::pair<size_t, size_t>> hessian_to_local_map;
-    std::unordered_map<size_t, size_t> hessian_offset;
+    // std::unordered_map<size_t, std::pair<size_t, size_t>> hessian_to_local_map;
+    // std::unordered_map<size_t, size_t> hessian_offset;
     // Solver buffers
     thrust::device_vector<T> delta_x;
     thrust::device_vector<T> b;
@@ -95,18 +95,18 @@ class Graph {
             [](const auto& a, const auto& b) { return a.first < b.first; });
         
         // Assign Hessian columns to local indices
-        hessian_to_local_map.clear();
-        hessian_offset.clear();
+        // hessian_to_local_map.clear();
+        // hessian_offset.clear();
         size_t hessian_column = 0;
-        size_t offset = 0;
+        size_t block_column = 0;
+        // size_t offset = 0;
         for (const auto& entry : global_to_local_combined) {
-            hessian_to_local_map.insert({hessian_column, entry.second});
-            hessian_offset.insert({hessian_column, offset});
-            offset += vertex_descriptors[entry.second.first]->dimension();
+            // hessian_to_local_map.insert({hessian_column, entry.second});
+            // hessian_offset.insert({hessian_column, offset});
             vertex_descriptors[entry.second.first]->set_hessian_column(entry.first, hessian_column);
-            hessian_column++;
+            hessian_column += vertex_descriptors[entry.second.first]->dimension();
+            block_column++;
         }
-
         // // Assign global offset into error vector for each factor
         // size_t error_offset = 0;
         // for (auto & desc: factor_descriptors) {
@@ -208,6 +208,13 @@ class Graph {
         // std::cout << "Delta x before solve: " << std::endl;
         // for (size_t i = 0; i < delta_x.size(); i++) {
         //     std::cout << delta_x[i] << " ";
+        // }
+        // std::cout << std::endl;
+
+        // Print b
+        // std::cout << "b before solve: " << std::endl;
+        // for (size_t i = 0; i < b.size(); i++) {
+        //     std::cout << b[i] << " ";
         // }
         // std::cout << std::endl;
         
