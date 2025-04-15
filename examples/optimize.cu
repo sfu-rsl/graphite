@@ -43,7 +43,7 @@ int main(void) {
 
     // Create vertices
     Radius<double>* radius = new Radius<double>();
-    const double r = 0.0;
+    const double r = 4.0;
     const size_t vertex_id = 0;
     radius->add_vertex(vertex_id, &r);
     graph.add_vertex_descriptor(radius);
@@ -52,7 +52,7 @@ int main(void) {
     auto f = graph.add_factor_descriptor<CircleFactor<double>>(radius);
     f->add_factor({vertex_id}, {4.1, 3.8}, nullptr);
     // Optimize
-    constexpr size_t iterations = 1;
+    constexpr size_t iterations = 5;
     Optimizer opt;
     std::cout << "Optimizing!" << std::endl;
 

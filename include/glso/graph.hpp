@@ -159,6 +159,21 @@ class Graph {
         return true;
     }
 
+    void compute_error() {
+        for (auto & factor: factor_descriptors) {
+            factor->visit_error(visitor); // TODO: Make non-autodiff version
+        }
+        cudaDeviceSynchronize();
+    }
+
+    T chi2() {
+        T chi2 = 0;
+        for (auto & factor: factor_descriptors) {
+            chi2 += factor->chi2();
+        }
+        return chi2;
+    }
+
     void linearize() {
         // clear delta_x and b
         thrust::fill(delta_x.begin(), delta_x.end(), 0);
@@ -174,15 +189,27 @@ class Graph {
             }
         }
 
+        cudaDeviceSynchronize();
+
         // TODO: Calculate b=J^T * r
         for (auto & fd: factor_descriptors) {
             fd->visit_b(visitor);
         }
+
+        cudaDeviceSynchronize();
+
     }
 
     bool compute_step() {
         // Solve for delta_x
         thrust::fill(delta_x.begin(), delta_x.end(), 0);
+
+        // Print delta_x
+        // std::cout << "Delta x before solve: " << std::endl;
+        // for (size_t i = 0; i < delta_x.size(); i++) {
+        //     std::cout << delta_x[i] << " ";
+        // }
+        // std::cout << std::endl;
         
         solver.solve(
             visitor, 
@@ -191,6 +218,14 @@ class Graph {
             b.data().get(),
             delta_x.data().get(), 
             delta_x.size(), 100, 1e-6);
+
+        // Print delta_x after solve
+        // std::cout << "Delta x after solve: " << std::endl;
+        // for (size_t i = 0; i < delta_x.size(); i++) {
+        //     std::cout << delta_x[i] << " ";
+        // }
+        // std::cout << std::endl;
+
         return true;
     }
 

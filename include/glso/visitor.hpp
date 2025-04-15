@@ -94,14 +94,25 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
     // Write one scalar column (length E) of the Jacobian matrix.
     // TODO: make sure this only writes to each location once
     // The Jacobian is stored as E x vertex_size in col major
+
+    // Only run once per factor - this check won't work for multiple kernel launches
+    // TODO: make sure this only writes to each location once for the error
+    if (idx % vertex_sizes[I] == 0) {
+        #pragma unroll
+        for(size_t i = 0; i < E; ++i) {
+            error[factor_id * E + i] = local_error[i].real;
+        }
+    }
+
+    // This should write one Jacobian column per dimension per vertex for each factor
     #pragma unroll
     for(size_t i = 0; i < E; ++i) {
-        error[factor_id * E + i] = local_error[i].real;
         jacs[I][j_size*factor_id + col_offset + i] = local_error[i].dual;
     }
 }
 
-// The output will be part of b with length of the vertex (where b = J^T * r)
+// The output will be part of b with length of the vertex (where b = -J^T * r)
+// Note the negative sign - different papers use different conventions
 // TODO: Replace with generic J^T x r kernel?
 // Note: The error vector is local to the factor
 template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
@@ -128,7 +139,7 @@ void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, co
 
     #pragma unroll
     for (int i = 0; i < E; i++) {
-        value += jacs[I][jacobian_offset + col_offset + i] * error[error_offset + i];
+        value -= jacs[I][jacobian_offset + col_offset + i] * error[error_offset + i];
     }
 
     size_t local_id = ids[idx*N+I]; // N is the number of vertices involved in the factor

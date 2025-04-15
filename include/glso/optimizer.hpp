@@ -17,9 +17,13 @@ public:
             return false;
         }
 
-        for (size_t i = 0; i < num_iterations; i++) {
+        bool run  = true;
+
+        for (size_t i = 0; i < num_iterations && run; i++) {
 
             graph->linearize();
+
+            T chi2 = graph->chi2();
 
             if(!graph->compute_step()) {
                 return false;
@@ -29,17 +33,24 @@ public:
             graph->apply_step();
 
             // Try step
-            bool step_is_good = true; // make this a real check later
+            graph->compute_error();
+            T new_chi2 = graph->chi2();
+
+            std::cout << "Iteration " << i << ", chi2: " << chi2 << ", new chi2: " << new_chi2 << std::endl;
+            bool step_is_good = new_chi2 <= chi2;
 
             if (step_is_good) {
                 // update hyperparameters
+                // std::cout << "Good step, chi2: " << new_chi2 << std::endl;
             }
             else {
                 graph->revert_parameters();
                 // update hyperparameters
+                // std::cout << "Bad step, aborting" << std::endl;
+                run = false;
             }
         }
-        return true;
+        return run;
     }
 
 };

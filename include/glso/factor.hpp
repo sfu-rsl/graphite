@@ -1,6 +1,7 @@
 #pragma once
 #include <glso/common.hpp>
 #include <glso/vertex.hpp>
+#include <thrust/inner_product.h>
 
 namespace glso {
 template<typename T>
@@ -36,6 +37,8 @@ public:
     virtual void to_device() = 0;
 
     virtual size_t set_error_offset(size_t offset) = 0;
+
+    virtual T chi2() = 0;
 
 };
 
@@ -153,6 +156,12 @@ public:
 
     virtual size_t get_residual_size() const override {
         return error_dim*count();
+    }
+
+    // TODO: Make this consider kernels and active edges
+    virtual T chi2() override {
+        T chi2 = thrust::inner_product(residuals.begin(), residuals.end(), residuals.begin(), 0.0);
+        return chi2;
     }
 
 };
