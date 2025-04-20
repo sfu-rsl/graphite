@@ -182,8 +182,11 @@ class Graph {
 
         for (auto & factor: factor_descriptors) {
             // compute error
-            factor->visit_error(visitor);
-            if (!factor->use_autodiff()) {
+            if (factor->use_autodiff()) {
+                factor->visit_error_autodiff(visitor);
+            }
+            else {
+                factor->visit_error(visitor);
                 // manually compute Jacobians
                 throw std::runtime_error("Manual Jacobian computation not implemented");
             }

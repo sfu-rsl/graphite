@@ -14,7 +14,6 @@ namespace glso {
     __device__ void device_copy(const T* src, T* dst) {
         #pragma unroll
         for (size_t i = 0; i < D; i++) {
-            // *dst++ = *src++;
             dst[i] = src[i];
         }
     }
@@ -115,6 +114,56 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
         jacs[I][j_size*factor_id + col_offset + i] = local_error[i].dual;
         // printf("Jacobian[%d] = %f\n", j_size*factor_id + col_offset + i, jacs[I][j_size*factor_id + col_offset + i]);
     }
+}
+// TODO: Make this more efficient and see if code can be shared with the autodiff kernel
+template<typename T, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
+__global__
+void compute_error_kernel(const T* obs, T* error, size_t* ids, const size_t num_threads, std::array<T*, sizeof...(Is)> args, std::index_sequence<Is...>) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx >= num_threads) {
+        return;
+    }
+
+    constexpr auto vertex_sizes = F::get_vertex_sizes();
+    const auto factor_id = idx;
+
+    #pragma unroll
+    for (int i = 0; i < sizeof...(Is); i++) {
+        size_t local_id = ids[factor_id*N+i];
+        args[i] += local_id*vertex_sizes[i];
+    }
+    
+    T local_obs[M];
+    T local_error[E];
+
+    #pragma unroll
+    for (int i = 0; i < M; ++i) {
+        local_obs[i] = obs[factor_id * M + i];
+    }
+
+    #pragma unroll
+    for (int i = 0; i < E; ++i) {
+        local_error[i] = error[factor_id * E + i];
+    }
+
+
+    auto v = cuda::std::make_tuple(std::array<T, vertex_sizes[Is]>{}...);
+    
+    auto copy_vertices = [&v, &vertex_sizes](auto&&... ptrs) {
+        ((device_copy<T, vertex_sizes[Is]>(ptrs, cuda::std::get<Is>(v).data())), ...);
+    };
+
+    std::apply(copy_vertices, args);
+
+    F::error(cuda::std::get<Is>(v).data()..., local_obs, local_error);
+
+
+    #pragma unroll
+    for(size_t i = 0; i < E; ++i) {
+        error[factor_id * E + i] = local_error[i];
+    }
+
 }
 
 // The output will be part of b with length of the vertex (where b = -J^T * r)
@@ -354,7 +403,7 @@ public:
     }
 
     template<typename F, typename... VertexTypes>
-    void compute_error(F* f) {
+    void compute_error_autodiff(F* f) {
         // Assume autodiff
 
         // Then for each vertex, we need to compute the error
@@ -380,6 +429,42 @@ public:
         const auto num_factors = f->count();
 
         launch_kernel_autodiff(f, hessian_ids, verts, jacs, num_factors, std::make_index_sequence<num_vertices>{});
+        cudaDeviceSynchronize();
+
+    }
+
+    template<typename F, typename... VertexTypes>
+    void compute_error(F* f) {
+        // Then for each vertex, we need to compute the error
+        constexpr auto num_vertices = F::get_num_vertices();
+        constexpr auto vertex_sizes = F::get_vertex_sizes();
+
+        // At this point all necessary data should be on the GPU    
+        std::array<T*, num_vertices> verts;
+        std::array<const size_t*, num_vertices> hessian_ids;
+        for (int i = 0; i < num_vertices; i++) {
+            verts[i] = f->vertex_descriptors[i]->x();
+            hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
+        }
+
+        
+        constexpr auto observation_dim = F::observation_dim;
+        constexpr auto error_dim = F::error_dim;
+        const auto num_factors = f->count();
+
+        const auto num_threads = num_factors;
+        int threads_per_block = 256;
+        int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+
+        compute_error_kernel<T, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
+            f->device_obs.data().get(),
+            f->residuals.data().get(),
+            f->device_ids.data().get(),
+            num_threads,
+            verts,
+            std::make_index_sequence<num_vertices>{});
+
+        // launch_kernel_error(f, hessian_ids, verts, num_factors, std::make_index_sequence<num_vertices>{});
         cudaDeviceSynchronize();
 
     }

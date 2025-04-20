@@ -23,6 +23,7 @@ public:
     // virtual void error_func(const T** vertices, const T* obs, T* error) = 0;
     virtual bool use_autodiff() = 0;
     virtual void visit_error(GraphVisitor<T>& visitor) = 0;
+    virtual void visit_error_autodiff(GraphVisitor<T>& visitor) = 0;
     virtual void visit_b(GraphVisitor<T>& visitor) = 0;
     virtual void visit_Jv(GraphVisitor<T>& visitor, T* out, T* in) = 0;
     virtual void visit_Jtv(GraphVisitor<T>& visitor, T* out, T* in) = 0;
@@ -69,6 +70,10 @@ public:
 
     void visit_error(GraphVisitor<T>& visitor) override {
         visitor.template compute_error<Derived<T>, VertexTypes...>(dynamic_cast<Derived<T>*>(this));
+    }
+
+    void visit_error_autodiff(GraphVisitor<T>& visitor) override {
+        visitor.template compute_error_autodiff<Derived<T>, VertexTypes...>(dynamic_cast<Derived<T>*>(this));
     }
 
     void visit_b(GraphVisitor<T>& visitor) override {
