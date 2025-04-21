@@ -50,13 +50,22 @@ class Graph {
     thrust::device_vector<T> x_backup;
     // thrust::device_vector<T> error;
 
+    T damping_factor;
+
     // Make this modular later
     PCGSolver<T> solver;
 
     public:
 
     Graph(): visitor(delta_x, b) {
+        damping_factor = 1e-2;
+    }
 
+    thrust::device_vector<T>& get_delta_x() {
+        return delta_x;
+    }
+    thrust::device_vector<T>& get_b() {
+        return b;
     }
 
     void add_vertex_descriptor(BaseVertexDescriptor<T>* descriptor) {
@@ -74,6 +83,14 @@ class Graph {
 
         return factor;
 
+    }
+
+    void set_damping_factor(T factor) {
+        damping_factor = factor;
+    }
+
+    T get_damping_factor() {
+        return damping_factor;
     }
 
     bool initialize_optimization() {
@@ -227,7 +244,7 @@ class Graph {
             factor_descriptors,
             b.data().get(),
             delta_x.data().get(), 
-            delta_x.size(), 100, 1e-6);
+            delta_x.size(), damping_factor, 100, 1e-6);
 
         // Print delta_x after solve
         // std::cout << "Delta x after solve: " << std::endl;

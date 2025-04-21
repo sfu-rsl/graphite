@@ -29,7 +29,7 @@ namespace glso {
             std::vector<BaseVertexDescriptor<T>*>& vertex_descriptors,
             std::vector<BaseFactorDescriptor<T>*>& factor_descriptors,
             T* b,
-            T* x, size_t dim_h, size_t max_iter, T tol) {
+            T* x, size_t dim_h, T damping_factor, size_t max_iter, T tol) {
 
             // std::cout << "Printing b: " << std::endl;
             // print_device_vector(b, dim_h);
@@ -84,7 +84,11 @@ namespace glso {
             // }
             // std::cout << std::endl;
 
-            // 3. Finally r = b - v2
+            // 3. Add damping factor
+            // v2 += damping_factor * x
+            saxpy(dim_h, v2.data().get(), damping_factor, x, v2.data().get());
+
+            // 4. Finally r = b - v2
             saxpy(dim_h, r.data().get(), -1.0, (const T*)v2.data().get(), b);
             // std::cout << "r: ";
             // for (size_t i = 0; i < r.size(); i++) {
@@ -127,6 +131,10 @@ namespace glso {
                     v1_ptr += factor_descriptors[i]->get_residual_size();
                 }
                 cudaDeviceSynchronize();
+                // Add damping factor
+                saxpy(dim_h, v2.data().get(), damping_factor, p.data().get(), v2.data().get());
+                cudaDeviceSynchronize();
+
                 // 4. Compute alpha = dot(r, r) / dot(p, v2)
                 T alpha = rr / thrust::inner_product(p.begin(), p.end(), v2.begin(), 0.0);
                 // std::cout << "alpha: " << alpha << ", rr: " << rr << ", dot(p, v2): " << thrust::inner_product(p.begin(), p.end(), v2.begin(), 0.0) << std::endl;
@@ -140,7 +148,7 @@ namespace glso {
                 // 7. Check termination criteria
                 T rr_new = thrust::inner_product(r.begin(), r.end(), r.begin(), 0.0);
                 if (sqrt(rr_new) < tol) {
-                    std::cout << "Converged at iteration " << k << std::endl;
+                    // std::cout << "Converged at iteration " << k << std::endl;
                     break;
                 }
                 // 8. Compute beta

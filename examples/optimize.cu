@@ -81,7 +81,7 @@ int main(void) {
     }
 
     // Optimize
-    constexpr size_t iterations = 5;
+    constexpr size_t iterations = 100;
     Optimizer opt;
     std::cout << "Graph built with " << num_vertices << " vertices and " << factor_desc->count() << " factors." << std::endl;
     std::cout << "Optimizing!" << std::endl;
