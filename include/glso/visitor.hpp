@@ -43,7 +43,7 @@ __global__ void apply_update_kernel(T* x, const T* delta_x, const size_t * hessi
 
 template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
 __global__
-void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, std::array<T*, sizeof...(Is)> args, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
+void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, F::VertexPointerTuple args, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= num_threads) {
@@ -118,7 +118,7 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
 // TODO: Make this more efficient and see if code can be shared with the autodiff kernel
 template<typename T, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
 __global__
-void compute_error_kernel(const T* obs, T* error, size_t* ids, const size_t num_threads, std::array<T*, sizeof...(Is)> args, std::index_sequence<Is...>) {
+void compute_error_kernel(const T* obs, T* error, size_t* ids, const size_t num_threads, F::VertexPointerTuple args, std::index_sequence<Is...>) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= num_threads) {
@@ -294,7 +294,7 @@ thrust::device_vector<T>& delta_x;
 thrust::device_vector<T>& b;
 
 template <typename F, std::size_t... Is>
-void launch_kernel_autodiff(F* f, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()>& verts, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
+void launch_kernel_autodiff(F* f, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, F::VertexPointerTuple& verts, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
             (([&] {
             constexpr auto num_vertices = F::get_num_vertices();
             const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
@@ -320,7 +320,7 @@ void launch_kernel_autodiff(F* f, std::array<const size_t*, F::get_num_vertices(
         }
 
 template <typename F, std::size_t... Is>
-void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()>& verts, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
+void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
             (([&] {
             constexpr auto num_vertices = F::get_num_vertices();
             const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
@@ -347,7 +347,7 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
 
 
         template <typename F, std::size_t... Is>
-        void launch_kernel_compute_Jtv(F* f, T* out, T* in, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()>& verts, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
+        void launch_kernel_compute_Jtv(F* f, T* out, T* in, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
                     (([&] {
                     constexpr auto num_vertices = F::get_num_vertices();
                     const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
@@ -372,7 +372,7 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
                 }
 
         template <typename F, std::size_t... Is>
-        void launch_kernel_compute_Jv(F* f, T* out, T* in, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()>& verts, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
+        void launch_kernel_compute_Jv(F* f, T* out, T* in, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
                     (([&] {
                     constexpr auto num_vertices = F::get_num_vertices();
                     const auto num_threads = num_factors * F::error_dim;
@@ -466,7 +466,6 @@ public:
             verts,
             std::make_index_sequence<num_vertices>{});
 
-        // launch_kernel_error(f, hessian_ids, verts, num_factors, std::make_index_sequence<num_vertices>{});
         cudaDeviceSynchronize();
 
     }
@@ -493,7 +492,7 @@ public:
 
         T* b_ptr = b.data().get();
 
-        launch_kernel_compute_b(f, b_ptr, hessian_ids, verts, jacs, num_factors, std::make_index_sequence<num_vertices>{});
+        launch_kernel_compute_b(f, b_ptr, hessian_ids, jacs, num_factors, std::make_index_sequence<num_vertices>{});
         cudaDeviceSynchronize();
 
     }
@@ -518,7 +517,7 @@ public:
         constexpr auto error_dim = F::error_dim;
         const auto num_factors = f->count();
 
-        launch_kernel_compute_Jv(f, out, in, hessian_ids, verts, jacs, num_factors, std::make_index_sequence<num_vertices>{});
+        launch_kernel_compute_Jv(f, out, in, hessian_ids, jacs, num_factors, std::make_index_sequence<num_vertices>{});
         cudaDeviceSynchronize();
 
     }
@@ -544,7 +543,7 @@ public:
         constexpr auto error_dim = F::error_dim;
         const auto num_factors = f->count();
 
-        launch_kernel_compute_Jtv(f, out, in, hessian_ids, verts, jacs, num_factors, std::make_index_sequence<num_vertices>{});
+        launch_kernel_compute_Jtv(f, out, in, hessian_ids, jacs, num_factors, std::make_index_sequence<num_vertices>{});
         cudaDeviceSynchronize();
 
     }
