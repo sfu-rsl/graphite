@@ -411,11 +411,12 @@ public:
         constexpr auto vertex_sizes = F::get_vertex_sizes();
 
         // At this point all necessary data should be on the GPU    
-        std::array<T*, num_vertices> verts;
+        // std::array<T*, num_vertices> verts;
+        auto verts = f->get_vertices();
         std::array<T*, num_vertices> jacs;
         std::array<const size_t*, num_vertices> hessian_ids;
         for (int i = 0; i < num_vertices; i++) {
-            verts[i] = f->vertex_descriptors[i]->x();
+            // verts[i] = f->vertex_descriptors[i]->vertices();
             jacs[i] = f->jacobians[i].data.data().get();
             hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
 
@@ -440,10 +441,11 @@ public:
         constexpr auto vertex_sizes = F::get_vertex_sizes();
 
         // At this point all necessary data should be on the GPU    
-        std::array<T*, num_vertices> verts;
+        auto verts = f->get_vertices();
+        // std::array<T*, num_vertices> verts;
         std::array<const size_t*, num_vertices> hessian_ids;
         for (int i = 0; i < num_vertices; i++) {
-            verts[i] = f->vertex_descriptors[i]->x();
+            // verts[i] = f->vertex_descriptors[i]->x();
             hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
         }
 
@@ -474,11 +476,12 @@ public:
         constexpr auto num_vertices = F::get_num_vertices();
         constexpr auto vertex_sizes = F::get_vertex_sizes();
 
-        std::array<T*, num_vertices> verts;
+        // std::array<T*, num_vertices> verts;
+        auto verts = f->get_vertices();
         std::array<T*, num_vertices> jacs;
         std::array<const size_t*, num_vertices> hessian_ids;
         for (int i = 0; i < num_vertices; i++) {
-            verts[i] = f->vertex_descriptors[i]->x();
+            // verts[i] = f->vertex_descriptors[i]->x();
             jacs[i] = f->jacobians[i].data.data().get();
             hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
         }
@@ -500,11 +503,12 @@ public:
         constexpr auto num_vertices = F::get_num_vertices();
         constexpr auto vertex_sizes = F::get_vertex_sizes();
 
-        std::array<T*, num_vertices> verts;
+        // std::array<T*, num_vertices> verts;
+        auto verts = f->get_vertices();
         std::array<T*, num_vertices> jacs;
         std::array<const size_t*, num_vertices> hessian_ids;
         for (int i = 0; i < num_vertices; i++) {
-            verts[i] = f->vertex_descriptors[i]->x();
+            // verts[i] = f->vertex_descriptors[i]->x();
             jacs[i] = f->jacobians[i].data.data().get();
             hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
         }
@@ -525,11 +529,12 @@ public:
         constexpr auto num_vertices = f->get_num_vertices();
         constexpr auto vertex_sizes = F::get_vertex_sizes();
 
-        std::array<T*, num_vertices> verts;
+        // std::array<T*, num_vertices> verts;
+        auto verts = f->get_vertices();
         std::array<T*, num_vertices> jacs;
         std::array<const size_t*, num_vertices> hessian_ids;
         for (int i = 0; i < num_vertices; i++) {
-            verts[i] = f->vertex_descriptors[i]->x();
+            // verts[i] = f->vertex_descriptors[i]->x();
             jacs[i] = f->jacobians[i].data.data().get();
             hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
         }
@@ -553,7 +558,7 @@ public:
         const auto num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
 
         apply_update_kernel<T, V><<<num_blocks, threads_per_block>>>(
-            v->x(),
+            v->vertices(),
             delta_x.data().get(),
             v->get_hessian_ids(),
             num_threads

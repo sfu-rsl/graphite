@@ -43,7 +43,7 @@ public:
 
 };
 
-template <typename T, int E, int M, template <typename> class Derived, typename... VertexTypes>
+template <typename T, int E, int M, template <typename> class Derived, typename... VDTypes>
 class FactorDescriptor : public BaseFactorDescriptor<T> {
 
 private:
@@ -55,12 +55,13 @@ private:
 
 public:
 
-    static constexpr size_t N = sizeof...(VertexTypes);
+    static constexpr size_t N = sizeof...(VDTypes);
     static constexpr size_t observation_dim = M;
     static constexpr size_t error_dim = E;
 
     std::array<BaseVertexDescriptor<T>*, N> vertex_descriptors;
-    using VertexTypesTuple = std::tuple<VertexTypes...>;
+    using VertexTypesTuple = std::tuple<typename VDTypes::VertexType...>;
+    using VertexPointerTuple = std::tuple<typename VDTypes::VertexType*...>;
 
     thrust::device_vector<size_t> device_ids;
     thrust::device_vector<T> device_obs;
@@ -69,23 +70,23 @@ public:
     thrust::device_vector<size_t> device_error_offsets; // we may not need this
 
     void visit_error(GraphVisitor<T>& visitor) override {
-        visitor.template compute_error<Derived<T>, VertexTypes...>(dynamic_cast<Derived<T>*>(this));
+        visitor.template compute_error<Derived<T>, VDTypes...>(dynamic_cast<Derived<T>*>(this));
     }
 
     void visit_error_autodiff(GraphVisitor<T>& visitor) override {
-        visitor.template compute_error_autodiff<Derived<T>, VertexTypes...>(dynamic_cast<Derived<T>*>(this));
+        visitor.template compute_error_autodiff<Derived<T>, VDTypes...>(dynamic_cast<Derived<T>*>(this));
     }
 
     void visit_b(GraphVisitor<T>& visitor) override {
-        visitor.template compute_b<Derived<T>, VertexTypes...>(dynamic_cast<Derived<T>*>(this));
+        visitor.template compute_b<Derived<T>, VDTypes...>(dynamic_cast<Derived<T>*>(this));
     }
 
     void visit_Jv(GraphVisitor<T>& visitor, T* out, T* in) override {
-        visitor.template compute_Jv<Derived<T>, VertexTypes...>(dynamic_cast<Derived<T>*>(this), out, in);
+        visitor.template compute_Jv<Derived<T>, VDTypes...>(dynamic_cast<Derived<T>*>(this), out, in);
     }
 
     void visit_Jtv(GraphVisitor<T>& visitor, T* out, T* in) override {
-        visitor.template compute_Jtv<Derived<T>, VertexTypes...>(dynamic_cast<Derived<T>*>(this), out, in);
+        visitor.template compute_Jtv<Derived<T>, VDTypes...>(dynamic_cast<Derived<T>*>(this), out, in);
     }
 
     // std::vector<JacobianStorage<T>> jacobians;
@@ -134,8 +135,18 @@ public:
         this->vertex_descriptors = vertex_descriptors;
     }
 
+    template <std::size_t... I>
+    VertexPointerTuple get_vertices_impl(std::index_sequence<I...>) {
+        return std::make_tuple((static_cast<typename std::tuple_element<I, std::tuple<VDTypes...>>::type*>(vertex_descriptors[I])->vertices())...);
+    }
+    
+    // Return tuple of N vertex pointers from this->vertex_descriptors[i]->vertices()
+    VertexPointerTuple get_vertices() {
+        return get_vertices_impl(std::make_index_sequence<N>{});
+    }
+
     static constexpr std::array<size_t, N> get_vertex_sizes() {
-        return {VertexTypes::dim...};
+        return {VDTypes::dim...};
     }
 
     void initialize_jacobian_storage() override {
@@ -174,8 +185,8 @@ public:
 // Templated derived class for AutoDiffFactorDescriptor using CRTP
 // N is the number of vertices involved in the constraint
 // M is the dimension of each observation
-template <typename T, int E, int M, template <typename> class Derived, typename... VertexTypes>
-class AutoDiffFactorDescriptor : public FactorDescriptor<T, E, M, Derived, VertexTypes...> {
+template <typename T, int E, int M, template <typename> class Derived, typename... VDTypes>
+class AutoDiffFactorDescriptor : public FactorDescriptor<T, E, M, Derived, VDTypes...> {
 public:
     virtual bool use_autodiff() override {
         return true;

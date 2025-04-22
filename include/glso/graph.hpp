@@ -267,21 +267,26 @@ class Graph {
         size_t offset = 0;
         for (const auto & desc: vertex_descriptors) {
             const size_t param_size = desc->dimension()*desc->count();
-            const T* x = desc->x();
-            thrust::copy(x, x+param_size, x_backup.begin()+offset);
+            desc->get_parameters(x_backup.data().get()+offset);
+            // const T* x = desc->x();
+            // thrust::copy(x, x+param_size, x_backup.begin()+offset);
             offset += param_size;
         }
 
+        cudaDeviceSynchronize();
     }
 
     void revert_parameters() {
         size_t offset = 0;
         for (auto & desc: vertex_descriptors) {
             const size_t param_size = desc->dimension()*desc->count();
-            T* x = desc->x();
-            thrust::copy(x_backup.begin()+offset, x_backup.begin(), x);
+            desc->set_parameters(x_backup.data().get()+offset);
+            // T* x = desc->x();
+            // thrust::copy(x_backup.begin()+offset, x_backup.begin(), x);
             offset += param_size;
         }
+
+        cudaDeviceSynchronize();
 
     }
 

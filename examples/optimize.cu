@@ -8,19 +8,60 @@
 
 namespace glso {
 
+
 template<typename T>
-class Point: public VertexDescriptor<T, 2, Point> {
+class Point: public BaseVertex<T, 2>{
+    private:
+    T x;
+    T y;
+
     public:
 
-    __device__ static void update(T* x, const T* delta) {
-        x[0] += delta[0]; 
-        x[1] += delta[1];
+    Point() : x(0), y(0) {}
+
+    Point(T x, T y): x(x), y(y) {}
+
+    __host__ __device__ virtual void update(const T* delta) override {
+        x += delta[0]; 
+        y += delta[1];
     }
+
+    __host__ __device__ virtual std::array<T, 2> params() const override {
+        // out[0] = x;
+        // out[1] = y;
+        return std::array<T, 2>{x, y};
+    }
+
+
+
+};
+
+// template<typename T>
+// class Point: public VertexDescriptor<T, 2, Point> {
+//     public:
+
+//     __device__ static void update(T* x, const T* delta) {
+//         x[0] += delta[0]; 
+//         x[1] += delta[1];
+//     }
+
+// };
+
+template<typename T>
+class PointSet: public VertexDescriptor<T, Point<T>, PointSet> {
+    public:
+
+    // using VertexType = Point<T>;
+
+    // __device__ static void update(T* x, const T* delta) {
+    //     x[0] += delta[0]; 
+    //     x[1] += delta[1];
+    // }
 
 };
 
 template <typename T>
-class CircleFactor : public AutoDiffFactorDescriptor<T, 1, 1, CircleFactor, Point<T>> {
+class CircleFactor : public AutoDiffFactorDescriptor<T, 1, 1, CircleFactor, PointSet<T>> {
 public:
 
     template <typename D>
@@ -45,8 +86,8 @@ int main(void) {
 
 
     // Create vertices
-    Point<double>* point_desc = new Point<double>();
-    graph.add_vertex_descriptor(point_desc);
+    PointSet<double>* points = new PointSet<double>();
+    graph.add_vertex_descriptor(points);
 
     const size_t num_vertices = 5;
     double center[2] = {0.0, 0.0};
@@ -70,11 +111,11 @@ int main(void) {
         point[1] += n2(gen);
 
         std::cout << "Adding point " << vertex_id << "=(" << point[0] << ", " << point[1] << ") with radius=" << sqrt(point[0]*point[0] + point[1]*point[1]) << std::endl;
-        point_desc->add_vertex(vertex_id, point);
+        points->add_vertex(vertex_id, Point(point[0], point[1]));
     }
 
     // Create edges
-    auto factor_desc = graph.add_factor_descriptor<CircleFactor<double>>(point_desc);
+    auto factor_desc = graph.add_factor_descriptor<CircleFactor<double>>(points);
 
     for (size_t vertex_id = 0; vertex_id < num_vertices; ++vertex_id) {
         factor_desc->add_factor({vertex_id}, {radius}, nullptr);
@@ -94,8 +135,12 @@ int main(void) {
 
     // Read back optimized values
     for (size_t vertex_id = 0; vertex_id < num_vertices; ++vertex_id) {
-        const auto point = point_desc->get_vertex(vertex_id);
-        std::cout << "Optimized point " << vertex_id << "=(" << point[0] << ", " << point[1] << ") with radius=" << sqrt(point[0]*point[0] + point[1]*point[1]) << std::endl;
+        const auto point = points->get_vertex(vertex_id);
+        const auto params = point.params();
+        const auto x = params[0];
+        const auto y = params[1];
+        
+        std::cout << "Optimized point " << vertex_id << "=(" << x << ", " << y << ") with radius=" << sqrt(x*x + y*y) << std::endl;
     }
 
 
