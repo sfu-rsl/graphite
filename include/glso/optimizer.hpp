@@ -1,5 +1,6 @@
 #pragma once
 #include <glso/graph.hpp>
+#include <iomanip>
 
 namespace glso {
 template<typename T=double>
@@ -25,6 +26,7 @@ public:
     bool optimize(Graph<T>* graph, const size_t num_iterations, T damping_factor=1e-2) {
 
         // Initialize something for all iterations
+        auto start = std::chrono::high_resolution_clock::now();
         T mu = damping_factor;
         T nu = 2;
 
@@ -41,8 +43,19 @@ public:
 
         bool run  = true;
 
-        for (size_t i = 0; i < num_iterations && run; i++) {
+        double time = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+        // Print iteration table headers
+        std::cout << std::setw(10) << "Iteration" 
+              << std::setw(16) << "Initial Chi2" 
+              << std::setw(16) << "Current Chi2" 
+              << std::setw(16) << "Lambda" 
+              << std::setw(16) << "Time" 
+              << std::setw(16) << "Total Time" 
+              << std::endl;
+        std::cout << "------------------------------------------------------------------------------------------" << std::endl;
 
+        for (size_t i = 0; i < num_iterations && run; i++) {
+            start = std::chrono::high_resolution_clock::now();
             T chi2 = graph->chi2();
 
             if(!graph->compute_step()) {
@@ -68,7 +81,7 @@ public:
                 // Relinearize since step is accepted
                 graph->set_damping_factor(mu);
                 graph->linearize();
-                std::cout << "Good step" << std::endl;
+                // std::cout << "Good step" << std::endl;
             }
             else {
                 graph->revert_parameters();
@@ -78,8 +91,19 @@ public:
                 nu *= 2;
                 graph->set_damping_factor(mu);
                 // std::cout << "Bad step" << std::endl;
+                new_chi2 = chi2;
             }
-            std::cout << "Iteration " << i << ", chi2: " << chi2 << ", candidate chi2: " << new_chi2 << ", lambda: " << mu << std::endl;
+
+            double iteration_time = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+            time += iteration_time;
+            std::cout << std::setw(10) << i 
+                      << std::setw(16) << chi2 
+                      << std::setw(16) << new_chi2 
+                      << std::setw(16) << mu 
+                      << std::setw(16) << iteration_time
+                      << std::setw(16) << time
+                      << std::endl;
+
 
             if (!std::isfinite(mu)) {
                 std::cout << "Damping factor is infinite, terminating optimization" << std::endl;
