@@ -95,7 +95,7 @@ class CircleFactor : public AutoDiffFactorDescriptor<T, 1, 1, CircleFactor, Poin
 public:
 
     template <typename D>
-    __device__ static void error(const D* point, const D* obs, D* error) {
+    __device__ static void error(const D* point, const D* obs, D* error, const std::tuple<Point<T>*> & vertices) {
         D x = point[0];
         D y = point[1];
         D r = obs[0];

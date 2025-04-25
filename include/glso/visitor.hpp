@@ -107,7 +107,7 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
 
     cuda::std::get<I>(v)[idx % vertex_sizes[I]].dual = static_cast<T>(1);
 
-    F::error(cuda::std::get<Is>(v).data()..., local_obs, local_error);
+    F::error(cuda::std::get<Is>(v).data()..., local_obs, local_error, args);
 
 
     constexpr auto j_size = vertex_sizes[I]*E;
@@ -181,7 +181,7 @@ void compute_error_kernel(const T* obs, T* error, size_t* ids, const size_t num_
 
     std::apply(copy_vertices, args);
 
-    F::error(cuda::std::get<Is>(v).data()..., local_obs, local_error);
+    F::error(cuda::std::get<Is>(v).data()..., local_obs, local_error, args);
 
 
     #pragma unroll
