@@ -3,41 +3,41 @@
 
 namespace glso {
 
-    template <typename T>
-    __device__ void device_copy(const T* src, const T* src_end, T* dst) {
-        while (src != src_end) {
-            *dst++ = *src++;
-        }
-    }
+    // template <typename T>
+    // __device__ void device_copy(const T* src, const T* src_end, T* dst) {
+    //     while (src != src_end) {
+    //         *dst++ = *src++;
+    //     }
+    // }
 
-    template <typename T, size_t D>
-    __device__ void device_copy(const T* src, T* dst) {
+    // template <typename T, size_t D>
+    // __device__ void device_copy(const T* src, T* dst) {
+    //     #pragma unroll
+    //     for (size_t i = 0; i < D; i++) {
+    //         dst[i] = src[i];
+    //     }
+    // }
+
+    // template <typename T, size_t D>
+    // __device__ void real_to_dual(const T* src, Dual<T>* dst) {
+    //     #pragma unroll
+    //     for (size_t i = 0; i < D; i++) {
+    //         dst[i] = Dual<T>(src[i]);
+    //     }
+    // }
+
+    template <typename VPtr, typename T, size_t D>
+    __device__ void device_copy(const VPtr v, T* dst) {
+        const std::array<T, D> src = v->parameters();
         #pragma unroll
         for (size_t i = 0; i < D; i++) {
             dst[i] = src[i];
         }
     }
 
-    template <typename T, size_t D>
-    __device__ void real_to_dual(const T* src, Dual<T>* dst) {
-        #pragma unroll
-        for (size_t i = 0; i < D; i++) {
-            dst[i] = Dual<T>(src[i]);
-        }
-    }
-
-    template <typename VPtr, typename T, size_t Is, size_t D>
-    __device__ void device_copy(const VPtr v, T* dst, const size_t offset) {
-        const std::array<T, D> src = (v+offset)->parameters();
-        #pragma unroll
-        for (size_t i = 0; i < D; i++) {
-            dst[i] = src[i];
-        }
-    }
-
-    template <typename VPtr, typename T, size_t Is, size_t D>
-    __device__ void real_to_dual(const VPtr v, Dual<T>* dst, const size_t offset) {
-        const std::array<T, D> src = (v+offset)->parameters();
+    template <typename VPtr, typename T, size_t D>
+    __device__ void real_to_dual(const VPtr v, Dual<T>* dst) {
+        const std::array<T, D> src = v->parameters();
         #pragma unroll
         for (size_t i = 0; i < D; i++) {
             dst[i] = Dual<T>(src[i]);
@@ -96,9 +96,11 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
 
     auto v = cuda::std::make_tuple(std::array<Dual<T>, vertex_sizes[Is]>{}...);
     
-    ids += factor_id*N;
-    auto copy_vertices = [&v, &ids, &vertex_sizes, &args](auto&&... ptrs) {
-        ((real_to_dual<decltype(std::get<Is>(args)), T, Is, vertex_sizes[Is]>(std::get<Is>(args), cuda::std::get<Is>(v).data(), ids[Is])), ...);
+
+    (std::get<Is>(args) += ids[factor_id*N+Is], ...);
+
+    auto copy_vertices = [&v, &vertex_sizes, &args](auto&&... ptrs) {
+        ((real_to_dual<decltype(std::get<Is>(args)), T, vertex_sizes[Is]>(std::get<Is>(args), cuda::std::get<Is>(v).data())), ...);
     };
 
     std::apply(copy_vertices, args);
@@ -170,9 +172,11 @@ void compute_error_kernel(const T* obs, T* error, size_t* ids, const size_t num_
     // auto copy_vertices = [&v, &vertex_sizes](auto&&... ptrs) {
     //     ((device_copy<T, vertex_sizes[Is]>(ptrs, cuda::std::get<Is>(v).data())), ...);
     // };
-    ids += factor_id*N;
+    // ids += factor_id*N;
+    (std::get<Is>(args) += ids[factor_id*N+Is], ...);
+
     auto copy_vertices = [&v, &ids, &vertex_sizes, &args](auto&&... ptrs) {
-        ((device_copy<decltype(std::get<Is>(args)), T, Is, vertex_sizes[Is]>(std::get<Is>(args), cuda::std::get<Is>(v).data(), ids[Is])), ...);
+        ((device_copy<decltype(std::get<Is>(args)), T, vertex_sizes[Is]>(std::get<Is>(args), cuda::std::get<Is>(v).data())), ...);
     };
 
     std::apply(copy_vertices, args);
