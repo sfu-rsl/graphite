@@ -26,24 +26,41 @@ namespace glso {
         }
     }
 
-template<typename T, typename V>
-__global__ void apply_update_kernel(T* x, const T* delta_x, const size_t * hessian_ids, const size_t num_threads) {
+    template <typename VPtr, typename T, size_t Is, size_t D>
+    __device__ void device_copy(const VPtr v, T* dst, const size_t offset) {
+        const std::array<T, D> src = (v+offset)->parameters();
+        #pragma unroll
+        for (size_t i = 0; i < D; i++) {
+            dst[i] = src[i];
+        }
+    }
+
+    template <typename VPtr, typename T, size_t Is, size_t D>
+    __device__ void real_to_dual(const VPtr v, Dual<T>* dst, const size_t offset) {
+        const std::array<T, D> src = (v+offset)->parameters();
+        #pragma unroll
+        for (size_t i = 0; i < D; i++) {
+            dst[i] = Dual<T>(src[i]);
+        }
+    }
+
+template<typename T, typename Descriptor, typename V>
+__global__ void apply_update_kernel(V* vertices, const T* delta_x, const size_t * hessian_ids, const size_t num_threads) {
     int vertex_id = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (vertex_id >= num_threads) {
         return;
     }
 
-    x += vertex_id * V::dim;
     const T* delta = delta_x + hessian_ids[vertex_id];
 
-    V::update(x, delta);
+    Descriptor::update(vertices[vertex_id], delta);
 
 }
 
-template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
+template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, typename VT, std::size_t... Is>
 __global__
-void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, F::VertexPointerTuple args, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
+void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, VT args, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= num_threads) {
@@ -57,11 +74,11 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
 
     // printf("CEAD: Thread %d, Vertex %d, Factor %d\n", idx, vertex_id, factor_id);
 
-    #pragma unroll
-    for (int i = 0; i < sizeof...(Is); i++) {
-        size_t local_id = ids[factor_id*N+i];
-        args[i] += local_id*vertex_sizes[i];
-    }
+    // #pragma unroll
+    // for (int i = 0; i < sizeof...(Is); i++) {
+    //     size_t local_id = ids[factor_id * N + i];
+    //     std::get<i>(args) += local_id;
+    // }
     
     Dual<T> local_obs[M];
     Dual<T> local_error[E];
@@ -79,8 +96,9 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
 
     auto v = cuda::std::make_tuple(std::array<Dual<T>, vertex_sizes[Is]>{}...);
     
-    auto copy_vertices = [&v, &vertex_sizes](auto&&... ptrs) {
-        ((real_to_dual<T, vertex_sizes[Is]>(ptrs, cuda::std::get<Is>(v).data())), ...);
+    ids += factor_id*N;
+    auto copy_vertices = [&v, &ids, &vertex_sizes, &args](auto&&... ptrs) {
+        ((real_to_dual<decltype(std::get<Is>(args)), T, Is, vertex_sizes[Is]>(std::get<Is>(args), cuda::std::get<Is>(v).data(), ids[Is])), ...);
     };
 
     std::apply(copy_vertices, args);
@@ -116,9 +134,9 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
     }
 }
 // TODO: Make this more efficient and see if code can be shared with the autodiff kernel
-template<typename T, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
+template<typename T, size_t N, size_t M, size_t E, typename F, typename VT, std::size_t... Is>
 __global__
-void compute_error_kernel(const T* obs, T* error, size_t* ids, const size_t num_threads, F::VertexPointerTuple args, std::index_sequence<Is...>) {
+void compute_error_kernel(const T* obs, T* error, size_t* ids, const size_t num_threads, VT args, std::index_sequence<Is...>) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= num_threads) {
@@ -128,11 +146,11 @@ void compute_error_kernel(const T* obs, T* error, size_t* ids, const size_t num_
     constexpr auto vertex_sizes = F::get_vertex_sizes();
     const auto factor_id = idx;
 
-    #pragma unroll
-    for (int i = 0; i < sizeof...(Is); i++) {
-        size_t local_id = ids[factor_id*N+i];
-        args[i] += local_id*vertex_sizes[i];
-    }
+    // #pragma unroll
+    // for (int i = 0; i < sizeof...(Is); i++) {
+    //     size_t local_id = ids[factor_id*N+i];
+    //     args[i] += local_id*vertex_sizes[i];
+    // }
     
     T local_obs[M];
     T local_error[E];
@@ -149,9 +167,12 @@ void compute_error_kernel(const T* obs, T* error, size_t* ids, const size_t num_
 
 
     auto v = cuda::std::make_tuple(std::array<T, vertex_sizes[Is]>{}...);
-    
-    auto copy_vertices = [&v, &vertex_sizes](auto&&... ptrs) {
-        ((device_copy<T, vertex_sizes[Is]>(ptrs, cuda::std::get<Is>(v).data())), ...);
+    // auto copy_vertices = [&v, &vertex_sizes](auto&&... ptrs) {
+    //     ((device_copy<T, vertex_sizes[Is]>(ptrs, cuda::std::get<Is>(v).data())), ...);
+    // };
+    ids += factor_id*N;
+    auto copy_vertices = [&v, &ids, &vertex_sizes, &args](auto&&... ptrs) {
+        ((device_copy<decltype(std::get<Is>(args)), T, Is, vertex_sizes[Is]>(std::get<Is>(args), cuda::std::get<Is>(v).data(), ids[Is])), ...);
     };
 
     std::apply(copy_vertices, args);
@@ -293,8 +314,8 @@ private:
 thrust::device_vector<T>& delta_x;
 thrust::device_vector<T>& b;
 
-template <typename F, std::size_t... Is>
-void launch_kernel_autodiff(F* f, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, F::VertexPointerTuple& verts, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
+template <typename F, typename VT, std::size_t... Is>
+void launch_kernel_autodiff(F* f, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, VT & verts, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
             (([&] {
             constexpr auto num_vertices = F::get_num_vertices();
             const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
@@ -307,7 +328,7 @@ void launch_kernel_autodiff(F* f, std::array<const size_t*, F::get_num_vertices(
             // std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
             // std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
 
-            compute_error_kernel_autodiff<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
+            compute_error_kernel_autodiff<T, Is, num_vertices, F::observation_dim, F::error_dim, F, typename F::VertexPointerTuple><<<num_blocks, threads_per_block>>>(
                 f->device_obs.data().get(),
                 f->residuals.data().get(),
                 f->device_ids.data().get(),
@@ -458,7 +479,7 @@ public:
         int threads_per_block = 256;
         int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
 
-        compute_error_kernel<T, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
+        compute_error_kernel<T, num_vertices, F::observation_dim, F::error_dim, F, typename F::VertexPointerTuple><<<num_blocks, threads_per_block>>>(
             f->device_obs.data().get(),
             f->residuals.data().get(),
             f->device_ids.data().get(),
@@ -556,7 +577,7 @@ public:
         const auto threads_per_block = 256;
         const auto num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
 
-        apply_update_kernel<T, V><<<num_blocks, threads_per_block>>>(
+        apply_update_kernel<T, V, typename V::VertexType><<<num_blocks, threads_per_block>>>(
             v->vertices(),
             delta_x.data().get(),
             v->get_hessian_ids(),

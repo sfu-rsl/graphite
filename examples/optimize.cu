@@ -8,33 +8,51 @@
 
 namespace glso {
 
-
 template<typename T>
-class Point: public BaseVertex<T, 2>{
-    private:
-    T x;
-    T y;
-
+class Point {
     public:
+        T x;
+        T y;
 
-    Point() : x(0), y(0) {}
+        Point() : x(0), y(0) {}
 
-    Point(T x, T y): x(x), y(y) {}
+        Point(T x, T y) : x(x), y(y) {}
 
-    __host__ __device__ virtual void update(const T* delta) override {
-        x += delta[0]; 
-        y += delta[1];
-    }
-
-    __host__ __device__ virtual std::array<T, 2> params() const override {
-        // out[0] = x;
-        // out[1] = y;
-        return std::array<T, 2>{x, y};
-    }
-
-
+        __host__ __device__ std::array<T, 2> parameters() const {
+            return std::array<T, 2>{x, y};
+        }
 
 };
+
+// template<typename T>
+// class Point: public BaseVertex<T, 2>{
+//     private:
+//     T x;
+//     T y;
+
+//     public:
+ 
+//     Point() : x(0), y(0) {}
+
+//     Point(T x, T y): x(x), y(y) {}
+
+//     __host__ __device__ virtual void update(const T* delta) override {
+//         x += delta[0]; 
+//         y += delta[1];
+//     }
+
+//     __host__ __device__ virtual std::array<T, 2> params() const override {
+//         // out[0] = x;
+//         // out[1] = y;
+//         return std::array<T, 2>{x, y};
+//     }
+
+//     __host__ __device__ virtual void set_params(const T* params) override {
+//         x = params[0];
+//         y = params[1];
+//     }
+
+// };
 
 // template<typename T>
 // class Point: public VertexDescriptor<T, 2, Point> {
@@ -48,15 +66,27 @@ class Point: public BaseVertex<T, 2>{
 // };
 
 template<typename T>
-class PointSet: public VertexDescriptor<T, Point<T>, PointSet> {
+class PointSet: public VertexDescriptor<T, 2, Point<T>, Point<T>, PointSet> {
     public:
 
     // using VertexType = Point<T>;
 
-    // __device__ static void update(T* x, const T* delta) {
-    //     x[0] += delta[0]; 
-    //     x[1] += delta[1];
+    __host__ __device__ static void update(Point<T> & vertex, const T* delta) {
+        vertex.x += delta[0];
+        vertex.y += delta[1];
+    }
+
+    // __host__ __device__ static std::array<T, 2> parameters(Point<T>& vertex) {
+    //     return std::array<T, 2>{vertex.x, vertex.y};
     // }
+
+    __host__ __device__ static Point<T> get_state(const Point<T>& vertex) {
+        return vertex;
+    }
+
+    __host__ __device__ static void set_state(Point<T>& vertex, const Point<T>& state) {
+        vertex = state;
+    }
 
 };
 
@@ -136,9 +166,7 @@ int main(void) {
     // Read back optimized values
     for (size_t vertex_id = 0; vertex_id < num_vertices; ++vertex_id) {
         const auto point = points->get_vertex(vertex_id);
-        const auto params = point.params();
-        const auto x = params[0];
-        const auto y = params[1];
+        const auto [x, y] = point;
         
         std::cout << "Optimized point " << vertex_id << "=(" << x << ", " << y << ") with radius=" << sqrt(x*x + y*y) << std::endl;
     }

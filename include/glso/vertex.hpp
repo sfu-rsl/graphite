@@ -2,7 +2,7 @@
 #include <glso/common.hpp>
 #include <glso/visitor.hpp>
 namespace glso {
-
+/*
 // T is the float type and D is the dimension of the parameterization
 template <typename T, int D>
 class BaseVertex {
@@ -11,39 +11,49 @@ public:
 
     __host__ __device__ virtual void update(const T* delta) = 0;
     __host__ __device__ virtual std::array<T, D> params() const = 0;
+    __host__ __device__ virtual void set_params(const T* params) = 0;
 
     static constexpr int dimension = D;
 
+    std::array<T, D> parameters;
+
 };
 
-template <typename VertexType, typename T>
-__global__ void backup_parameters_kernel(const VertexType* vertices, T* dst, const size_t num_vertices) {
+*/
+
+template <typename VertexType, typename State, typename Descriptor, typename T>
+__global__ void backup_state_kernel(const VertexType* vertices, State* dst, const size_t num_vertices) {
         
     const size_t vertex_id = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (vertex_id >= num_vertices) return;
     
-    const auto params = vertices[vertex_id].params();
+    // const auto params = vertices[vertex_id].params();
+    // const auto params = Descriptor::params(vertices[vertex_id]);
+    dst[vertex_id] = Descriptor::get_state(vertices[vertex_id]);
 
-    const size_t dst_offset = vertex_id * VertexType::dimension;
+    // const size_t dst_offset = vertex_id * VertexType::dimension;
 
-    for (size_t i = 0; i < VertexType::dimension; ++i) {
-        dst[dst_offset + i] = params[i];
-    }
+    // for (size_t i = 0; i < VertexType::dimension; ++i) {
+    //     dst[dst_offset + i] = params[i];
+    // }
 }
 
-template <typename VertexType, typename T>
-__global__ void set_parameters_kernel(VertexType* vertices, const T* src, const size_t num_vertices) {
+template <typename VertexType, typename State, typename Descriptor, typename T>
+__global__ void set_state_kernel(VertexType* vertices, const State* src, const size_t num_vertices) {
         
     const size_t vertex_id = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (vertex_id >= num_vertices) return;
-    
-    const size_t src_offset = vertex_id * VertexType::dimension;
 
-    for (size_t i = 0; i < VertexType::dimension; ++i) {
-        // vertices[vertex_id].update(src[src_offset + i]);
-    }
+    Descriptor::set_state(vertices[vertex_id], src[vertex_id]);
+    
+    // const size_t src_offset = vertex_id * VertexType::dimension;
+
+    // for (size_t i = 0; i < VertexType::dimension; ++i) {
+    //     vertices[vertex_id].set_params(src[src_offset + i]);
+    // }
+
 }
 
 template <typename T>
@@ -56,8 +66,10 @@ public:
     virtual size_t dimension() const = 0;
     virtual size_t count() const = 0;
     // virtual T* x() = 0;
-    virtual void get_parameters(T* dst) const = 0;
-    virtual void set_parameters(const T* src) = 0;
+    // virtual void get_parameters(T* dst) const = 0;
+    // virtual void set_parameters(const T* src) = 0;
+    virtual void backup_parameters() = 0;
+    virtual void restore_parameters() = 0;
     virtual void to_device() = 0;
     virtual void to_host() = 0;
     // virtual void add_vertex(const size_t id, const BaseVertex<T> & vertex) = 0;
@@ -67,11 +79,12 @@ public:
 
 };
 
-template <typename T, typename V, template <typename> class Derived>
+template <typename T, int D, typename V, typename S, template <typename> class Derived>
 class VertexDescriptor : public BaseVertexDescriptor<T> {
 public:
 // using VertexType = typename Derived<T>::VertexType;
 using VertexType = V;
+
     
 private:
     // Vertex values
@@ -81,6 +94,8 @@ private:
     thrust::device_vector<VertexType> x_device;
     thrust::host_vector<VertexType> x_host;
 
+    thrust::device_vector<S> backup_state;
+
 public:
 
     // Mappings
@@ -88,8 +103,8 @@ public:
     thrust::host_vector<size_t> local_to_hessian_offsets;
     thrust::device_vector<size_t> hessian_ids;
 
-    // static constexpr size_t dim = D;
-    static constexpr size_t dim = V::dimension;
+    static constexpr size_t dim = D;
+    // static constexpr size_t dim = V::dimension;
 
 public:
     virtual ~VertexDescriptor() {};
@@ -117,16 +132,49 @@ public:
 
 
 
-    virtual void get_parameters(T* dst) const override {
-        // const size_t param_size = desc->dimension()*desc->count();
+    // virtual void get_parameters(T* dst) const override {
+    //     // const size_t param_size = desc->dimension()*desc->count();
+    //     const VertexType* vertices = x_device.data().get();
+
+    //     const int num_vertices = static_cast<int>(count());
+    //     const int num_threads = num_vertices;
+    //     const int block_size = 256;
+    //     const auto num_blocks = (num_threads + block_size - 1) / block_size;
+    //     backup_parameters_kernel<VertexType, T><<<num_blocks, block_size>>>(vertices, dst, num_vertices);
+    // }
+
+    virtual void backup_parameters() override {
         const VertexType* vertices = x_device.data().get();
 
         const int num_vertices = static_cast<int>(count());
         const int num_threads = num_vertices;
         const int block_size = 256;
         const auto num_blocks = (num_threads + block_size - 1) / block_size;
-        backup_parameters_kernel<VertexType, T><<<num_blocks, block_size>>>(vertices, dst, num_vertices);
+        backup_state.resize(num_vertices);
+        
+        backup_state_kernel<VertexType, S, Derived<T>, T><<<num_blocks, block_size>>>(vertices, backup_state.data().get(), num_vertices);
     }
+
+    virtual void restore_parameters() override {
+        VertexType* vertices = x_device.data().get();
+
+        const int num_vertices = static_cast<int>(count());
+        const int num_threads = num_vertices;
+        const int block_size = 256;
+        const auto num_blocks = (num_threads + block_size - 1) / block_size;
+        set_state_kernel<VertexType, S, Derived<T>, T><<<num_blocks, block_size>>>(vertices, backup_state.data().get(), num_vertices);
+    }
+
+    // virtual void set_parameters(const T* src) override {
+    //     // const size_t param_size = desc->dimension()*desc->count();
+    //     VertexType* vertices = x_device.data().get();
+
+    //     const int num_vertices = static_cast<int>(count());
+    //     const int num_threads = num_vertices;
+    //     const int block_size = 256;
+    //     const auto num_blocks = (num_threads + block_size - 1) / block_size;
+    //     set_parameters_kernel<VertexType, T><<<num_blocks, block_size>>>(vertices, src, num_vertices);
+    // }
 
     // __global__ static void set_parameters_kernel(VertexType* vertices, const T* src, const size_t num_vertices) {
         
@@ -141,16 +189,16 @@ public:
     //     }
     // }
 
-    virtual void set_parameters(const T* src) override {
-        // const size_t param_size = desc->dimension()*desc->count();
-        VertexType* vertices = x_device.data().get();
+    // virtual void set_parameters(const T* src) override {
+    //     // const size_t param_size = desc->dimension()*desc->count();
+    //     VertexType* vertices = x_device.data().get();
 
-        const int num_vertices = static_cast<int>(count());
-        const int num_threads = num_vertices;
-        const int block_size = 256;
-        const auto num_blocks = (num_threads + block_size - 1) / block_size;
-        set_parameters_kernel<VertexType, T><<<num_blocks, block_size>>>(vertices, src, num_vertices);
-    }
+    //     const int num_vertices = static_cast<int>(count());
+    //     const int num_threads = num_vertices;
+    //     const int block_size = 256;
+    //     const auto num_blocks = (num_threads + block_size - 1) / block_size;
+    //     set_parameters_kernel<VertexType, T><<<num_blocks, block_size>>>(vertices, src, num_vertices);
+    // }
 
     
 
@@ -161,7 +209,7 @@ public:
         return x_device.size();
     }
 
-    void add_vertex(const size_t id, const BaseVertex<T, dim>& vertex) {
+    void add_vertex(const size_t id, const VertexType& vertex) {
         // TODO: Find a better way to get the dimension
         // const auto dim = dynamic_cast<Derived<T>*>(this)->dimension();        
         // x_host.insert(x_host.end(), value, value+dim);

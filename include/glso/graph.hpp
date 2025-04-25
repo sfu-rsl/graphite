@@ -264,26 +264,34 @@ class Graph {
     }
 
     void backup_parameters() {
-        size_t offset = 0;
+        // size_t offset = 0;
+        // for (const auto & desc: vertex_descriptors) {
+        //     const size_t param_size = desc->dimension()*desc->count();
+        //     desc->get_parameters(x_backup.data().get()+offset);
+        //     // const T* x = desc->x();
+        //     // thrust::copy(x, x+param_size, x_backup.begin()+offset);
+        //     offset += param_size;
+        // }
+
         for (const auto & desc: vertex_descriptors) {
-            const size_t param_size = desc->dimension()*desc->count();
-            desc->get_parameters(x_backup.data().get()+offset);
-            // const T* x = desc->x();
-            // thrust::copy(x, x+param_size, x_backup.begin()+offset);
-            offset += param_size;
+            desc->backup_parameters();
         }
 
         cudaDeviceSynchronize();
     }
 
     void revert_parameters() {
-        size_t offset = 0;
+        // size_t offset = 0;
+        // for (auto & desc: vertex_descriptors) {
+        //     const size_t param_size = desc->dimension()*desc->count();
+        //     desc->set_parameters(x_backup.data().get()+offset);
+        //     // T* x = desc->x();
+        //     // thrust::copy(x_backup.begin()+offset, x_backup.begin(), x);
+        //     offset += param_size;
+        // }
+
         for (auto & desc: vertex_descriptors) {
-            const size_t param_size = desc->dimension()*desc->count();
-            desc->set_parameters(x_backup.data().get()+offset);
-            // T* x = desc->x();
-            // thrust::copy(x_backup.begin()+offset, x_backup.begin(), x);
-            offset += param_size;
+            desc->restore_parameters();
         }
 
         cudaDeviceSynchronize();
