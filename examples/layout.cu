@@ -11,23 +11,18 @@ using Eigen::Matrix3d;
 __global__ void multiplySoA(const double* A, const double* B, const double* C, const double* D, double* output, int numItems) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < numItems) {
-        Matrix3d matA, matB, matC, matD, result;
-
-        // Load matrices from SoA
-        for (int i = 0; i < 9; ++i) {
-            matA(i / 3, i % 3) = A[idx * 9 + i];
-            matB(i / 3, i % 3) = B[idx * 9 + i];
-            matC(i / 3, i % 3) = C[idx * 9 + i];
-            matD(i / 3, i % 3) = D[idx * 9 + i];
-        }
+        // Use Eigen Maps to directly map input data to Eigen matrices
+        Eigen::Map<const Matrix3d> matA(&A[idx * 9]);
+        Eigen::Map<const Matrix3d> matB(&B[idx * 9]);
+        Eigen::Map<const Matrix3d> matC(&C[idx * 9]);
+        Eigen::Map<const Matrix3d> matD(&D[idx * 9]);
 
         // Perform multiplication
+        Eigen::Map<Matrix3d> result(&output[idx * 9]);
         result = matA * matB * matC * matD;
 
-        // Store result
-        for (int i = 0; i < 9; ++i) {
-            output[idx * 9 + i] = result(i / 3, i % 3);
-        }
+        // Store result using Eigen Map
+        // Eigen::Map<Matrix3d>(&output[idx * 9]) = result;
     }
 }
 
@@ -42,28 +37,23 @@ struct Matrices {
 __global__ void multiplyAoS(const Matrices* input, double* output, int numItems) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < numItems) {
-        Matrix3d matA, matB, matC, matD, result;
-
-        // Load matrices from AoS
-        for (int i = 0; i < 9; ++i) {
-            matA(i / 3, i % 3) = input[idx].A[i];
-            matB(i / 3, i % 3) = input[idx].B[i];
-            matC(i / 3, i % 3) = input[idx].C[i];
-            matD(i / 3, i % 3) = input[idx].D[i];
-        }
+        // Use Eigen Maps to directly map input data to Eigen matrices
+        Eigen::Map<const Matrix3d> matA(input[idx].A);
+        Eigen::Map<const Matrix3d> matB(input[idx].B);
+        Eigen::Map<const Matrix3d> matC(input[idx].C);
+        Eigen::Map<const Matrix3d> matD(input[idx].D);
 
         // Perform multiplication
+        Eigen::Map<Matrix3d> result(&output[idx * 9]);
         result = matA * matB * matC * matD;
 
-        // Store result
-        for (int i = 0; i < 9; ++i) {
-            output[idx * 9 + i] = result(i / 3, i % 3);
-        }
+        // Store result using Eigen Map
+        // Eigen::Map<Matrix3d>(&output[idx * 9]) = result;
     }
 }
 
 int main() {
-    const int numItems = 1e6;
+    const int numItems = 2e6;
     const int matrixSize = 9; // 3x3 matrix
     const int totalSize = numItems * matrixSize;
 
@@ -73,11 +63,22 @@ int main() {
     thrust::host_vector<double> h_outputSoA(totalSize), h_outputAoS(totalSize);
 
     // Initialize matrices with random values
-    for (int i = 0; i < totalSize; ++i) {
-        h_A[i] = static_cast<double>(rand()) / RAND_MAX;
-        h_B[i] = static_cast<double>(rand()) / RAND_MAX;
-        h_C[i] = static_cast<double>(rand()) / RAND_MAX;
-        h_D[i] = static_cast<double>(rand()) / RAND_MAX;
+    std::vector<Matrix3d> vecA(numItems), vecB(numItems), vecC(numItems), vecD(numItems);
+
+    for (int i = 0; i < numItems; ++i) {
+        vecA[i] = Matrix3d::Random();
+        vecB[i] = Matrix3d::Random();
+        vecC[i] = Matrix3d::Random();
+        vecD[i] = Matrix3d::Random();
+    }
+
+    for (int i = 0; i < numItems; ++i) {
+        for (int j = 0; j < matrixSize; ++j) {
+            h_A[i * matrixSize + j] = vecA[i](j / 3, j % 3);
+            h_B[i * matrixSize + j] = vecB[i](j / 3, j % 3);
+            h_C[i * matrixSize + j] = vecC[i](j / 3, j % 3);
+            h_D[i * matrixSize + j] = vecD[i](j / 3, j % 3);
+        }
     }
 
     for (int i = 0; i < numItems; ++i) {
@@ -98,7 +99,7 @@ int main() {
     const int blocksPerGrid = (numItems + threadsPerBlock - 1) / threadsPerBlock;
 
     double totalTimeSoA = 0.0, totalTimeAoS = 0.0;
-    const int numRuns = 1000;
+    const int numRuns = 10000;
 
     for (int run = 0; run < numRuns; ++run) {
         auto start = std::chrono::high_resolution_clock::now();
