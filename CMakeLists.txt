@@ -26,3 +26,7 @@ target_link_libraries(hello glso)
 
 add_executable(optimize examples/optimize.cu)
 target_link_libraries(optimize glso)
+
+find_package(Eigen3 3.4 REQUIRED)
+add_executable(layout examples/layout.cu)
+target_link_libraries(layout glso Eigen3::Eigen)
