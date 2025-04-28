@@ -2,6 +2,7 @@
 #include <glso/common.hpp>
 #include <glso/vertex.hpp>
 #include <thrust/inner_product.h>
+#include <thrust/universal_vector.h>
 
 namespace glso {
 template<typename T>
@@ -37,8 +38,6 @@ public:
 
     virtual void to_device() = 0;
 
-    virtual size_t set_error_offset(size_t offset) = 0;
-
     virtual T chi2() = 0;
 
 };
@@ -51,7 +50,6 @@ private:
     thrust::host_vector<size_t> host_ids; // local ids
     thrust::host_vector<T> host_obs;
     thrust::host_vector<T> host_hessian_ids;
-    thrust::host_vector<T> host_error_offsets; // we may not need this
 
 public:
 
@@ -67,7 +65,7 @@ public:
     thrust::device_vector<T> device_obs;
     thrust::device_vector<T> residuals;
     thrust::device_vector<size_t> device_hessian_ids;
-    thrust::device_vector<size_t> device_error_offsets; // we may not need this
+    thrust::universal_vector<T> precision_matrices;
 
     void visit_error(GraphVisitor<T>& visitor) override {
         visitor.template compute_error<Derived<T>, VDTypes...>(dynamic_cast<Derived<T>*>(this));
@@ -109,6 +107,26 @@ public:
         global_ids.insert(global_ids.end(), ids.begin(), ids.end());
         host_obs.insert(host_obs.end(), obs.begin(), obs.end());
 
+        constexpr size_t precision_matrix_size = error_dim*error_dim;
+        if (precision_matrix) {
+            precision_matrices.insert(precision_matrices.end(), precision_matrix, precision_matrix + precision_matrix_size);
+        }
+        else {
+            constexpr auto pmat = get_default_precision_matrix();
+            precision_matrices.insert(precision_matrices.end(), pmat.data(), pmat.data() + precision_matrix_size);
+
+        }
+    }
+
+    // TODO: Make this private later
+    constexpr static std::array<T, E*E> get_default_precision_matrix() {
+        return []() constexpr {
+            std::array<T, E*E> pmat = {};
+            for (size_t i = 0; i < E; i++) {
+            pmat[i*E + i] = 1.0;
+            }
+            return pmat;
+        }();
     }
 
     size_t count() const override {
@@ -124,7 +142,6 @@ public:
 
         device_ids = host_ids;
         device_obs = host_obs;
-        device_error_offsets = host_error_offsets;
 
         // Resize and reset residuals
         residuals.resize(error_dim*count());
@@ -154,20 +171,6 @@ public:
             jacobians[i].dimensions = {error_dim, vertex_descriptors[i]->dimension()};
             jacobians[i].data.resize(error_dim*vertex_descriptors[i]->dimension()*count());
         }
-    }
-
-    size_t set_error_offset(size_t offset) override {
-        // Just assume all edges are active for now
-        host_error_offsets.clear();
-        host_error_offsets.resize(count());
-
-
-        for (size_t i = 0; i < count(); i++) {
-            host_error_offsets[i] = offset;
-            offset += error_dim;
-        }
-
-        return offset;
     }
 
     virtual size_t get_residual_size() const override {
