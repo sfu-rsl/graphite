@@ -8,6 +8,12 @@ endif()
 # External dependencies
 find_package(Boost 1.74 REQUIRED)
 
+# Check WSL2
+message(STATUS "CMake ${CMAKE_VERSION}  kernel: ${CMAKE_HOST_SYSTEM_VERSION}")
+if(CMAKE_HOST_SYSTEM_VERSION MATCHES "microsoft-standard-WSL2$")
+  add_compile_definitions(__WSL2__)
+endif()
+
 # Libraries
 add_library(glso INTERFACE)
 target_include_directories(glso INTERFACE include)

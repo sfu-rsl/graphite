@@ -3,6 +3,7 @@
 #include <glso/vertex.hpp>
 #include <thrust/inner_product.h>
 #include <thrust/universal_vector.h>
+#include <glso/utils.hpp>
 
 namespace glso {
 template<typename T>
@@ -47,9 +48,8 @@ class FactorDescriptor : public BaseFactorDescriptor<T> {
 
 private:
     std::vector<size_t> global_ids;
-    thrust::host_vector<size_t> host_ids; // local ids
-    thrust::host_vector<T> host_obs;
-    thrust::host_vector<T> host_hessian_ids;
+    // thrust::host_vector<size_t> host_ids; // local ids
+    // thrust::host_vector<T> host_obs;
 
 public:
 
@@ -61,10 +61,9 @@ public:
     using VertexTypesTuple = std::tuple<typename VDTypes::VertexType...>;
     using VertexPointerTuple = std::tuple<typename VDTypes::VertexType*...>;
 
-    thrust::device_vector<size_t> device_ids;
-    thrust::device_vector<T> device_obs;
+    thrust::universal_vector<size_t> device_ids;
+    thrust::universal_vector<T> device_obs;
     thrust::device_vector<T> residuals;
-    thrust::device_vector<size_t> device_hessian_ids;
     thrust::universal_vector<T> precision_matrices;
 
     void visit_error(GraphVisitor<T>& visitor) override {
@@ -105,7 +104,7 @@ public:
     void add_factor(const std::array<size_t, N>& ids, const std::array<T, M>& obs, const T* precision_matrix) {
         
         global_ids.insert(global_ids.end(), ids.begin(), ids.end());
-        host_obs.insert(host_obs.end(), obs.begin(), obs.end());
+        device_obs.insert(device_obs.end(), obs.begin(), obs.end());
 
         constexpr size_t precision_matrix_size = error_dim*error_dim;
         if (precision_matrix) {
@@ -136,16 +135,28 @@ public:
     void to_device() override {
 
         // Map constraint ids to local ids
+        device_ids.clear();
         for (size_t i = 0; i < global_ids.size(); i++) {
-            host_ids.push_back(vertex_descriptors[i%N]->get_global_map().at(global_ids[i]));
+            device_ids.push_back(vertex_descriptors[i%N]->get_global_map().at(global_ids[i]));
         }
 
-        device_ids = host_ids;
-        device_obs = host_obs;
+        // device_ids = host_ids;
+        // device_obs = host_obs;
 
+        // prefetch everything
+        int cuda_device = 0;
+        constexpr cudaStream_t stream = 0;
+        cudaGetDevice(&cuda_device);
+        prefetch_vector_on_device_async(device_ids, cuda_device, stream);
+        prefetch_vector_on_device_async(device_obs, cuda_device, stream);
+        // std::cout << "Prefetching factor data to device" << std::endl;
+        cudaDeviceSynchronize();
         // Resize and reset residuals
+        // std::cout << "Resizing residuals to: " << error_dim*count() << std::endl;
         residuals.resize(error_dim*count());
+        // std::cout << "Filling residuals with zeros" << std::endl;
         thrust::fill(residuals.begin(), residuals.end(), 0);
+        // std::cout << "Resizing residuals to: " << error_dim*count() << std::endl;
     }
 
     void link_factors(const std::array<BaseVertexDescriptor<T>*, N>& vertex_descriptors) {

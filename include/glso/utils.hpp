@@ -4,6 +4,16 @@
 
 namespace glso {
 
+    template <typename T>
+    void prefetch_vector_on_device_async(const thrust::universal_vector<T>& vec, int device_id, cudaStream_t stream) {
+        // Prefetch the vector to the device
+        // std::cout << "Prefetching vector of size " << vec.size() << " to device " << device_id << std::endl;
+        #if !defined(_WIN32) && !defined(__WSL2__)
+            cudaMemPrefetchAsync(vec.data().get(), vec.size() * sizeof(T), device_id, stream);
+        #endif
+    }
+
+
 
     template <typename T>
     void print_device_vector(const thrust::device_vector<T>& vec) {
