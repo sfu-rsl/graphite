@@ -119,7 +119,7 @@ int main(void) {
     PointSet<double>* points = new PointSet<double>();
     graph.add_vertex_descriptor(points);
 
-    const size_t num_vertices = 5;
+    const size_t num_vertices = 5000;
     double center[2] = {0.0, 0.0};
 
     std::random_device rd;
@@ -140,7 +140,7 @@ int main(void) {
         point[0] += n1(gen);
         point[1] += n2(gen);
 
-        std::cout << "Adding point " << vertex_id << "=(" << point[0] << ", " << point[1] << ") with radius=" << sqrt(point[0]*point[0] + point[1]*point[1]) << std::endl;
+        // std::cout << "Adding point " << vertex_id << "=(" << point[0] << ", " << point[1] << ") with radius=" << sqrt(point[0]*point[0] + point[1]*point[1]) << std::endl;
         points->add_vertex(vertex_id, Point(point[0], point[1]));
     }
 
@@ -168,7 +168,7 @@ int main(void) {
         const auto point = points->get_vertex(vertex_id);
         const auto [x, y] = point;
         
-        std::cout << "Optimized point " << vertex_id << "=(" << x << ", " << y << ") with radius=" << sqrt(x*x + y*y) << std::endl;
+        // std::cout << "Optimized point " << vertex_id << "=(" << x << ", " << y << ") with radius=" << sqrt(x*x + y*y) << std::endl;
     }
 
 

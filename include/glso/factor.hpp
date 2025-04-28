@@ -135,10 +135,18 @@ public:
     void to_device() override {
 
         // Map constraint ids to local ids
-        device_ids.clear();
+        
+        // auto start = std::chrono::high_resolution_clock::now();
+
+        device_ids.resize(global_ids.size());
+        prefetch_vector_on_host(device_ids, 0);
         for (size_t i = 0; i < global_ids.size(); i++) {
-            device_ids.push_back(vertex_descriptors[i%N]->get_global_map().at(global_ids[i]));
+            device_ids[i] = vertex_descriptors[i%N]->get_global_map().at(global_ids[i]);
         }
+
+        // auto end = std::chrono::high_resolution_clock::now();
+        // std::chrono::duration<double> elapsed = end - start;
+        // std::cout << "Device id building time: " << elapsed.count() << " seconds" << std::endl;
 
         // device_ids = host_ids;
         // device_obs = host_obs;

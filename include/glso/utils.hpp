@@ -13,6 +13,16 @@ namespace glso {
         #endif
     }
 
+    template <typename T>
+    void prefetch_vector_on_host(const thrust::universal_vector<T>& vec, cudaStream_t stream) {
+        // Prefetch the vector to the host
+        // std::cout << "Prefetching vector of size " << vec.size() << " to host" << std::endl;
+        #if !defined(_WIN32) && !defined(__WSL2__)
+            cudaMemPrefetchAsync(vec.data().get(), vec.size() * sizeof(T), cudaCpuDeviceId, stream);
+            cudaStreamSynchronize(stream);
+        #endif
+    }
+
 
 
     template <typename T>
