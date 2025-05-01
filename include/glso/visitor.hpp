@@ -56,20 +56,9 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
     const auto vertex_id = ids[factor_id*N + I];
 
     // printf("CEAD: Thread %d, Vertex %d, Factor %d\n", idx, vertex_id, factor_id);
-
-    // #pragma unroll
-    // for (int i = 0; i < sizeof...(Is); i++) {
-    //     size_t local_id = ids[factor_id * N + i];
-    //     std::get<i>(args) += local_id;
-    // }
     
-    Dual<T> local_obs[M];
+    const T* local_obs = obs + factor_id * M;
     Dual<T> local_error[E];
-
-    #pragma unroll
-    for (int i = 0; i < M; ++i) {
-        local_obs[i] = obs[factor_id * M + i];
-    }
 
     #pragma unroll
     for (int i = 0; i < E; ++i) {
@@ -135,31 +124,12 @@ void compute_error_kernel(const T* obs, T* error, size_t* ids, const size_t num_
     constexpr auto vertex_sizes = F::get_vertex_sizes();
     const auto factor_id = idx;
 
-    // #pragma unroll
-    // for (int i = 0; i < sizeof...(Is); i++) {
-    //     size_t local_id = ids[factor_id*N+i];
-    //     args[i] += local_id*vertex_sizes[i];
-    // }
-    
-    T local_obs[M];
-    T local_error[E];
 
-    #pragma unroll
-    for (int i = 0; i < M; ++i) {
-        local_obs[i] = obs[factor_id * M + i];
-    }
-
-    #pragma unroll
-    for (int i = 0; i < E; ++i) {
-        local_error[i] = error[factor_id * E + i];
-    }
-
+    const T* local_obs = obs + factor_id * M;
+    T* local_error = error + factor_id * E;
 
     auto v = cuda::std::make_tuple(std::array<T, vertex_sizes[Is]>{}...);
-    // auto copy_vertices = [&v, &vertex_sizes](auto&&... ptrs) {
-    //     ((device_copy<T, vertex_sizes[Is]>(ptrs, cuda::std::get<Is>(v).data())), ...);
-    // };
-    // ids += factor_id*N;
+
     (std::get<Is>(args) += ids[factor_id*N+Is], ...);
 
     auto copy_vertices = [&v, &ids, &vertex_sizes, &args](auto&&... ptrs) {
