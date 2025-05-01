@@ -34,21 +34,21 @@ namespace glso {
 
 
 template <typename VertexType, typename State, typename Descriptor, typename T>
-__global__ void backup_state_kernel(const VertexType* vertices, State* dst, const size_t num_vertices) {
+__global__ void backup_state_kernel(const VertexType* vertices, State* dst, const uint32_t* fixed, const size_t num_vertices) {
         
     const size_t vertex_id = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (vertex_id >= num_vertices) return;
+    if (vertex_id >= num_vertices || is_fixed(fixed, vertex_id)) return;
 
     dst[vertex_id] = vertices[vertex_id].get_state();
 }
 
 template <typename VertexType, typename State, typename Descriptor, typename T>
-__global__ void set_state_kernel(VertexType* vertices, const State* src, const size_t num_vertices) {
+__global__ void set_state_kernel(VertexType* vertices, const State* src, const uint32_t* fixed, const size_t num_vertices) {
         
     const size_t vertex_id = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (vertex_id >= num_vertices) return;
+    if (vertex_id >= num_vertices || is_fixed(fixed, vertex_id)) return;
 
     vertices[vertex_id].set_state(src[vertex_id]);
 }
@@ -99,6 +99,7 @@ public:
     std::unordered_map<size_t, size_t> global_to_local_map;
     thrust::host_vector<size_t> local_to_hessian_offsets;
     thrust::device_vector<size_t> hessian_ids;
+    thrust::universal_vector<uint32_t> fixed_mask;
 
     static constexpr size_t dim = V::dimension;
     // static constexpr size_t dim = V::dimension;
@@ -149,7 +150,7 @@ public:
         const auto num_blocks = (num_threads + block_size - 1) / block_size;
         backup_state.resize(num_vertices);
         
-        backup_state_kernel<VertexType, S, Derived<T>, T><<<num_blocks, block_size>>>(vertices, backup_state.data().get(), num_vertices);
+        backup_state_kernel<VertexType, S, Derived<T>, T><<<num_blocks, block_size>>>(vertices, backup_state.data().get(), fixed_mask.data().get(), num_vertices);
     }
 
     virtual void restore_parameters() override {
@@ -159,7 +160,7 @@ public:
         const int num_threads = num_vertices;
         const int block_size = 256;
         const auto num_blocks = (num_threads + block_size - 1) / block_size;
-        set_state_kernel<VertexType, S, Derived<T>, T><<<num_blocks, block_size>>>(vertices, backup_state.data().get(), num_vertices);
+        set_state_kernel<VertexType, S, Derived<T>, T><<<num_blocks, block_size>>>(vertices, backup_state.data().get(), fixed_mask.data().get(), num_vertices);
     }
 
     // virtual void set_parameters(const T* src) override {
@@ -203,16 +204,34 @@ public:
         // TODO: Find a better way to get the dimension
         // const auto dim = dynamic_cast<const Derived<T>*>(this)->dimension();
         // return x_device.size()/dim;
-        return x_device.size();
+        return x_host.size();
     }
 
-    void add_vertex(const size_t id, const VertexType& vertex) {
+    void add_vertex(const size_t id, const VertexType& vertex, const bool fixed = false) {
         // TODO: Find a better way to get the dimension
         // const auto dim = dynamic_cast<Derived<T>*>(this)->dimension();        
         // x_host.insert(x_host.end(), value, value+dim);
         x_host.push_back(static_cast<const VertexType&>(vertex));
         global_to_local_map.insert({id, (x_host.size()) - 1});
         local_to_hessian_offsets.push_back(0); // Initialize to 0
+
+        // Update fixed mask
+        if ((count() + 31) / 32 > fixed_mask.size()) {
+            fixed_mask.push_back(static_cast<const uint32_t>(fixed));
+        }
+        else {
+            fixed_mask.back() |= (static_cast<const uint32_t>(fixed) << (count() % 32));
+        }
+    }
+
+    void set_fixed(const size_t id, const bool fixed) {
+        const auto local_id = global_to_local_map.at(id);
+        if (fixed) {
+            fixed_mask[local_id / 32] |= (1 << (local_id % 32));
+        }
+        else {
+            fixed_mask[local_id / 32] &= ~(1 << (local_id % 32));
+        }
     }
 
     VertexType get_vertex(const size_t id) {

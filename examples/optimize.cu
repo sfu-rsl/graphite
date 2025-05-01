@@ -108,6 +108,9 @@ int main(void) {
         factor_desc->add_factor({vertex_id}, {radius}, nullptr);
     }
 
+    // Set the last vertex as fixed
+    points->set_fixed(num_vertices - 1, true);
+
     // Optimize
     constexpr size_t iterations = 10;
     Optimizer opt;

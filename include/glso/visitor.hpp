@@ -44,11 +44,16 @@ namespace glso {
         }
     }
 
+__device__ bool is_fixed(const uint32_t* fixed, const size_t vertex_id) {
+    const uint32_t mask = 1 << (vertex_id % 32);
+    return (fixed[vertex_id / 32] & mask);
+}
+
 template<typename T, typename Descriptor, typename V>
-__global__ void apply_update_kernel(V* vertices, const T* delta_x, const size_t * hessian_ids, const size_t num_threads) {
+__global__ void apply_update_kernel(V* vertices, const T* delta_x, const size_t * hessian_ids, const uint32_t* fixed, const size_t num_threads) {
     int vertex_id = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (vertex_id >= num_threads) {
+    if (vertex_id >= num_threads || is_fixed(fixed, vertex_id)) {
         return;
     }
 
@@ -690,6 +695,7 @@ public:
             v->vertices(),
             delta_x.data().get(),
             v->get_hessian_ids(),
+            thrust::raw_pointer_cast(v->fixed_mask.data()),
             num_threads
         );
         // cudaDeviceSynchronize();
