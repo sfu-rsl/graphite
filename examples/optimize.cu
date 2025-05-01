@@ -20,9 +20,10 @@ class Point {
 
 
         using State = Point<T>;
+        constexpr static size_t dimension = 2;
 
 
-        SOLVER_FUNC std::array<T, 2> parameters() const {
+        SOLVER_FUNC std::array<T, dimension> parameters() const {
             return {x, y};
         }
     
@@ -44,7 +45,7 @@ class Point {
 };
 
 template<typename T>
-class PointSet: public VertexDescriptor<T, 2, Point<T>, PointSet> {};
+class PointSet: public VertexDescriptor<T, Point<T>, PointSet> {};
 
 template <typename T>
 class CircleFactor : public AutoDiffFactorDescriptor<T, 1, 1, CircleFactor, PointSet<T>> {

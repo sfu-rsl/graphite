@@ -76,7 +76,7 @@ public:
 
 };
 
-template <typename T, int D, typename V, template <typename> class Derived>
+template <typename T, typename V, template <typename> class Derived>
 class VertexDescriptor : public BaseVertexDescriptor<T> {
 public:
 using VertexType = V;
@@ -100,7 +100,7 @@ public:
     thrust::host_vector<size_t> local_to_hessian_offsets;
     thrust::device_vector<size_t> hessian_ids;
 
-    static constexpr size_t dim = D;
+    static constexpr size_t dim = V::dimension;
     // static constexpr size_t dim = V::dimension;
 
 public:
