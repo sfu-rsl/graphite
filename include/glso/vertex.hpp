@@ -73,6 +73,8 @@ public:
     virtual const std::unordered_map<size_t, size_t> & get_global_map() const = 0;
     virtual const size_t* get_hessian_ids() const = 0;
     virtual void set_hessian_column(size_t global_id, size_t hessian_column) = 0;
+    virtual bool is_fixed(const size_t id) const = 0;
+    virtual const uint32_t* get_fixed_mask() const = 0;
 
 };
 
@@ -232,6 +234,15 @@ public:
         else {
             fixed_mask[local_id / 32] &= ~(1 << (local_id % 32));
         }
+    }
+
+    bool is_fixed(const size_t id) const override {
+        const auto local_id = global_to_local_map.at(id);
+        return (fixed_mask[local_id / 32] & (1 << (local_id % 32))) != 0;
+    }
+
+    const uint32_t* get_fixed_mask() const override {
+        return fixed_mask.data().get();
     }
 
     VertexType get_vertex(const size_t id) {

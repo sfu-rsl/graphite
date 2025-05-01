@@ -120,9 +120,11 @@ class Graph {
         for (const auto& entry : global_to_local_combined) {
             // hessian_to_local_map.insert({hessian_column, entry.second});
             // hessian_offset.insert({hessian_column, offset});
-            vertex_descriptors[entry.second.first]->set_hessian_column(entry.first, hessian_column);
-            hessian_column += vertex_descriptors[entry.second.first]->dimension();
-            block_column++;
+            if (!vertex_descriptors[entry.second.first]->is_fixed(entry.first)) {
+                vertex_descriptors[entry.second.first]->set_hessian_column(entry.first, hessian_column);
+                hessian_column += vertex_descriptors[entry.second.first]->dimension();
+                block_column++;
+            }
         }
         // // Assign global offset into error vector for each factor
         // size_t error_offset = 0;

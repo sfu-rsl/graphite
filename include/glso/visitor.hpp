@@ -3,29 +3,6 @@
 
 namespace glso {
 
-    // template <typename T>
-    // __device__ void device_copy(const T* src, const T* src_end, T* dst) {
-    //     while (src != src_end) {
-    //         *dst++ = *src++;
-    //     }
-    // }
-
-    // template <typename T, size_t D>
-    // __device__ void device_copy(const T* src, T* dst) {
-    //     #pragma unroll
-    //     for (size_t i = 0; i < D; i++) {
-    //         dst[i] = src[i];
-    //     }
-    // }
-
-    // template <typename T, size_t D>
-    // __device__ void real_to_dual(const T* src, Dual<T>* dst) {
-    //     #pragma unroll
-    //     for (size_t i = 0; i < D; i++) {
-    //         dst[i] = Dual<T>(src[i]);
-    //     }
-    // }
-
     template <typename VPtr, typename T, size_t D>
     __device__ void device_copy(const VPtr v, T* dst) {
         const std::array<T, D> src = v->parameters();
@@ -44,10 +21,10 @@ namespace glso {
         }
     }
 
-__device__ bool is_fixed(const uint32_t* fixed, const size_t vertex_id) {
-    const uint32_t mask = 1 << (vertex_id % 32);
-    return (fixed[vertex_id / 32] & mask);
-}
+    __device__ bool is_fixed(const uint32_t* fixed, const size_t vertex_id) {
+        const uint32_t mask = 1 << (vertex_id % 32);
+        return (fixed[vertex_id / 32] & mask);
+    }
 
 template<typename T, typename Descriptor, typename V>
 __global__ void apply_update_kernel(V* vertices, const T* delta_x, const size_t * hessian_ids, const uint32_t* fixed, const size_t num_threads) {
@@ -66,7 +43,7 @@ __global__ void apply_update_kernel(V* vertices, const T* delta_x, const size_t 
 
 template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, typename VT, std::size_t... Is>
 __global__
-void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, VT args, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
+void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, VT args, std::array<T*, sizeof...(Is)> jacs, const uint32_t* fixed, std::index_sequence<Is...>) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= num_threads) {
@@ -135,6 +112,10 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
     }
 
     // This should write one Jacobian column per dimension per vertex for each factor
+    // We only need a Jacobian if the vertex is not fixed
+    if (is_fixed(fixed, vertex_id)) {
+        return;
+    }
     #pragma unroll
     for(size_t i = 0; i < E; ++i) {
         jacs[I][j_size*factor_id + col_offset + i] = local_error[i].dual;
@@ -242,7 +223,7 @@ void compute_b_kernel_no_precision_matrix(T* b, T* error, size_t* ids, const siz
 // Include precision matrix
 template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
 __global__ 
-void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, T* jacs, const T* pmat, std::index_sequence<Is...>) {
+void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, T* jacs, const uint32_t* fixed, const T* pmat, std::index_sequence<Is...>) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= num_threads) {
@@ -254,6 +235,10 @@ void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, co
     
     // Stored as E x d col major, but we need to transpose it to d x E, where d is the vertex size
     const size_t factor_id = idx / vertex_sizes[I];
+    const size_t local_id = ids[factor_id*N+I]; // N is the number of vertices involved in the factor
+    if (is_fixed(fixed, local_id)) {
+        return;
+    }
     const auto jacobian_offset = factor_id * jacobian_size;
     const auto error_offset = factor_id*E;
     // constexpr auto col_offset = I*E; // for untransposed J
@@ -279,12 +264,6 @@ void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, co
         value -= jacs[jacobian_offset + col_offset + i] * x2[i];
     }
 
-    // #pragma unroll
-    // for (int i = 0; i < E; i++) {
-    //     value -= jacs[I][jacobian_offset + col_offset + i] * error[error_offset + i];
-    // }
-
-    size_t local_id = ids[factor_id*N+I]; // N is the number of vertices involved in the factor
     const auto hessian_offset = hessian_ids[local_id]; // each vertex has a hessian_ids array
     
     // printf("Hessian offset: %u\n", hessian_offset);
@@ -301,9 +280,9 @@ void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, co
 // In total we should hae E*num_factors threads?
 template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
 __global__ 
-void compute_Jv_kernel(T*y, T* x, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
+void compute_Jv_kernel(T*y, T* x, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, const T* jacs, const uint32_t* fixed, std::index_sequence<Is...>) {
     
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= num_threads) {
         return;
@@ -314,12 +293,15 @@ void compute_Jv_kernel(T*y, T* x, T* error, size_t* ids, const size_t* hessian_i
     
     // Each J block is stored as E x d col major, where d is the vertex size
     const size_t factor_id = idx / E;
+    const size_t local_id = ids[factor_id*N+I]; // N is the number of vertices involved in the factor
+    if (is_fixed(fixed, local_id)) {
+        return;
+    }
     const auto jacobian_offset = factor_id * jacobian_size;
 
     T value = 0;
     constexpr auto d = vertex_sizes[I];
 
-    size_t local_id = ids[factor_id*N+I]; // N is the number of vertices involved in the factor
     const auto hessian_offset = hessian_ids[local_id]; // each vertex has a hessian_ids array
     const auto row_offset = (idx % E);
     // Adding i*E skips to the next column
@@ -327,7 +309,7 @@ void compute_Jv_kernel(T*y, T* x, T* error, size_t* ids, const size_t* hessian_i
     // it's the offset into the r vector
     #pragma unroll
     for (int i = 0; i < d; i++) {
-        value += jacs[I][jacobian_offset + row_offset + i*E] * x[hessian_offset + i];
+        value += jacs[jacobian_offset + row_offset + i*E] * x[hessian_offset + i];
     }
     
     atomicAdd(&y[residual_offset + idx], value);
@@ -376,8 +358,8 @@ void compute_Jtv_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, cons
 // Compute J^T * P * x where P is the precision matrix
 template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
 __global__ 
-void compute_JtPv_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, const size_t num_threads, T* jacs, T* pmat, std::index_sequence<Is...>) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+void compute_JtPv_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, const size_t num_threads, const T* jacs, const uint32_t* fixed, T* pmat, std::index_sequence<Is...>) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= num_threads) {
         return;
@@ -388,6 +370,10 @@ void compute_JtPv_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, con
     
     // Stored as E x d col major, but we need to transpose it to d x E, where d is the vertex size
     const size_t factor_id = idx / vertex_sizes[I];
+    const size_t local_id = ids[factor_id*N+I]; // N is the number of vertices involved in the factor
+    if (is_fixed(fixed, local_id)) {
+        return;
+    }
     const auto jacobian_offset = factor_id * jacobian_size;
     const auto error_offset = factor_id*E;
     const auto col_offset = (idx % vertex_sizes[I])*E; // for untransposed J
@@ -413,7 +399,6 @@ void compute_JtPv_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, con
         value += jacs[jacobian_offset + col_offset + i] * x2[i];
     }
 
-    size_t local_id = ids[factor_id*N+I]; // N is the number of vertices involved in the factor
     const auto hessian_offset = hessian_ids[local_id]; // each vertex has a hessian_ids array
     
     atomicAdd(&y[hessian_offset + (idx % vertex_sizes[I])], value);
@@ -449,6 +434,7 @@ void launch_kernel_autodiff(F* f, std::array<const size_t*, F::get_num_vertices(
                 num_threads,
                 verts,
                 jacs,
+                f->vertex_descriptors[Is]->get_fixed_mask(),
                 std::make_index_sequence<num_vertices>{});
             }()), ...);
         }
@@ -474,6 +460,7 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
                 hessian_ids[Is],
                 num_threads,
                 jacs[Is],
+                f->vertex_descriptors[Is]->get_fixed_mask(),
                 f->precision_matrices.data().get(),
                 std::make_index_sequence<num_vertices>{});
             }()), ...);
@@ -502,6 +489,7 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
                         hessian_ids[Is],
                         num_threads,
                         jacs[Is],
+                        f->vertex_descriptors[Is]->get_fixed_mask(),
                         f->precision_matrices.data().get(),
                         std::make_index_sequence<num_vertices>{});
                     }()), ...);
@@ -528,7 +516,8 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
                         f->device_ids.data().get(),
                         hessian_ids[Is],
                         num_threads,
-                        jacs,
+                        jacs[Is],
+                        f->vertex_descriptors[Is]->get_fixed_mask(),
                         std::make_index_sequence<num_vertices>{});
                     }()), ...);
                 }
