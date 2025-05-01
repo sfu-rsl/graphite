@@ -54,7 +54,8 @@ __global__ void apply_update_kernel(V* vertices, const T* delta_x, const size_t 
 
     const T* delta = delta_x + hessian_ids[vertex_id];
 
-    Descriptor::update(vertices[vertex_id], delta);
+    // Descriptor::update(vertices[vertex_id], delta);
+    vertices[vertex_id].update(delta);
 
 }
 

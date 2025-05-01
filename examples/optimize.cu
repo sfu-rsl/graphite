@@ -18,77 +18,33 @@ class Point {
 
         Point(T x, T y) : x(x), y(y) {}
 
-        __host__ __device__ std::array<T, 2> parameters() const {
-            return std::array<T, 2>{x, y};
+
+        using State = Point<T>;
+
+
+        SOLVER_FUNC std::array<T, 2> parameters() const {
+            return {x, y};
+        }
+    
+        SOLVER_FUNC void update(const T* delta) {
+            x += delta[0];
+            y += delta[1];
+        }
+    
+        SOLVER_FUNC State get_state() const {
+            return *this;
+        }
+    
+        SOLVER_FUNC void set_state(const State& state) {
+            x = state.x;
+            y = state.y;
         }
 
+
 };
-
-// template<typename T>
-// class Point: public BaseVertex<T, 2>{
-//     private:
-//     T x;
-//     T y;
-
-//     public:
- 
-//     Point() : x(0), y(0) {}
-
-//     Point(T x, T y): x(x), y(y) {}
-
-//     __host__ __device__ virtual void update(const T* delta) override {
-//         x += delta[0]; 
-//         y += delta[1];
-//     }
-
-//     __host__ __device__ virtual std::array<T, 2> params() const override {
-//         // out[0] = x;
-//         // out[1] = y;
-//         return std::array<T, 2>{x, y};
-//     }
-
-//     __host__ __device__ virtual void set_params(const T* params) override {
-//         x = params[0];
-//         y = params[1];
-//     }
-
-// };
-
-// template<typename T>
-// class Point: public VertexDescriptor<T, 2, Point> {
-//     public:
-
-//     __device__ static void update(T* x, const T* delta) {
-//         x[0] += delta[0]; 
-//         x[1] += delta[1];
-//     }
-
-// };
 
 template<typename T>
-class PointSet: public VertexDescriptor<T, 2, Point<T>, Point<T>, PointSet> {
-    public:
-
-    // using VertexType = Point<T>;
-
-    __host__ __device__ static void update(Point<T> & vertex, const T* delta) {
-        vertex.x += delta[0];
-        vertex.y += delta[1];
-    }
-
-    // __host__ __device__ static std::array<T, 2> parameters(Point<T>& vertex) {
-    //     return std::array<T, 2>{vertex.x, vertex.y};
-    // }
-
-    __host__ __device__ static Point<T> get_state(const Point<T>& vertex) {
-        return vertex;
-    }
-
-    __host__ __device__ static void set_state(Point<T>& vertex, const Point<T>& state) {
-        vertex = state;
-    }
-
-};
+class PointSet: public VertexDescriptor<T, 2, Point<T>, PointSet> {};
 
 template <typename T>
 class CircleFactor : public AutoDiffFactorDescriptor<T, 1, 1, CircleFactor, PointSet<T>> {
@@ -119,7 +75,7 @@ int main(void) {
     PointSet<double>* points = new PointSet<double>();
     graph.add_vertex_descriptor(points);
 
-    const size_t num_vertices = 5000;
+    const size_t num_vertices = 5;
     double center[2] = {0.0, 0.0};
 
     std::random_device rd;
@@ -140,7 +96,7 @@ int main(void) {
         point[0] += n1(gen);
         point[1] += n2(gen);
 
-        // std::cout << "Adding point " << vertex_id << "=(" << point[0] << ", " << point[1] << ") with radius=" << sqrt(point[0]*point[0] + point[1]*point[1]) << std::endl;
+        std::cout << "Adding point " << vertex_id << "=(" << point[0] << ", " << point[1] << ") with radius=" << sqrt(point[0]*point[0] + point[1]*point[1]) << std::endl;
         points->add_vertex(vertex_id, Point(point[0], point[1]));
     }
 
@@ -168,7 +124,7 @@ int main(void) {
         const auto point = points->get_vertex(vertex_id);
         const auto [x, y] = point;
         
-        // std::cout << "Optimized point " << vertex_id << "=(" << x << ", " << y << ") with radius=" << sqrt(x*x + y*y) << std::endl;
+        std::cout << "Optimized point " << vertex_id << "=(" << x << ", " << y << ") with radius=" << sqrt(x*x + y*y) << std::endl;
     }
 
 

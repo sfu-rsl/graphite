@@ -2,24 +2,36 @@
 #include <glso/common.hpp>
 #include <glso/visitor.hpp>
 namespace glso {
-/*
+
+#define SOLVER_FUNC __host__ __device__
+
+
+// template <typename T>
+// struct BaseVertexTraits;
+
 // T is the float type and D is the dimension of the parameterization
-template <typename T, int D>
-class BaseVertex {
-public:
-    virtual ~BaseVertex() {};
+// template <typename T, int D, typename Derived>
+// class BaseVertex {
+// public:
 
-    __host__ __device__ virtual void update(const T* delta) = 0;
-    __host__ __device__ virtual std::array<T, D> params() const = 0;
-    __host__ __device__ virtual void set_params(const T* params) = 0;
+// SOLVER_FUNC void update(const T* delta) {
+//     static_cast<Derived*>(this)->update(delta);
+// }
 
-    static constexpr int dimension = D;
+// SOLVER_FUNC State get_state() const {
+//     return static_cast<const Derived*>(this)->get_state();
+// }
 
-    std::array<T, D> parameters;
+// SOLVER_FUNC void set_state(const State& state) {
+//     static_cast<Derived*>(this)->set_state(state);
+// }
 
-};
+// SOLVER_FUNC State parameters() const {
+//     return static_cast<const Derived*>(this)->parameters();
+// }
 
-*/
+// };
+
 
 template <typename VertexType, typename State, typename Descriptor, typename T>
 __global__ void backup_state_kernel(const VertexType* vertices, State* dst, const size_t num_vertices) {
@@ -27,16 +39,8 @@ __global__ void backup_state_kernel(const VertexType* vertices, State* dst, cons
     const size_t vertex_id = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (vertex_id >= num_vertices) return;
-    
-    // const auto params = vertices[vertex_id].params();
-    // const auto params = Descriptor::params(vertices[vertex_id]);
-    dst[vertex_id] = Descriptor::get_state(vertices[vertex_id]);
 
-    // const size_t dst_offset = vertex_id * VertexType::dimension;
-
-    // for (size_t i = 0; i < VertexType::dimension; ++i) {
-    //     dst[dst_offset + i] = params[i];
-    // }
+    dst[vertex_id] = vertices[vertex_id].get_state();
 }
 
 template <typename VertexType, typename State, typename Descriptor, typename T>
@@ -46,14 +50,7 @@ __global__ void set_state_kernel(VertexType* vertices, const State* src, const s
 
     if (vertex_id >= num_vertices) return;
 
-    Descriptor::set_state(vertices[vertex_id], src[vertex_id]);
-    
-    // const size_t src_offset = vertex_id * VertexType::dimension;
-
-    // for (size_t i = 0; i < VertexType::dimension; ++i) {
-    //     vertices[vertex_id].set_params(src[src_offset + i]);
-    // }
-
+    vertices[vertex_id].set_state(src[vertex_id]);
 }
 
 template <typename T>
@@ -79,11 +76,12 @@ public:
 
 };
 
-template <typename T, int D, typename V, typename S, template <typename> class Derived>
+template <typename T, int D, typename V, template <typename> class Derived>
 class VertexDescriptor : public BaseVertexDescriptor<T> {
 public:
-// using VertexType = typename Derived<T>::VertexType;
 using VertexType = V;
+using S = typename V::State;
+
 
     
 private:
@@ -93,7 +91,6 @@ private:
 
     thrust::device_vector<VertexType> x_device;
     thrust::host_vector<VertexType> x_host;
-
     thrust::device_vector<S> backup_state;
 
 public:
