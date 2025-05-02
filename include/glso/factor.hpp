@@ -39,7 +39,7 @@ public:
 
     virtual void to_device() = 0;
 
-    virtual T chi2() = 0;
+    virtual T chi2(GraphVisitor<T>& visitor) = 0;
 
 };
 
@@ -65,6 +65,8 @@ public:
     thrust::universal_vector<T> device_obs;
     thrust::device_vector<T> residuals;
     thrust::universal_vector<T> precision_matrices;
+
+    thrust::universal_vector<T> chi2_vec;
 
     void visit_error(GraphVisitor<T>& visitor) override {
         visitor.template compute_error<Derived<T>, VDTypes...>(dynamic_cast<Derived<T>*>(this));
@@ -150,6 +152,7 @@ public:
 
         // device_ids = host_ids;
         // device_obs = host_obs;
+        chi2_vec.resize(count());
 
         // prefetch everything
         int cuda_device = 0;
@@ -157,6 +160,7 @@ public:
         cudaGetDevice(&cuda_device);
         prefetch_vector_on_device_async(device_ids, cuda_device, stream);
         prefetch_vector_on_device_async(device_obs, cuda_device, stream);
+        prefetch_vector_on_device_async(chi2_vec, cuda_device, stream);
         // std::cout << "Prefetching factor data to device" << std::endl;
         cudaDeviceSynchronize();
         // Resize and reset residuals
@@ -197,9 +201,11 @@ public:
     }
 
     // TODO: Make this consider kernels and active edges
-    virtual T chi2() override {
-        T chi2 = thrust::inner_product(residuals.begin(), residuals.end(), residuals.begin(), 0.0);
-        return chi2;
+    virtual T chi2(GraphVisitor<T>& visitor) override {
+        // T chi2 = thrust::inner_product(residuals.begin(), residuals.end(), residuals.begin(), 0.0);
+        // return chi2;
+        visitor.template compute_chi2<Derived<T>>(dynamic_cast<Derived<T>*>(this));
+        return thrust::reduce(chi2_vec.begin(), chi2_vec.end(), 0.0, thrust::plus<T>());
     }
 
 };

@@ -375,6 +375,39 @@ void compute_JtPv_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, con
 
 }
 
+template<typename T, size_t E>
+__global__ 
+void compute_chi2_kernel(T* chi2, T* residuals, const size_t num_threads, T* pmat) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx >= num_threads) {
+        return;
+    }
+
+    const auto factor_id = idx;
+    T r2[E] = {0};
+
+    #pragma unroll
+    for (int i = 0; i < E; i++) {
+        #pragma unroll
+        for (int j = 0; j < E; j++) {
+            r2[i] += pmat[factor_id*E*E + i*E + j] * residuals[factor_id*E + j];
+        }
+    }
+
+    #pragma unroll
+
+    T value = 0;
+    #pragma unroll
+    for (int i = 0; i < E; i++) {
+        value += r2[i] * residuals[factor_id*E + i];
+    }
+
+    chi2[factor_id] = value;
+
+}
+
+
 template<typename T>
 class GraphVisitor {
 private:
@@ -560,6 +593,41 @@ public:
             num_threads,
             verts,
             std::make_index_sequence<num_vertices>{});
+
+        cudaDeviceSynchronize();
+
+    }
+
+    template<typename F>
+    void compute_chi2(F* f) {
+        // Then for each vertex, we need to compute the error
+        constexpr auto num_vertices = F::get_num_vertices();
+        constexpr auto vertex_sizes = F::get_vertex_sizes();
+
+        // At this point all necessary data should be on the GPU    
+        auto verts = f->get_vertices();
+        // std::array<T*, num_vertices> verts;
+        // std::array<const size_t*, num_vertices> hessian_ids;
+        // for (int i = 0; i < num_vertices; i++) {
+            // verts[i] = f->vertex_descriptors[i]->x();
+            // hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
+        // }
+
+        
+        constexpr auto observation_dim = F::observation_dim;
+        constexpr auto error_dim = F::error_dim;
+        const auto num_factors = f->count();
+
+        const auto num_threads = num_factors;
+        int threads_per_block = 256;
+        int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+
+        compute_chi2_kernel<T, F::error_dim><<<num_blocks, threads_per_block>>>(
+            f->chi2_vec.data().get(),
+            f->residuals.data().get(),
+            num_threads,
+            f->precision_matrices.data().get()
+        );
 
         cudaDeviceSynchronize();
 

@@ -188,7 +188,7 @@ class Graph {
     T chi2() {
         T chi2 = 0;
         for (auto & factor: factor_descriptors) {
-            chi2 += factor->chi2();
+            chi2 += factor->chi2(visitor);
         }
         return chi2;
     }
