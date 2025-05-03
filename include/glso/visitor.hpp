@@ -376,15 +376,7 @@ void compute_JtPv_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, con
 }
 
 template<typename T, size_t E>
-__global__ 
-void compute_chi2_kernel(T* chi2, T* residuals, const size_t num_threads, T* pmat) {
-    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (idx >= num_threads) {
-        return;
-    }
-
-    const auto factor_id = idx;
+__device__ T compute_chi2(const T* residuals, const T* pmat, const size_t factor_id) {
     T r2[E] = {0};
 
     #pragma unroll
@@ -395,15 +387,24 @@ void compute_chi2_kernel(T* chi2, T* residuals, const size_t num_threads, T* pma
         }
     }
 
-    #pragma unroll
-
     T value = 0;
     #pragma unroll
     for (int i = 0; i < E; i++) {
         value += r2[i] * residuals[factor_id*E + i];
     }
 
-    chi2[factor_id] = value;
+    return value;
+}
+
+template<typename T, size_t E>
+__global__ 
+void compute_chi2_kernel(T* chi2, T* residuals, const size_t num_threads, T* pmat) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx >= num_threads) {
+        return;
+    }
+    chi2[idx] = compute_chi2<T, E>(residuals, pmat, idx);
 
 }
 
