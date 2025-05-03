@@ -4,6 +4,7 @@
 #include <thrust/inner_product.h>
 #include <thrust/universal_vector.h>
 #include <glso/utils.hpp>
+#include <glso/loss.hpp>
 
 namespace glso {
 template<typename T>
@@ -43,7 +44,7 @@ public:
 
 };
 
-template <typename T, int E, int M, template <typename> class Derived, typename... VDTypes>
+template <typename T, int E, int M, template <typename, int> class L, template <typename> class Derived, typename... VDTypes>
 class FactorDescriptor : public BaseFactorDescriptor<T> {
 
 private:
@@ -60,6 +61,7 @@ public:
     std::array<BaseVertexDescriptor<T>*, N> vertex_descriptors;
     using VertexTypesTuple = std::tuple<typename VDTypes::VertexType...>;
     using VertexPointerTuple = std::tuple<typename VDTypes::VertexType*...>;
+    using LossType = L<T, E>;
 
     thrust::universal_vector<size_t> device_ids;
     thrust::universal_vector<T> device_obs;
@@ -67,6 +69,7 @@ public:
     thrust::universal_vector<T> precision_matrices;
 
     thrust::universal_vector<T> chi2_vec;
+    thrust::universal_vector<LossType> loss;
 
     void visit_error(GraphVisitor<T>& visitor) override {
         visitor.template compute_error<Derived<T>, VDTypes...>(dynamic_cast<Derived<T>*>(this));
@@ -103,7 +106,7 @@ public:
         return jacobians.data();
     }
 
-    void add_factor(const std::array<size_t, N>& ids, const std::array<T, M>& obs, const T* precision_matrix) {
+    void add_factor(const std::array<size_t, N>& ids, const std::array<T, M>& obs, const T* precision_matrix, const LossType& loss_func) {
         
         global_ids.insert(global_ids.end(), ids.begin(), ids.end());
         device_obs.insert(device_obs.end(), obs.begin(), obs.end());
@@ -117,6 +120,8 @@ public:
             precision_matrices.insert(precision_matrices.end(), pmat.data(), pmat.data() + precision_matrix_size);
 
         }
+
+        loss.push_back(loss_func);
     }
 
     // TODO: Make this private later
@@ -161,6 +166,7 @@ public:
         prefetch_vector_on_device_async(device_ids, cuda_device, stream);
         prefetch_vector_on_device_async(device_obs, cuda_device, stream);
         prefetch_vector_on_device_async(chi2_vec, cuda_device, stream);
+        prefetch_vector_on_device_async(loss, cuda_device, stream);
         // std::cout << "Prefetching factor data to device" << std::endl;
         cudaDeviceSynchronize();
         // Resize and reset residuals
@@ -213,8 +219,8 @@ public:
 // Templated derived class for AutoDiffFactorDescriptor using CRTP
 // N is the number of vertices involved in the constraint
 // M is the dimension of each observation
-template <typename T, int E, int M, template <typename> class Derived, typename... VDTypes>
-class AutoDiffFactorDescriptor : public FactorDescriptor<T, E, M, Derived, VDTypes...> {
+template <typename T, int E, int M, template <typename, int> class L, template <typename> class Derived, typename... VDTypes>
+class AutoDiffFactorDescriptor : public FactorDescriptor<T, E, M, L, Derived, VDTypes...> {
 public:
     virtual bool use_autodiff() override {
         return true;

@@ -48,7 +48,7 @@ template<typename T>
 class PointSet: public VertexDescriptor<T, Point<T>, PointSet> {};
 
 template <typename T>
-class CircleFactor : public AutoDiffFactorDescriptor<T, 1, 1, CircleFactor, PointSet<T>> {
+class CircleFactor : public AutoDiffFactorDescriptor<T, 1, 1, HuberLoss, CircleFactor, PointSet<T>> {
 public:
 
     template <typename D>
@@ -104,8 +104,11 @@ int main(void) {
     // Create edges
     auto factor_desc = graph.add_factor_descriptor<CircleFactor<double>>(points);
 
+    // const auto loss = DefaultLoss<double, 1>();
+    const auto loss = HuberLoss<double, 1>(200);
+
     for (size_t vertex_id = 0; vertex_id < num_vertices; ++vertex_id) {
-        factor_desc->add_factor({vertex_id}, {radius}, nullptr);
+        factor_desc->add_factor({vertex_id}, {radius}, nullptr, loss);
     }
 
     // Set the last vertex as fixed

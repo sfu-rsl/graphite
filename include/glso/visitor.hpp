@@ -26,6 +26,27 @@ namespace glso {
         return (fixed[vertex_id / 32] & mask);
     }
 
+    template<typename T, size_t E>
+    __device__ T compute_chi2(const T* residuals, const T* pmat, const size_t factor_id) {
+        T r2[E] = {0};
+    
+        #pragma unroll
+        for (int i = 0; i < E; i++) {
+            #pragma unroll
+            for (int j = 0; j < E; j++) {
+                r2[i] += pmat[factor_id*E*E + i*E + j] * residuals[factor_id*E + j];
+            }
+        }
+    
+        T value = 0;
+        #pragma unroll
+        for (int i = 0; i < E; i++) {
+            value += r2[i] * residuals[factor_id*E + i];
+        }
+    
+        return value;
+    }
+
 template<typename T, typename Descriptor, typename V>
 __global__ void apply_update_kernel(V* vertices, const T* delta_x, const size_t * hessian_ids, const uint32_t* fixed, const size_t num_threads) {
     int vertex_id = blockIdx.x * blockDim.x + threadIdx.x;
@@ -191,9 +212,9 @@ void compute_b_kernel_no_precision_matrix(T* b, T* error, size_t* ids, const siz
 }
 
 // Include precision matrix
-template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
+template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, typename L, std::size_t... Is>
 __global__ 
-void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, T* jacs, const uint32_t* fixed, const T* pmat, std::index_sequence<Is...>) {
+void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, T* jacs, const uint32_t* fixed, const T* pmat, const L* loss, std::index_sequence<Is...>) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= num_threads) {
@@ -214,6 +235,9 @@ void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, co
     // constexpr auto col_offset = I*E; // for untransposed J
     const auto col_offset = (idx % vertex_sizes[I])*E; // for untransposed J
 
+    // Use loss kernel
+    const auto chi2 = compute_chi2<T, E>(error, pmat, factor_id);
+    const auto dL = loss[factor_id].loss_derivative(chi2);
 
     T value = 0;
     constexpr auto precision_matrix_size = E*E;
@@ -225,7 +249,7 @@ void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, co
         #pragma unroll
         for (int j = 0; j < E; j++) { // pmat col
             // x2[i] += pmat[precision_offset + i + j*E] * error[error_offset + j]; // col major
-            x2[i] += pmat[precision_offset + i*E + j] * error[error_offset + j]; // row major (use for faster access on symmetrical matrix)
+            x2[i] += dL*pmat[precision_offset + i*E + j] * error[error_offset + j]; // row major (use for faster access on symmetrical matrix)
         }
     }
 
@@ -326,9 +350,9 @@ void compute_Jtv_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, cons
 }
 
 // Compute J^T * P * x where P is the precision matrix
-template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
+template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, typename L, std::size_t... Is>
 __global__ 
-void compute_JtPv_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, const size_t num_threads, const T* jacs, const uint32_t* fixed, T* pmat, std::index_sequence<Is...>) {
+void compute_JtPv_kernel(T* y, const T* x, const T* error, const size_t* ids, const size_t* hessian_ids, const size_t num_threads, const T* jacs, const uint32_t* fixed, const T* pmat, const L* loss, std::index_sequence<Is...>) {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= num_threads) {
@@ -351,6 +375,9 @@ void compute_JtPv_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, con
     constexpr auto precision_matrix_size = E*E;
     const auto precision_offset = factor_id*precision_matrix_size;
 
+    // Use loss kernel
+    const auto chi2 = compute_chi2<T, E>(error, pmat, factor_id);
+    const auto dL = loss[factor_id].loss_derivative(chi2);
 
     T x2[E] = {0};
     // precision matrices are column major (but should be symmetrical?)
@@ -359,7 +386,7 @@ void compute_JtPv_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, con
         #pragma unroll
         for (int j = 0; j < E; j++) { // pmat col
             // x2[i] += pmat[precision_offset + i + j*E] * x[error_offset + j]; // col major
-            x2[i] += pmat[precision_offset + i*E + j] * x[error_offset + j]; // row major
+            x2[i] += dL*pmat[precision_offset + i*E + j] * x[error_offset + j]; // row major
         }
     }
 
@@ -375,36 +402,15 @@ void compute_JtPv_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, con
 
 }
 
-template<typename T, size_t E>
-__device__ T compute_chi2(const T* residuals, const T* pmat, const size_t factor_id) {
-    T r2[E] = {0};
-
-    #pragma unroll
-    for (int i = 0; i < E; i++) {
-        #pragma unroll
-        for (int j = 0; j < E; j++) {
-            r2[i] += pmat[factor_id*E*E + i*E + j] * residuals[factor_id*E + j];
-        }
-    }
-
-    T value = 0;
-    #pragma unroll
-    for (int i = 0; i < E; i++) {
-        value += r2[i] * residuals[factor_id*E + i];
-    }
-
-    return value;
-}
-
-template<typename T, size_t E>
+template<typename T, size_t E, typename L>
 __global__ 
-void compute_chi2_kernel(T* chi2, T* residuals, const size_t num_threads, T* pmat) {
+void compute_chi2_kernel(T* chi2, const T* residuals, const size_t num_threads, const T* pmat, const L* loss) {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= num_threads) {
         return;
     }
-    chi2[idx] = compute_chi2<T, E>(residuals, pmat, idx);
+    chi2[idx] = loss[idx].loss(compute_chi2<T, E>(residuals, pmat, idx));
 
 }
 
@@ -466,6 +472,7 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
                 jacs[Is],
                 f->vertex_descriptors[Is]->get_fixed_mask(),
                 f->precision_matrices.data().get(),
+                f->loss.data().get(),
                 std::make_index_sequence<num_vertices>{});
             }()), ...);
         }
@@ -489,12 +496,14 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
                     compute_JtPv_kernel<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
                         out,
                         in,
+                        f->residuals.data().get(),
                         f->device_ids.data().get(),
                         hessian_ids[Is],
                         num_threads,
                         jacs[Is],
                         f->vertex_descriptors[Is]->get_fixed_mask(),
                         f->precision_matrices.data().get(),
+                        f->loss.data().get(),
                         std::make_index_sequence<num_vertices>{});
                     }()), ...);
                 }
@@ -627,7 +636,8 @@ public:
             f->chi2_vec.data().get(),
             f->residuals.data().get(),
             num_threads,
-            f->precision_matrices.data().get()
+            f->precision_matrices.data().get(),
+            f->loss.data().get()
         );
 
         cudaDeviceSynchronize();

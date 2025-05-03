@@ -219,10 +219,10 @@ public:
 
         // Update fixed mask
         if ((count() + 31) / 32 > fixed_mask.size()) {
-            fixed_mask.push_back(static_cast<const uint32_t>(fixed));
+            fixed_mask.push_back(static_cast<uint32_t>(fixed));
         }
         else {
-            fixed_mask.back() |= (static_cast<const uint32_t>(fixed) << (count() % 32));
+            fixed_mask.back() |= (static_cast<uint32_t>(fixed) << (count() % 32));
         }
     }
 
