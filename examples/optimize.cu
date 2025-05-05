@@ -48,18 +48,25 @@ template<typename T>
 class PointSet: public VertexDescriptor<T, Point<T>, PointSet> {};
 
 using ObsType = double;
+using ConstraintData = unsigned char;
 template <typename T>
-class CircleFactor : public AutoDiffFactorDescriptor<T, 1, ObsType, HuberLoss, CircleFactor, PointSet<T>> {
+class CircleFactor : public AutoDiffFactorDescriptor<T, 1, ObsType, ConstraintData, HuberLoss, CircleFactor, PointSet<T>> {
 public:
 
     template <typename D, typename M>
-    __device__ static void error(const D* point, const M* obs, D* error, const std::tuple<Point<T>*> & vertices) {
-        D x = point[0];
-        D y = point[1];
-        D r = obs[0];
+    __device__ static void error(
+        const D* point, 
+        const M* obs, 
+        D* error, 
+        const std::tuple<Point<T>*> & vertices, 
+        const ConstraintData* data) {
+            
+            D x = point[0];
+            D y = point[1];
+            D r = obs[0];
 
-        error[0] = x*x + y*y - r*r;
-    }
+            error[0] = x*x + y*y - r*r;
+        }
 };
 } // namespace glso
 
@@ -109,7 +116,7 @@ int main(void) {
     const auto loss = HuberLoss<double, 1>(200);
 
     for (size_t vertex_id = 0; vertex_id < num_vertices; ++vertex_id) {
-        factor_desc->add_factor({vertex_id}, {radius}, nullptr, loss);
+        factor_desc->add_factor({vertex_id}, {radius}, nullptr, 0, loss);
     }
 
     // Set the last vertex as fixed

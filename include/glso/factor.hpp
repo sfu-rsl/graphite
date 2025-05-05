@@ -44,7 +44,7 @@ public:
 
 };
 
-template <typename T, int E, typename M, template <typename, int> class L, template <typename> class Derived, typename... VDTypes>
+template <typename T, int E, typename M, typename C, template <typename, int> class L, template <typename> class Derived, typename... VDTypes>
 class FactorDescriptor : public BaseFactorDescriptor<T> {
 
 private:
@@ -61,12 +61,14 @@ public:
     using VertexTypesTuple = std::tuple<typename VDTypes::VertexType...>;
     using VertexPointerTuple = std::tuple<typename VDTypes::VertexType*...>;
     using ObservationType = M;
+    using ConstraintDataType = C;
     using LossType = L<T, E>;
 
     thrust::universal_vector<size_t> device_ids;
     thrust::universal_vector<M> device_obs;
     thrust::device_vector<T> residuals;
     thrust::universal_vector<T> precision_matrices;
+    thrust::universal_vector<C> data; 
 
     thrust::universal_vector<T> chi2_vec;
     thrust::universal_vector<LossType> loss;
@@ -106,7 +108,7 @@ public:
         return jacobians.data();
     }
 
-    void add_factor(const std::array<size_t, N>& ids, const M& obs, const T* precision_matrix, const LossType& loss_func) {
+    void add_factor(const std::array<size_t, N>& ids, const M& obs, const T* precision_matrix, const C& constraint_data, const LossType& loss_func) {
         
         global_ids.insert(global_ids.end(), ids.begin(), ids.end());
         device_obs.push_back(obs);
@@ -121,6 +123,7 @@ public:
 
         }
 
+        data.push_back(constraint_data);
         loss.push_back(loss_func);
     }
 
@@ -166,6 +169,7 @@ public:
         prefetch_vector_on_device_async(device_ids, cuda_device, stream);
         prefetch_vector_on_device_async(device_obs, cuda_device, stream);
         prefetch_vector_on_device_async(chi2_vec, cuda_device, stream);
+        prefetch_vector_on_device_async(data, cuda_device, stream);
         prefetch_vector_on_device_async(loss, cuda_device, stream);
         // std::cout << "Prefetching factor data to device" << std::endl;
         cudaDeviceSynchronize();
@@ -219,8 +223,8 @@ public:
 // Templated derived class for AutoDiffFactorDescriptor using CRTP
 // N is the number of vertices involved in the constraint
 // M is the dimension of each observation
-template <typename T, int E, typename M, template <typename, int> class L, template <typename> class Derived, typename... VDTypes>
-class AutoDiffFactorDescriptor : public FactorDescriptor<T, E, M, L, Derived, VDTypes...> {
+template <typename T, int E, typename M, typename C, template <typename, int> class L, template <typename> class Derived, typename... VDTypes>
+class AutoDiffFactorDescriptor : public FactorDescriptor<T, E, M, C, L, Derived, VDTypes...> {
 public:
     virtual bool use_autodiff() override {
         return true;

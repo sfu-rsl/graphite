@@ -64,7 +64,7 @@ __global__ void apply_update_kernel(V* vertices, const T* delta_x, const size_t 
 
 template<typename T, size_t I, size_t N, typename M, size_t E, typename F, typename VT, std::size_t... Is>
 __global__
-void compute_error_kernel_autodiff(const M* obs, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, VT args, std::array<T*, sizeof...(Is)> jacs, const uint32_t* fixed, std::index_sequence<Is...>) {
+void compute_error_kernel_autodiff(const M* obs, T* error, const typename F::ConstraintDataType* constraint_data, size_t* ids, const size_t* hessian_ids, const size_t num_threads, VT args, std::array<T*, sizeof...(Is)> jacs, const uint32_t* fixed, std::index_sequence<Is...>) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= num_threads) {
@@ -80,6 +80,7 @@ void compute_error_kernel_autodiff(const M* obs, T* error, size_t* ids, const si
     
     const M* local_obs = obs + factor_id;
     Dual<T> local_error[E];
+    const typename F::ConstraintDataType* local_data = constraint_data + factor_id;
 
     #pragma unroll
     for (int i = 0; i < E; ++i) {
@@ -100,7 +101,7 @@ void compute_error_kernel_autodiff(const M* obs, T* error, size_t* ids, const si
 
     cuda::std::get<I>(v)[idx % vertex_sizes[I]].dual = static_cast<T>(1);
 
-    F::error(cuda::std::get<Is>(v).data()..., local_obs, local_error, args);
+    F::error(cuda::std::get<Is>(v).data()..., local_obs, local_error, args, local_data);
 
 
     constexpr auto j_size = vertex_sizes[I]*E;
@@ -135,7 +136,7 @@ void compute_error_kernel_autodiff(const M* obs, T* error, size_t* ids, const si
 // TODO: Make this more efficient and see if code can be shared with the autodiff kernel
 template<typename T, size_t N, typename M, size_t E, typename F, typename VT, std::size_t... Is>
 __global__
-void compute_error_kernel(const M* obs, T* error, size_t* ids, const size_t num_threads, VT args, std::index_sequence<Is...>) {
+void compute_error_kernel(const M* obs, T* error, const typename F::ConstraintDataType* constraint_data, size_t* ids, const size_t num_threads, VT args, std::index_sequence<Is...>) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= num_threads) {
@@ -148,6 +149,7 @@ void compute_error_kernel(const M* obs, T* error, size_t* ids, const size_t num_
 
     const M* local_obs = obs + factor_id;
     T* local_error = error + factor_id * E;
+    const typename F::ConstraintDataType* local_data = constraint_data + factor_id;
 
     auto v = cuda::std::make_tuple(std::array<T, vertex_sizes[Is]>{}...);
 
@@ -159,7 +161,7 @@ void compute_error_kernel(const M* obs, T* error, size_t* ids, const size_t num_
 
     std::apply(copy_vertices, args);
 
-    F::error(cuda::std::get<Is>(v).data()..., local_obs, local_error, args);
+    F::error(cuda::std::get<Is>(v).data()..., local_obs, local_error, args, local_data);
 
 
     #pragma unroll
@@ -439,6 +441,7 @@ void launch_kernel_autodiff(F* f, std::array<const size_t*, F::get_num_vertices(
             compute_error_kernel_autodiff<T, Is, num_vertices, typename F::ObservationType, F::error_dim, F, typename F::VertexPointerTuple><<<num_blocks, threads_per_block>>>(
                 f->device_obs.data().get(),
                 f->residuals.data().get(),
+                f->data.data().get(),
                 f->device_ids.data().get(),
                 hessian_ids[Is],
                 num_threads,
@@ -596,6 +599,7 @@ public:
         compute_error_kernel<T, num_vertices, typename F::ObservationType, F::error_dim, F, typename F::VertexPointerTuple><<<num_blocks, threads_per_block>>>(
             f->device_obs.data().get(),
             f->residuals.data().get(),
+            f->data.data().get(),
             f->device_ids.data().get(),
             num_threads,
             verts,
