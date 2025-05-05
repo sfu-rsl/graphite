@@ -108,7 +108,21 @@ public:
         return jacobians.data();
     }
 
-    void add_factor(const std::array<size_t, N>& ids, const M& obs, const T* precision_matrix, const C& constraint_data, const LossType& loss_func) {
+    void reserve(size_t size) {
+        global_ids.reserve(size);
+        device_ids.reserve(size);
+        device_obs.reserve(size);
+        precision_matrices.reserve(size*error_dim*error_dim);
+        data.reserve(size);
+        loss.reserve(size);
+        chi2_vec.reserve(size);
+        residuals.reserve(size*error_dim);
+        for (size_t i = 0; i < N; i++) {
+            jacobians[i].data.reserve(size*error_dim*vertex_descriptors[i]->dimension());
+        }
+    }
+
+    size_t add_factor(const std::array<size_t, N>& ids, const M& obs, const T* precision_matrix, const C& constraint_data, const LossType& loss_func) {
         
         global_ids.insert(global_ids.end(), ids.begin(), ids.end());
         device_obs.push_back(obs);
@@ -125,6 +139,7 @@ public:
 
         data.push_back(constraint_data);
         loss.push_back(loss_func);
+        return count() - 1;
     }
 
     // TODO: Make this private later

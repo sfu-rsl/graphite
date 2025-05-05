@@ -111,6 +111,7 @@ int main(void) {
 
     // Create edges
     auto factor_desc = graph.add_factor_descriptor<CircleFactor<double>>(points);
+    factor_desc->reserve(num_vertices);
 
     // const auto loss = DefaultLoss<double, 1>();
     const auto loss = HuberLoss<double, 1>(200);
