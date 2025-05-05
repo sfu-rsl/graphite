@@ -44,7 +44,7 @@ public:
 
 };
 
-template <typename T, int E, int M, template <typename, int> class L, template <typename> class Derived, typename... VDTypes>
+template <typename T, int E, typename M, template <typename, int> class L, template <typename> class Derived, typename... VDTypes>
 class FactorDescriptor : public BaseFactorDescriptor<T> {
 
 private:
@@ -55,16 +55,16 @@ private:
 public:
 
     static constexpr size_t N = sizeof...(VDTypes);
-    static constexpr size_t observation_dim = M;
     static constexpr size_t error_dim = E;
 
     std::array<BaseVertexDescriptor<T>*, N> vertex_descriptors;
     using VertexTypesTuple = std::tuple<typename VDTypes::VertexType...>;
     using VertexPointerTuple = std::tuple<typename VDTypes::VertexType*...>;
+    using ObservationType = M;
     using LossType = L<T, E>;
 
     thrust::universal_vector<size_t> device_ids;
-    thrust::universal_vector<T> device_obs;
+    thrust::universal_vector<M> device_obs;
     thrust::device_vector<T> residuals;
     thrust::universal_vector<T> precision_matrices;
 
@@ -106,10 +106,10 @@ public:
         return jacobians.data();
     }
 
-    void add_factor(const std::array<size_t, N>& ids, const std::array<T, M>& obs, const T* precision_matrix, const LossType& loss_func) {
+    void add_factor(const std::array<size_t, N>& ids, const M& obs, const T* precision_matrix, const LossType& loss_func) {
         
         global_ids.insert(global_ids.end(), ids.begin(), ids.end());
-        device_obs.insert(device_obs.end(), obs.begin(), obs.end());
+        device_obs.push_back(obs);
 
         constexpr size_t precision_matrix_size = error_dim*error_dim;
         if (precision_matrix) {
@@ -219,7 +219,7 @@ public:
 // Templated derived class for AutoDiffFactorDescriptor using CRTP
 // N is the number of vertices involved in the constraint
 // M is the dimension of each observation
-template <typename T, int E, int M, template <typename, int> class L, template <typename> class Derived, typename... VDTypes>
+template <typename T, int E, typename M, template <typename, int> class L, template <typename> class Derived, typename... VDTypes>
 class AutoDiffFactorDescriptor : public FactorDescriptor<T, E, M, L, Derived, VDTypes...> {
 public:
     virtual bool use_autodiff() override {

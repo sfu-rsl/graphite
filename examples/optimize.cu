@@ -47,12 +47,13 @@ class Point {
 template<typename T>
 class PointSet: public VertexDescriptor<T, Point<T>, PointSet> {};
 
+using ObsType = double;
 template <typename T>
-class CircleFactor : public AutoDiffFactorDescriptor<T, 1, 1, HuberLoss, CircleFactor, PointSet<T>> {
+class CircleFactor : public AutoDiffFactorDescriptor<T, 1, ObsType, HuberLoss, CircleFactor, PointSet<T>> {
 public:
 
-    template <typename D>
-    __device__ static void error(const D* point, const T* obs, D* error, const std::tuple<Point<T>*> & vertices) {
+    template <typename D, typename M>
+    __device__ static void error(const D* point, const M* obs, D* error, const std::tuple<Point<T>*> & vertices) {
         D x = point[0];
         D y = point[1];
         D r = obs[0];

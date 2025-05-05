@@ -62,9 +62,9 @@ __global__ void apply_update_kernel(V* vertices, const T* delta_x, const size_t 
 
 }
 
-template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, typename VT, std::size_t... Is>
+template<typename T, size_t I, size_t N, typename M, size_t E, typename F, typename VT, std::size_t... Is>
 __global__
-void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, VT args, std::array<T*, sizeof...(Is)> jacs, const uint32_t* fixed, std::index_sequence<Is...>) {
+void compute_error_kernel_autodiff(const M* obs, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, VT args, std::array<T*, sizeof...(Is)> jacs, const uint32_t* fixed, std::index_sequence<Is...>) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= num_threads) {
@@ -78,7 +78,7 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
 
     // printf("CEAD: Thread %d, Vertex %d, Factor %d\n", idx, vertex_id, factor_id);
     
-    const T* local_obs = obs + factor_id * M;
+    const M* local_obs = obs + factor_id;
     Dual<T> local_error[E];
 
     #pragma unroll
@@ -133,9 +133,9 @@ void compute_error_kernel_autodiff(const T* obs, T* error, size_t* ids, const si
     }
 }
 // TODO: Make this more efficient and see if code can be shared with the autodiff kernel
-template<typename T, size_t N, size_t M, size_t E, typename F, typename VT, std::size_t... Is>
+template<typename T, size_t N, typename M, size_t E, typename F, typename VT, std::size_t... Is>
 __global__
-void compute_error_kernel(const T* obs, T* error, size_t* ids, const size_t num_threads, VT args, std::index_sequence<Is...>) {
+void compute_error_kernel(const M* obs, T* error, size_t* ids, const size_t num_threads, VT args, std::index_sequence<Is...>) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= num_threads) {
@@ -146,7 +146,7 @@ void compute_error_kernel(const T* obs, T* error, size_t* ids, const size_t num_
     const auto factor_id = idx;
 
 
-    const T* local_obs = obs + factor_id * M;
+    const M* local_obs = obs + factor_id;
     T* local_error = error + factor_id * E;
 
     auto v = cuda::std::make_tuple(std::array<T, vertex_sizes[Is]>{}...);
@@ -173,7 +173,7 @@ void compute_error_kernel(const T* obs, T* error, size_t* ids, const size_t num_
 // Note the negative sign - different papers use different conventions
 // TODO: Replace with generic J^T x r kernel?
 // Note: The error vector is local to the factor
-template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
+template<typename T, size_t I, size_t N, size_t E, typename F, std::size_t... Is>
 __global__ 
 void compute_b_kernel_no_precision_matrix(T* b, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -212,7 +212,7 @@ void compute_b_kernel_no_precision_matrix(T* b, T* error, size_t* ids, const siz
 }
 
 // Include precision matrix
-template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, typename L, std::size_t... Is>
+template<typename T, size_t I, size_t N, size_t E, typename F, typename L, std::size_t... Is>
 __global__ 
 void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, T* jacs, const uint32_t* fixed, const T* pmat, const L* loss, std::index_sequence<Is...>) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -272,7 +272,7 @@ void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, co
 // Each Jacobian block needs to be accessed just once
 // So we need E threads for each block (error dimension)
 // In total we should hae E*num_factors threads?
-template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
+template<typename T, size_t I, size_t N, size_t E, typename F, std::size_t... Is>
 __global__ 
 void compute_Jv_kernel(T*y, T* x, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, const T* jacs, const uint32_t* fixed, std::index_sequence<Is...>) {
     
@@ -316,7 +316,7 @@ void compute_Jv_kernel(T*y, T* x, T* error, size_t* ids, const size_t* hessian_i
 // We need to load the x vector location for the corresponding block row of J
 // So this assumes that the x vector has the same layout as the residual vector for this factor (rather than a global residual vector)
 // The aggregate output will be H x len(x) where H is hessian dimension
-template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, std::size_t... Is>
+template<typename T, size_t I, size_t N, size_t E, typename F, std::size_t... Is>
 __global__ 
 void compute_Jtv_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, const size_t num_threads, T* jacs, std::index_sequence<Is...>) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -350,7 +350,7 @@ void compute_Jtv_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, cons
 }
 
 // Compute J^T * P * x where P is the precision matrix
-template<typename T, size_t I, size_t N, size_t M, size_t E, typename F, typename L, std::size_t... Is>
+template<typename T, size_t I, size_t N, size_t E, typename F, typename L, std::size_t... Is>
 __global__ 
 void compute_JtPv_kernel(T* y, const T* x, const T* error, const size_t* ids, const size_t* hessian_ids, const size_t num_threads, const T* jacs, const uint32_t* fixed, const T* pmat, const L* loss, std::index_sequence<Is...>) {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -436,7 +436,7 @@ void launch_kernel_autodiff(F* f, std::array<const size_t*, F::get_num_vertices(
             // std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
             // std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
 
-            compute_error_kernel_autodiff<T, Is, num_vertices, F::observation_dim, F::error_dim, F, typename F::VertexPointerTuple><<<num_blocks, threads_per_block>>>(
+            compute_error_kernel_autodiff<T, Is, num_vertices, typename F::ObservationType, F::error_dim, F, typename F::VertexPointerTuple><<<num_blocks, threads_per_block>>>(
                 f->device_obs.data().get(),
                 f->residuals.data().get(),
                 f->device_ids.data().get(),
@@ -463,7 +463,7 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
             // std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
             // std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
 
-            compute_b_kernel<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
+            compute_b_kernel<T, Is, num_vertices, F::error_dim, F><<<num_blocks, threads_per_block>>>(
                 b,
                 f->residuals.data().get(),
                 f->device_ids.data().get(),
@@ -493,7 +493,7 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
                     // std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
                     // std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
         
-                    compute_JtPv_kernel<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
+                    compute_JtPv_kernel<T, Is, num_vertices, F::error_dim, F><<<num_blocks, threads_per_block>>>(
                         out,
                         in,
                         f->residuals.data().get(),
@@ -522,7 +522,7 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
                     // std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
                     // std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
         
-                    compute_Jv_kernel<T, Is, num_vertices, F::observation_dim, F::error_dim, F><<<num_blocks, threads_per_block>>>(
+                    compute_Jv_kernel<T, Is, num_vertices, F::error_dim, F><<<num_blocks, threads_per_block>>>(
                         out,
                         in,
                         f->residuals.data().get(),
@@ -563,8 +563,6 @@ public:
         }
 
         
-        constexpr auto observation_dim = F::observation_dim;
-        constexpr auto error_dim = F::error_dim;
         const auto num_factors = f->count();
 
         launch_kernel_autodiff(f, hessian_ids, verts, jacs, num_factors, std::make_index_sequence<num_vertices>{});
@@ -588,7 +586,6 @@ public:
         }
 
         
-        constexpr auto observation_dim = F::observation_dim;
         constexpr auto error_dim = F::error_dim;
         const auto num_factors = f->count();
 
@@ -596,7 +593,7 @@ public:
         int threads_per_block = 256;
         int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
 
-        compute_error_kernel<T, num_vertices, F::observation_dim, F::error_dim, F, typename F::VertexPointerTuple><<<num_blocks, threads_per_block>>>(
+        compute_error_kernel<T, num_vertices, typename F::ObservationType, F::error_dim, F, typename F::VertexPointerTuple><<<num_blocks, threads_per_block>>>(
             f->device_obs.data().get(),
             f->residuals.data().get(),
             f->device_ids.data().get(),
@@ -624,7 +621,6 @@ public:
         // }
 
         
-        constexpr auto observation_dim = F::observation_dim;
         constexpr auto error_dim = F::error_dim;
         const auto num_factors = f->count();
 
@@ -660,7 +656,6 @@ public:
         }
 
         
-        constexpr auto observation_dim = F::observation_dim;
         constexpr auto error_dim = F::error_dim;
         const auto num_factors = f->count();
 
@@ -687,8 +682,6 @@ public:
         }
 
         
-        constexpr auto observation_dim = F::observation_dim;
-        constexpr auto error_dim = F::error_dim;
         const auto num_factors = f->count();
 
         launch_kernel_compute_Jv(f, out, in, hessian_ids, jacs, num_factors, std::make_index_sequence<num_vertices>{});
@@ -712,8 +705,6 @@ public:
             hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
         }
         
-        constexpr auto observation_dim = F::observation_dim;
-        constexpr auto error_dim = F::error_dim;
         const auto num_factors = f->count();
 
         launch_kernel_compute_JtPv(f, out, in, hessian_ids, jacs, num_factors, std::make_index_sequence<num_vertices>{});
