@@ -209,6 +209,13 @@ public:
         return x_host.size();
     }
 
+    void reserve(size_t size) {
+        x_host.reserve(size);
+        global_to_local_map.reserve(size);
+        local_to_hessian_offsets.reserve(size);
+        fixed_mask.resize((size + 31) / 32, 0);
+    }
+
     void add_vertex(const size_t id, const VertexType& vertex, const bool fixed = false) {
         // TODO: Find a better way to get the dimension
         // const auto dim = dynamic_cast<Derived<T>*>(this)->dimension();        
@@ -253,13 +260,6 @@ public:
         // std::copy(data_ptr, data_ptr + D, vertex_data.begin());
         // return vertex_data;
     }
-
-    // void reserve(size_t num_vertices) {
-    //     // TODO: Find a better way to get the dimension
-    //     const auto dim = dynamic_cast<Derived<T>*>(this)->dimension();
-    //     x_host.reserve(num_vertices*dim);
-    //     x_device.reserve(num_vertices*dim);
-    // }
 
     const std::unordered_map<size_t, size_t> & get_global_map() const override {
         return global_to_local_map;

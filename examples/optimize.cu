@@ -79,12 +79,13 @@ int main(void) {
     // Create graph
     Graph<double> graph;
 
+    const size_t num_vertices = 5;
 
     // Create vertices
     PointSet<double>* points = new PointSet<double>();
+    points->reserve(num_vertices);
     graph.add_vertex_descriptor(points);
 
-    const size_t num_vertices = 5;
     double center[2] = {0.0, 0.0};
 
     std::random_device rd;
