@@ -48,7 +48,7 @@ namespace glso {
     }
 
 template<typename T, typename Descriptor, typename V>
-__global__ void apply_update_kernel(V* vertices, const T* delta_x, const size_t * hessian_ids, const uint32_t* fixed, const size_t num_threads) {
+__global__ void apply_update_kernel(V** vertices, const T* delta_x, const size_t * hessian_ids, const uint32_t* fixed, const size_t num_threads) {
     int vertex_id = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (vertex_id >= num_threads || is_fixed(fixed, vertex_id)) {
@@ -58,7 +58,7 @@ __global__ void apply_update_kernel(V* vertices, const T* delta_x, const size_t 
     const T* delta = delta_x + hessian_ids[vertex_id];
 
     // Descriptor::update(vertices[vertex_id], delta);
-    vertices[vertex_id].update(delta);
+    vertices[vertex_id]->update(delta);
 
 }
 
@@ -91,17 +91,19 @@ void compute_error_kernel_autodiff(const M* obs, T* error, const typename F::Con
     auto v = cuda::std::make_tuple(std::array<Dual<T>, vertex_sizes[Is]>{}...);
     
 
-    (std::get<Is>(args) += ids[factor_id*N+Is], ...);
+    auto vargs = std::make_tuple((*(std::get<Is>(args) + ids[factor_id*N+Is]))...);
 
-    auto copy_vertices = [&v, &vertex_sizes, &args](auto&&... ptrs) {
-        ((real_to_dual<decltype(std::get<Is>(args)), T, vertex_sizes[Is]>(std::get<Is>(args), cuda::std::get<Is>(v).data())), ...);
+    auto copy_vertices = [&v, &vertex_sizes, &vargs](auto&&... ptrs) {
+        ((real_to_dual<decltype(std::get<Is>(vargs)), T, vertex_sizes[Is]>(std::get<Is>(vargs), cuda::std::get<Is>(v).data())), ...);
     };
 
-    std::apply(copy_vertices, args);
+    std::apply(copy_vertices, vargs);
 
     cuda::std::get<I>(v)[idx % vertex_sizes[I]].dual = static_cast<T>(1);
 
-    F::error(cuda::std::get<Is>(v).data()..., local_obs, local_error, args, local_data);
+
+
+    F::error(cuda::std::get<Is>(v).data()..., local_obs, local_error, vargs, local_data);
 
 
     constexpr auto j_size = vertex_sizes[I]*E;
@@ -153,15 +155,15 @@ void compute_error_kernel(const M* obs, T* error, const typename F::ConstraintDa
 
     auto v = cuda::std::make_tuple(std::array<T, vertex_sizes[Is]>{}...);
 
-    (std::get<Is>(args) += ids[factor_id*N+Is], ...);
+    auto vargs = std::make_tuple((*(std::get<Is>(args) + ids[factor_id*N+Is]))...);
 
-    auto copy_vertices = [&v, &ids, &vertex_sizes, &args](auto&&... ptrs) {
-        ((device_copy<decltype(std::get<Is>(args)), T, vertex_sizes[Is]>(std::get<Is>(args), cuda::std::get<Is>(v).data())), ...);
+    auto copy_vertices = [&v, &ids, &vertex_sizes, &vargs](auto&&... ptrs) {
+        ((device_copy<decltype(std::get<Is>(vargs)), T, vertex_sizes[Is]>(std::get<Is>(vargs), cuda::std::get<Is>(v).data())), ...);
     };
 
-    std::apply(copy_vertices, args);
+    std::apply(copy_vertices, vargs);
 
-    F::error(cuda::std::get<Is>(v).data()..., local_obs, local_error, args, local_data);
+    F::error(cuda::std::get<Is>(v).data()..., local_obs, local_error, vargs, local_data);
 
 
     #pragma unroll
@@ -438,7 +440,7 @@ void launch_kernel_autodiff(F* f, std::array<const size_t*, F::get_num_vertices(
             // std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
             // std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
 
-            compute_error_kernel_autodiff<T, Is, num_vertices, typename F::ObservationType, F::error_dim, F, typename F::VertexPointerTuple><<<num_blocks, threads_per_block>>>(
+            compute_error_kernel_autodiff<T, Is, num_vertices, typename F::ObservationType, F::error_dim, F, typename F::VertexPointerPointerTuple><<<num_blocks, threads_per_block>>>(
                 f->device_obs.data().get(),
                 f->residuals.data().get(),
                 f->data.data().get(),
@@ -596,7 +598,7 @@ public:
         int threads_per_block = 256;
         int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
 
-        compute_error_kernel<T, num_vertices, typename F::ObservationType, F::error_dim, F, typename F::VertexPointerTuple><<<num_blocks, threads_per_block>>>(
+        compute_error_kernel<T, num_vertices, typename F::ObservationType, F::error_dim, F, typename F::VertexPointerPointerTuple><<<num_blocks, threads_per_block>>>(
             f->device_obs.data().get(),
             f->residuals.data().get(),
             f->data.data().get(),

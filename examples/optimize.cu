@@ -98,6 +98,10 @@ int main(void) {
     std::normal_distribution<double> n1(0.0, sigma);
     std::normal_distribution<double> n2(0.0, sigma);
 
+    
+    thrust::universal_vector<Point<double>> pts;
+    pts.reserve(num_vertices); // addresses must not change
+
     for (size_t vertex_id = 0; vertex_id < num_vertices; ++vertex_id) {
         double angle = dist(gen);
         double point[2] = {center[0] + radius * cos(angle), center[1] + radius * sin(angle)};
@@ -105,10 +109,11 @@ int main(void) {
 
         point[0] += n1(gen);
         point[1] += n2(gen);
-
+        pts.push_back(Point<double>(point[0], point[1]));
         std::cout << "Adding point " << vertex_id << "=(" << point[0] << ", " << point[1] << ") with radius=" << sqrt(point[0]*point[0] + point[1]*point[1]) << std::endl;
-        points->add_vertex(vertex_id, Point(point[0], point[1]));
+        points->add_vertex(vertex_id, &pts[vertex_id]);
     }
+
 
     // Create edges
     auto factor_desc = graph.add_factor_descriptor<CircleFactor<double>>(points);
@@ -139,7 +144,7 @@ int main(void) {
     // Read back optimized values
     for (size_t vertex_id = 0; vertex_id < num_vertices; ++vertex_id) {
         const auto point = points->get_vertex(vertex_id);
-        const auto [x, y] = point;
+        const auto [x, y] = *point;
         
         std::cout << "Optimized point " << vertex_id << "=(" << x << ", " << y << ") with radius=" << sqrt(x*x + y*y) << std::endl;
     }

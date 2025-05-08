@@ -34,23 +34,23 @@ namespace glso {
 
 
 template <typename VertexType, typename State, typename Descriptor, typename T>
-__global__ void backup_state_kernel(const VertexType* vertices, State* dst, const uint32_t* fixed, const size_t num_vertices) {
+__global__ void backup_state_kernel(VertexType** vertices, State* dst, const uint32_t* fixed, const size_t num_vertices) {
         
     const size_t vertex_id = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (vertex_id >= num_vertices || is_fixed(fixed, vertex_id)) return;
 
-    dst[vertex_id] = vertices[vertex_id].get_state();
+    dst[vertex_id] = vertices[vertex_id]->get_state();
 }
 
 template <typename VertexType, typename State, typename Descriptor, typename T>
-__global__ void set_state_kernel(VertexType* vertices, const State* src, const uint32_t* fixed, const size_t num_vertices) {
+__global__ void set_state_kernel(VertexType** vertices, const State* src, const uint32_t* fixed, const size_t num_vertices) {
         
     const size_t vertex_id = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (vertex_id >= num_vertices || is_fixed(fixed, vertex_id)) return;
 
-    vertices[vertex_id].set_state(src[vertex_id]);
+    vertices[vertex_id]->set_state(src[vertex_id]);
 }
 
 template <typename T>
@@ -91,8 +91,8 @@ private:
     // thrust::device_vector<T> x_device;
     // thrust::host_vector<T> x_host;
 
-    thrust::device_vector<VertexType> x_device;
-    thrust::host_vector<VertexType> x_host;
+    thrust::device_vector<VertexType*> x_device;
+    thrust::host_vector<VertexType*> x_host;
     thrust::device_vector<S> backup_state;
 
 public:
@@ -126,7 +126,7 @@ public:
     //     return x_device.data().get();
     // }
 
-    VertexType* vertices() {
+    VertexType** vertices() {
         return x_device.data().get();
     }
 
@@ -144,7 +144,7 @@ public:
     // }
 
     virtual void backup_parameters() override {
-        const VertexType* vertices = x_device.data().get();
+        VertexType** vertices = x_device.data().get();
 
         const int num_vertices = static_cast<int>(count());
         const int num_threads = num_vertices;
@@ -156,7 +156,7 @@ public:
     }
 
     virtual void restore_parameters() override {
-        VertexType* vertices = x_device.data().get();
+        VertexType** vertices = x_device.data().get();
 
         const int num_vertices = static_cast<int>(count());
         const int num_threads = num_vertices;
@@ -216,11 +216,11 @@ public:
         fixed_mask.resize((size + 31) / 32, 0);
     }
 
-    void add_vertex(const size_t id, const VertexType& vertex, const bool fixed = false) {
+    void add_vertex(const size_t id, VertexType* vertex, const bool fixed = false) {
         // TODO: Find a better way to get the dimension
         // const auto dim = dynamic_cast<Derived<T>*>(this)->dimension();        
         // x_host.insert(x_host.end(), value, value+dim);
-        x_host.push_back(static_cast<const VertexType&>(vertex));
+        x_host.push_back(vertex);
         global_to_local_map.insert({id, (x_host.size()) - 1});
         local_to_hessian_offsets.push_back(0); // Initialize to 0
 
@@ -252,7 +252,7 @@ public:
         return fixed_mask.data().get();
     }
 
-    VertexType get_vertex(const size_t id) {
+    VertexType* get_vertex(const size_t id) {
         // std::array<T, D> vertex_data;
         const auto local_id = global_to_local_map.at(id);
         return x_host[local_id];

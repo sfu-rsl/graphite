@@ -60,6 +60,7 @@ public:
     std::array<BaseVertexDescriptor<T>*, N> vertex_descriptors;
     using VertexTypesTuple = std::tuple<typename VDTypes::VertexType...>;
     using VertexPointerTuple = std::tuple<typename VDTypes::VertexType*...>;
+    using VertexPointerPointerTuple = std::tuple<typename VDTypes::VertexType**...>;
     using ObservationType = M;
     using ConstraintDataType = C;
     using LossType = L<T, E>;
@@ -201,12 +202,12 @@ public:
     }
 
     template <std::size_t... I>
-    VertexPointerTuple get_vertices_impl(std::index_sequence<I...>) {
+    VertexPointerPointerTuple get_vertices_impl(std::index_sequence<I...>) {
         return std::make_tuple((static_cast<typename std::tuple_element<I, std::tuple<VDTypes...>>::type*>(vertex_descriptors[I])->vertices())...);
     }
     
     // Return tuple of N vertex pointers from this->vertex_descriptors[i]->vertices()
-    VertexPointerTuple get_vertices() {
+    VertexPointerPointerTuple get_vertices() {
         return get_vertices_impl(std::make_index_sequence<N>{});
     }
 
