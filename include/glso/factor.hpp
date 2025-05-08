@@ -65,7 +65,7 @@ public:
     using ConstraintDataType = C;
     using LossType = L<T, E>;
 
-    thrust::universal_vector<size_t> device_ids;
+    thrust::universal_vector<size_t> device_ids; // local ids
     thrust::universal_vector<M> device_obs;
     thrust::device_vector<T> residuals;
     thrust::universal_vector<T> precision_matrices;

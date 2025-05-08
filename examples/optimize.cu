@@ -100,6 +100,7 @@ int main(void) {
 
     
     thrust::universal_vector<Point<double>> pts;
+    constexpr auto id_offset = 10;
     pts.reserve(num_vertices); // addresses must not change
 
     for (size_t vertex_id = 0; vertex_id < num_vertices; ++vertex_id) {
@@ -111,7 +112,7 @@ int main(void) {
         point[1] += n2(gen);
         pts.push_back(Point<double>(point[0], point[1]));
         std::cout << "Adding point " << vertex_id << "=(" << point[0] << ", " << point[1] << ") with radius=" << sqrt(point[0]*point[0] + point[1]*point[1]) << std::endl;
-        points->add_vertex(vertex_id, &pts[vertex_id]);
+        points->add_vertex(vertex_id + id_offset, &pts[vertex_id]);
     }
 
 
@@ -123,11 +124,11 @@ int main(void) {
     const auto loss = HuberLoss<double, 1>(200);
 
     for (size_t vertex_id = 0; vertex_id < num_vertices; ++vertex_id) {
-        factor_desc->add_factor({vertex_id}, {radius}, nullptr, 0, loss);
+        factor_desc->add_factor({vertex_id+id_offset}, {radius}, nullptr, 0, loss);
     }
 
     // Set the last vertex as fixed
-    points->set_fixed(num_vertices - 1, true);
+    points->set_fixed(num_vertices - 1 + id_offset, true);
 
     // Optimize
     constexpr size_t iterations = 10;
@@ -143,7 +144,7 @@ int main(void) {
 
     // Read back optimized values
     for (size_t vertex_id = 0; vertex_id < num_vertices; ++vertex_id) {
-        const auto point = points->get_vertex(vertex_id);
+        const auto point = points->get_vertex(vertex_id + id_offset);
         const auto [x, y] = *point;
         
         std::cout << "Optimized point " << vertex_id << "=(" << x << ", " << y << ") with radius=" << sqrt(x*x + y*y) << std::endl;

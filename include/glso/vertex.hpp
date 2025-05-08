@@ -99,6 +99,7 @@ public:
 
     // Mappings
     std::unordered_map<size_t, size_t> global_to_local_map;
+    std::vector<size_t> local_to_global_map;
     thrust::host_vector<size_t> local_to_hessian_offsets;
     thrust::device_vector<size_t> hessian_ids;
     thrust::universal_vector<uint32_t> fixed_mask;
@@ -212,8 +213,46 @@ public:
     void reserve(size_t size) {
         x_host.reserve(size);
         global_to_local_map.reserve(size);
+        local_to_global_map.reserve(size);
         local_to_hessian_offsets.reserve(size);
         fixed_mask.resize((size + 31) / 32, 0);
+    }
+
+    void remove_vertex(const size_t id) {
+        if (count() == 0) {
+            return;
+        }
+
+        if (global_to_local_map.find(id) == global_to_local_map.end()) {
+            std::cerr << "Vertex with id " << id << " not found." << std::endl;
+            return;
+        }
+        
+        const auto local_id = global_to_local_map[id];
+        const auto last_index = x_host.size() - 1;
+
+        // Swap the vertex to be removed with the last vertex
+        std::swap(x_host[local_id], x_host[last_index]);
+        std::swap(local_to_hessian_offsets[local_id], local_to_hessian_offsets[last_index]);
+
+        // Update the global_to_local_map for the swapped vertex
+        const auto last_global_id = local_to_global_map[last_index];
+        global_to_local_map[last_global_id] = local_id;
+        local_to_global_map[local_id] = last_global_id;
+
+        // Remove the last vertex
+        x_host.pop_back();
+        local_to_hessian_offsets.pop_back();
+        global_to_local_map.erase(id);
+        local_to_global_map.pop_back();
+
+        // Only need to update the fixed mask for the swapped vertex
+        set_fixed(local_id, is_fixed(last_index));
+
+        // Remove unused entry
+        if (last_index % 32 == 0) {
+            fixed_mask.pop_back();
+        }
     }
 
     void add_vertex(const size_t id, VertexType* vertex, const bool fixed = false) {
@@ -221,7 +260,9 @@ public:
         // const auto dim = dynamic_cast<Derived<T>*>(this)->dimension();        
         // x_host.insert(x_host.end(), value, value+dim);
         x_host.push_back(vertex);
-        global_to_local_map.insert({id, (x_host.size()) - 1});
+        const auto local_id = x_host.size() - 1;
+        global_to_local_map.insert({id, local_id});
+        local_to_global_map.push_back(id);
         local_to_hessian_offsets.push_back(0); // Initialize to 0
 
         // Update fixed mask
