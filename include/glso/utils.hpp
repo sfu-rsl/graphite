@@ -45,4 +45,30 @@ namespace glso {
         std::cout << std::endl;
     }
 
+
+    template <typename H>
+    class HandleManager {
+        private:
+
+        std::vector<H> handles;
+        H last_handle;
+
+        public:
+
+        HandleManager() : last_handle(0) {}
+
+        H get() {
+            if (handles.empty()) {
+                return last_handle++;
+            } else {
+                H handle = handles.back();
+                handles.pop_back();
+                return handle;
+            }
+        }
+
+        void release(H handle) {
+            handles.push_back(handle);
+        }
+    };
 }

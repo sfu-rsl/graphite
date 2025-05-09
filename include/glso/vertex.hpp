@@ -255,6 +255,16 @@ public:
         }
     }
 
+    void replace_vertex(const size_t id, VertexType* vertex) {
+        if (global_to_local_map.find(id) == global_to_local_map.end()) {
+            std::cerr << "Vertex with id " << id << " not found." << std::endl;
+            return;
+        }
+        
+        const auto local_id = global_to_local_map[id];
+        x_host[local_id] = vertex;
+    }
+
     void add_vertex(const size_t id, VertexType* vertex, const bool fixed = false) {
         // TODO: Find a better way to get the dimension
         // const auto dim = dynamic_cast<Derived<T>*>(this)->dimension();        

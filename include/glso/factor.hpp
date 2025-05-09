@@ -51,6 +51,10 @@ private:
     std::vector<size_t> global_ids;
     // thrust::host_vector<size_t> host_ids; // local ids
     // thrust::host_vector<T> host_obs;
+    std::unordered_map<size_t, size_t> global_to_local_map;
+    std::vector<size_t> local_to_global_map;
+
+    HandleManager <size_t> hm;
 
 public:
 
@@ -74,6 +78,8 @@ public:
     thrust::universal_vector<T> chi2_vec;
     thrust::universal_vector<LossType> loss;
 
+    std::array<JacobianStorage<T>, N> jacobians;
+
     void visit_error(GraphVisitor<T>& visitor) override {
         visitor.template compute_error<Derived<T>, VDTypes...>(dynamic_cast<Derived<T>*>(this));
     }
@@ -93,17 +99,10 @@ public:
     void visit_Jtv(GraphVisitor<T>& visitor, T* out, T* in) override {
         visitor.template compute_Jtv<Derived<T>, VDTypes...>(dynamic_cast<Derived<T>*>(this), out, in);
     }
-
-    // std::vector<JacobianStorage<T>> jacobians;
-    std::array<JacobianStorage<T>, N> jacobians;
     
     static constexpr size_t get_num_vertices() {
         return N;
     }
-
-    // std::vector<JacobianStorage<T>> &  get_jacobians() override {
-    //     return jacobians;
-    // }
 
     JacobianStorage<T>* get_jacobians() override {
         return jacobians.data();
@@ -113,17 +112,72 @@ public:
         global_ids.reserve(size);
         device_ids.reserve(size);
         device_obs.reserve(size);
+        global_to_local_map.reserve(size);
+        local_to_global_map.reserve(size);
         precision_matrices.reserve(size*error_dim*error_dim);
         data.reserve(size);
         loss.reserve(size);
         chi2_vec.reserve(size);
         residuals.reserve(size*error_dim);
-        for (size_t i = 0; i < N; i++) {
-            jacobians[i].data.reserve(size*error_dim*vertex_descriptors[i]->dimension());
-        }
     }
 
+    void remove_factor(const size_t id) {
+        if (global_to_local_map.find(id) == global_to_local_map.end()) {
+            std::cerr << "Factor with id " << id << " not found." << std::endl;
+            return;
+        }
+
+        auto local_id = global_to_local_map[id];
+        auto last_local_id = count() - 1;
+        
+        // copy constraint
+        for (size_t i = 0; i < N; i++) {
+            global_ids[local_id*N + i] = global_ids[last_local_id*N + i];
+        }
+        global_ids.resize(global_ids.size() - N);
+        
+        // observation
+        device_obs[local_id] = device_obs[last_local_id];
+        device_obs.pop_back();
+
+        // precision matrix
+        constexpr size_t precision_matrix_size = error_dim*error_dim;
+        for (size_t i = 0; i < precision_matrix_size; i++) {
+            precision_matrices[local_id*precision_matrix_size + i] = precision_matrices[last_local_id*precision_matrix_size + i];
+        }
+
+        precision_matrices.resize(precision_matrices.size() - precision_matrix_size);
+
+        // Constraint, loss and chi2
+        data[local_id] = data[last_local_id];
+        data.pop_back();
+
+        loss[local_id] = loss[last_local_id];
+        loss.pop_back();
+
+        chi2_vec[local_id] = chi2_vec[last_local_id];
+        chi2_vec.pop_back();
+
+        // Next, fix ids
+        const auto last_global_id = local_to_global_map[last_local_id];
+        global_to_local_map[last_global_id] = local_id;
+        local_to_global_map[local_id] = last_global_id;
+
+        // Remove unused entries
+        global_to_local_map.erase(id);
+        local_to_global_map.pop_back();
+
+        hm.release(id);
+    }
+        
+
     size_t add_factor(const std::array<size_t, N>& ids, const M& obs, const T* precision_matrix, const C& constraint_data, const LossType& loss_func) {
+        
+        const auto id = hm.get();
+        const auto local_id = count();
+
+        global_to_local_map.insert({id, local_id});
+        local_to_global_map.push_back(id);
         
         global_ids.insert(global_ids.end(), ids.begin(), ids.end());
         device_obs.push_back(obs);
@@ -140,7 +194,7 @@ public:
 
         data.push_back(constraint_data);
         loss.push_back(loss_func);
-        return count() - 1;
+        return id; // only global within this class (it's just an external id)
     }
 
     // TODO: Make this private later
