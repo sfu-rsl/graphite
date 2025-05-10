@@ -119,6 +119,17 @@ public:
         loss.reserve(size);
         chi2_vec.reserve(size);
         residuals.reserve(size*error_dim);
+
+        // Prefetch everything
+        int cuda_device = cudaCpuDeviceId;
+        constexpr cudaStream_t stream = 0;
+        prefetch_vector_on_device_async(device_ids, cuda_device, stream);
+        prefetch_vector_on_device_async(device_obs, cuda_device, stream);
+        prefetch_vector_on_device_async(precision_matrices, cuda_device, stream);
+        prefetch_vector_on_device_async(data, cuda_device, stream);
+        prefetch_vector_on_device_async(loss, cuda_device, stream);
+        prefetch_vector_on_device_async(chi2_vec, cuda_device, stream);
+        cudaDeviceSynchronize();
     }
 
     void remove_factor(const size_t id) {

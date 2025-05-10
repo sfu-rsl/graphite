@@ -199,7 +199,6 @@ int main(void) {
 
     thrust::universal_vector<Point<double>> points(num_points);
     thrust::universal_vector<Camera<double>> cameras(num_cameras);
-    std::vector<Observation2D> observations(num_observations);
 
     // Create vertices
     auto point_desc = new PointDescriptor<double>();
@@ -223,7 +222,8 @@ int main(void) {
     Eigen::Matrix2d precision_matrix = Eigen::Matrix2d::Identity();
 
 
-    std::cout << "Adding constraints" << std::endl;
+    auto start = std::chrono::high_resolution_clock::now();
+
     // Read observations and create constraints
     for (size_t i = 0; i < num_observations; ++i) {
         size_t camera_idx, point_idx;
@@ -233,19 +233,20 @@ int main(void) {
         file >> camera_idx >> point_idx >> x >> y;
 
         // Store the observation
-        observations[i] = Observation2D(x, y);
+        const Observation2D obs(x, y);
 
         // Add constraint to the graph
         r_desc->add_factor(
             {camera_idx, point_idx},
-            observations[i],
+            obs,
             precision_matrix.data(),
             0,
             loss
         );
     }
+    std::cout << "Adding constraints took " << std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count() << " seconds." << std::endl;
 
-    std::cout << "Adding cameras" << std::endl;
+    start = std::chrono::high_resolution_clock::now();
     // Create all camera vertices
     for (size_t i = 0; i < num_cameras; ++i) {
         std::array<double, 9> camera_params;
@@ -256,7 +257,9 @@ int main(void) {
         camera_desc->add_vertex(i, &cameras[i]);
     }
 
-    std::cout << "Adding points" << std::endl;
+    std::cout << "Adding cameras took " << std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count() << " seconds." << std::endl;
+
+    start = std::chrono::high_resolution_clock::now();
     // Create all point vertices
     for (size_t i = 0; i < num_points; ++i) {
         double point_params[3];
@@ -266,7 +269,7 @@ int main(void) {
         points[i] = Point<double>(point_params[0], point_params[1], point_params[2]);
         point_desc->add_vertex(i, &points[i]);
     }
-
+    std::cout << "Adding points took " << std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count() << " seconds." << std::endl;
     file.close();
     
 
@@ -277,7 +280,7 @@ int main(void) {
     std::cout << "Graph built with " << num_cameras << " cameras, " << num_points << " points, and " << r_desc->count() << " observations." << std::endl;
     std::cout << "Optimizing!" << std::endl;
 
-    auto start = std::chrono::high_resolution_clock::now();
+    start = std::chrono::high_resolution_clock::now();
     opt.optimize(&graph, iterations);
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end - start;
