@@ -76,7 +76,7 @@ public:
 
             if (step_is_good && rho > 0) {
                 // update hyperparameters
-                mu *= std::max(static_cast<T>(1/3), 1 - pow(2*rho-1, 3));
+                mu *= std::max(std::max(static_cast<T>(1.0/3.0), 1 - pow(2*rho-1, 3)), 1e-12);
                 nu = 2;
                 // Relinearize since step is accepted
                 graph->set_damping_factor(mu);
