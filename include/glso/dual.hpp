@@ -21,6 +21,10 @@ struct Dual {
         return Dual<T>(real - other.real, dual - other.dual);
     }
 
+    __host__ __device__ Dual<T> operator-() const {
+        return Dual<T>(-real, -dual);
+    }
+
     __host__ __device__ Dual<T> operator*(const Dual<T>& other) const {
         return Dual<T>(real * other.real, real * other.dual + dual * other.real);
     }

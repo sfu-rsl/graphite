@@ -20,9 +20,9 @@ target_include_directories(glso INTERFACE include)
 target_link_libraries(glso INTERFACE Boost::boost)
 
 # Examples
-add_executable(hello examples/hello.cu)
-target_link_libraries(hello glso)
-# set_property(TARGET hello PROPERTY CUDA_ARCHITECTURES native)
+add_executable(circle examples/circle.cu)
+target_link_libraries(circle glso)
 
-add_executable(optimize examples/optimize.cu)
-target_link_libraries(optimize glso)
+find_package(Eigen3 3.1 REQUIRED)
+add_executable(bal examples/bal.cu)
+target_link_libraries(bal glso Eigen3::Eigen)

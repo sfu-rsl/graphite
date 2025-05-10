@@ -209,7 +209,7 @@ public:
     }
 
     size_t count() const override {
-        return device_ids.size()/N;
+        return global_ids.size()/N;
     }
 
     void to_device() override {
