@@ -4,6 +4,7 @@
 #include <glso/kernel.hpp>
 #include <thrust/inner_product.h>
 #include <glso/utils.hpp>
+#include <glso/preconditioner.hpp>
 
 namespace glso {
 
@@ -104,15 +105,25 @@ namespace glso {
 
             cudaDeviceSynchronize();
             // thrust::copy(r.begin(), r.end(), p.begin());
-            p = r;
 
+            // Apply preconditioner
+            IdentityPreconditioner<T> preconditioner;
+            preconditioner.precompute(vertex_descriptors, factor_descriptors, dim_h);
+            thrust::device_vector<T> z(dim_h);
+            // std::cout << "Applying preconditioner" << std::endl;
+            preconditioner.apply(z.data().get(), r.data().get());
 
+            p = z;
+            
+            // 1. First compute dot(r, z)
+            T rz = thrust::inner_product(r.begin(), r.end(), z.begin(), 0.0);
+            const T rz_0 = rz;
+
+            // std::cout << "Starting PCG iterations" << std::endl;
 
             for (size_t k = 0; k < max_iter; k++) {
 
 
-                // 1. First compute dot(r, r)
-                T rr = thrust::inner_product(r.begin(), r.end(), r.begin(), 0.0);
 
                 // 2. Compute v1 = Jp
                 thrust::fill(v1.begin(), v1.end(), 0);
@@ -135,8 +146,8 @@ namespace glso {
                 saxpy(dim_h, v2.data().get(), damping_factor, p.data().get(), v2.data().get());
                 cudaDeviceSynchronize();
 
-                // 4. Compute alpha = dot(r, r) / dot(p, v2)
-                T alpha = rr / thrust::inner_product(p.begin(), p.end(), v2.begin(), 0.0);
+                // 4. Compute alpha = dot(r, z) / dot(p, v2)
+                T alpha = rz / thrust::inner_product(p.begin(), p.end(), v2.begin(), 0.0);
                 // std::cout << "alpha: " << alpha << ", rr: " << rr << ", dot(p, v2): " << thrust::inner_product(p.begin(), p.end(), v2.begin(), 0.0) << std::endl;
                 // 5. x  += alpha * p
                 saxpy(dim_h, x, alpha, (const T*)p.data().get(), x);
@@ -145,14 +156,27 @@ namespace glso {
                 saxpy(dim_h, r.data().get(), -alpha, (const T*)v2.data().get(), r.data().get());
                 cudaDeviceSynchronize();
 
+                // // 7. Check termination criteria
+                // T rr_new = thrust::inner_product(r.begin(), r.end(), r.begin(), 0.0);
+                // if (sqrt(rr_new) < tol) {
+                //     // std::cout << "Converged at iteration " << k << std::endl;
+                //     break;
+                // }
+
+
+                // Apply preconditioner again
+                preconditioner.apply(z.data().get(), r.data().get());
+                T rz_new = thrust::inner_product(r.begin(), r.end(), z.begin(), 0.0);
+
                 // 7. Check termination criteria
-                T rr_new = thrust::inner_product(r.begin(), r.end(), r.begin(), 0.0);
-                if (sqrt(rr_new) < tol) {
+                if (sqrt(rz_new / rz_0) < tol) {
                     // std::cout << "Converged at iteration " << k << std::endl;
                     break;
                 }
+
                 // 8. Compute beta
-                T beta = rr_new / rr;
+                T beta = rz_new / rz;
+                rz = rz_new;
 
                 // 9. Update p
                 saxpy(dim_h, p.data().get(), beta, (const T*)p.data().get(), r.data().get());

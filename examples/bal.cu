@@ -173,7 +173,8 @@ int main(void) {
 
     using namespace glso;
 
-    std::string file_path = "../data/bal/problem-16-22106-pre.txt";
+    // std::string file_path = "../data/bal/problem-16-22106-pre.txt";
+    std::string file_path = "../data/bal/problem-21-11315-pre.txt";
 
     initialize_cuda();
 
@@ -285,6 +286,7 @@ int main(void) {
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double> elapsed = end - start;
     std::cout << "Optimization took " << elapsed.count() << " seconds." << std::endl;
+    std::cout << "MSE: " << graph.chi2() / num_observations << std::endl;
 
     return 0;
 }
