@@ -276,7 +276,7 @@ void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, co
 // Each Jacobian block needs to be accessed just once
 // So we need E threads for each block (error dimension)
 // In total we should hae E*num_factors threads?
-template<typename T, size_t I, size_t N, size_t E, typename F, std::size_t... Is>
+template<typename T, size_t I, size_t N, size_t E, size_t D, typename F, std::size_t... Is>
 __global__ 
 void compute_Jv_kernel(T*y, T* x, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, const T* jacs, const uint32_t* fixed, std::index_sequence<Is...>) {
     
@@ -286,8 +286,7 @@ void compute_Jv_kernel(T*y, T* x, T* error, size_t* ids, const size_t* hessian_i
         return;
     }
 
-    constexpr auto vertex_sizes = F::get_vertex_sizes();
-    constexpr auto jacobian_size = vertex_sizes[I]*E;
+    constexpr auto jacobian_size = D*E;
     
     // Each J block is stored as E x d col major, where d is the vertex size
     const size_t factor_id = idx / E;
@@ -298,19 +297,27 @@ void compute_Jv_kernel(T*y, T* x, T* error, size_t* ids, const size_t* hessian_i
     const auto jacobian_offset = factor_id * jacobian_size;
 
     T value = 0;
-    constexpr auto d = vertex_sizes[I];
 
     const auto hessian_offset = hessian_ids[local_id]; // each vertex has a hessian_ids array
     const auto row_offset = (idx % E);
     // Adding i*E skips to the next column
-    size_t residual_offset = 0; // need to pass this in
+    // size_t residual_offset = 0; // need to pass this in
     // it's the offset into the r vector
+    // #pragma unroll
+    // for (int i = 0; i < d; i++) {
+    //     value += jacs[jacobian_offset + row_offset + i*E] * x[hessian_offset + i];
+    // }
+
+    const T* jrow = jacs + jacobian_offset + row_offset;
+    const T* x_start = x + hessian_offset;
+
     #pragma unroll
-    for (int i = 0; i < d; i++) {
-        value += jacs[jacobian_offset + row_offset + i*E] * x[hessian_offset + i];
+    for (int i = 0; i < D; i++) {
+        value += jrow[i*E] * x_start[i];
     }
     
-    atomicAdd(&y[residual_offset + idx], value);
+    // atomicAdd(&y[residual_offset + idx], value);
+    y[idx] += value;
 
 }
 
@@ -354,67 +361,97 @@ void compute_Jtv_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, cons
 }
 
 // Compute J^T * P * x where P is the precision matrix
-template<typename T, size_t I, size_t N, size_t E, typename F, typename L, std::size_t... Is>
+template<typename T, size_t I, size_t N, size_t E, size_t D, typename F, std::size_t... Is>
 __global__ 
-void compute_JtPv_kernel(T* y, const T* x, const T* error, const size_t* ids, const size_t* hessian_ids, const size_t num_threads, const T* jacs, const uint32_t* fixed, const T* pmat, const L* loss, std::index_sequence<Is...>) {
+void compute_JtPv_kernel(T* y, const T* x, const size_t* ids, const size_t* hessian_ids, const size_t num_threads, const T* jacs, const uint32_t* fixed, const T* pmat, const T* chi2_derivative, std::index_sequence<Is...>) {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= num_threads) {
         return;
     }
 
-    constexpr auto vertex_sizes = F::get_vertex_sizes();
-    constexpr auto jacobian_size = vertex_sizes[I]*E;
+    constexpr auto jacobian_size = D*E;
     
     // Stored as E x d col major, but we need to transpose it to d x E, where d is the vertex size
-    const size_t factor_id = idx / vertex_sizes[I];
+    const size_t factor_id = idx / D;
     const size_t local_id = ids[factor_id*N+I]; // N is the number of vertices involved in the factor
     if (is_fixed(fixed, local_id)) {
         return;
     }
     const auto jacobian_offset = factor_id * jacobian_size;
     const auto error_offset = factor_id*E;
-    const auto col_offset = (idx % vertex_sizes[I])*E; // for untransposed J
+    const auto col_offset = (idx % D)*E; // for untransposed J
 
     constexpr auto precision_matrix_size = E*E;
     const auto precision_offset = factor_id*precision_matrix_size;
 
     // Use loss kernel
-    const auto chi2 = compute_chi2<T, E>(error, pmat, factor_id);
-    const auto dL = loss[factor_id].loss_derivative(chi2);
+    // const auto dL = chi2_derivative[factor_id];
 
-    T x2[E] = {0};
+    // T x2[E] = {0};
+    // T value = 0;
+
+    const T* jcol = jacs + jacobian_offset + col_offset;
+
+    const T* precision_matrix = pmat + precision_offset;
+    const T* x_start = x + error_offset;
+
     // precision matrices are column major (but should be symmetrical?)
+    // #pragma unroll
+    // for (int i = 0; i < E; i++) { // pmat row
+    //     #pragma unroll
+    //     for (int j = 0; j < E; j++) { // pmat col
+    //         // x2[i] += pmat[precision_offset + i + j*E] * x[error_offset + j]; // col major
+    //         // x2[i] += pmat[precision_offset + i*E + j] * x[error_offset + j]; // row major
+    //         x2[i] += precision_matrix[i*E + j] * x_start[j]; // row major
+    //     }
+    //     // x2[i] *= dL;
+    //     // value += dL*jacs[jacobian_offset + col_offset + i] * x2[i];
+    //     value += jcol[i] * x2[i];
+    // }
+    // value *= dL;
+
+    T value = 0;
     #pragma unroll
     for (int i = 0; i < E; i++) { // pmat row
         #pragma unroll
         for (int j = 0; j < E; j++) { // pmat col
             // x2[i] += pmat[precision_offset + i + j*E] * x[error_offset + j]; // col major
-            x2[i] += dL*pmat[precision_offset + i*E + j] * x[error_offset + j]; // row major
+            // x2[i] += pmat[precision_offset + i*E + j] * x[error_offset + j]; // row major
+            // x2[i] += precision_matrix[i*E + j] * x_start[j]; // row major
+            value += jcol[i]* precision_matrix[i*E + j]*x_start[j];
         }
+        // x2[i] *= dL;
+        // value += dL*jacs[jacobian_offset + col_offset + i] * x2[i];
+        // value += jcol[i] * x2[i];
+        // value += jcol[i] * x[i];
     }
+    value *= chi2_derivative[factor_id];
 
-    T value = 0;
-    #pragma unroll
-    for (int i = 0; i < E; i++) {
-        value += jacs[jacobian_offset + col_offset + i] * x2[i];
-    }
+
+    // T value = 0;
+    // #pragma unroll
+    // for (int i = 0; i < E; i++) {
+    //     value += jacs[jacobian_offset + col_offset + i] * x2[i];
+    // }
 
     const auto hessian_offset = hessian_ids[local_id]; // each vertex has a hessian_ids array
     
-    atomicAdd(&y[hessian_offset + (idx % vertex_sizes[I])], value);
+    atomicAdd(&y[hessian_offset + (idx % D)], value);
 
 }
 
 template<typename T, size_t E, typename L>
 __global__ 
-void compute_chi2_kernel(T* chi2, const T* residuals, const size_t num_threads, const T* pmat, const L* loss) {
+void compute_chi2_kernel(T* chi2, T* chi2_derivative, const T* residuals, const size_t num_threads, const T* pmat, const L* loss) {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= num_threads) {
         return;
     }
-    chi2[idx] = loss[idx].loss(compute_chi2<T, E>(residuals, pmat, idx));
+    T raw_chi2 = compute_chi2<T, E>(residuals, pmat, idx);
+    chi2[idx] = loss[idx].loss(raw_chi2);
+    chi2_derivative[idx] = loss[idx].loss_derivative(raw_chi2);
 
 }
 
@@ -498,17 +535,16 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
                     // std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
                     // std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
         
-                    compute_JtPv_kernel<T, Is, num_vertices, F::error_dim, F><<<num_blocks, threads_per_block>>>(
+                    compute_JtPv_kernel<T, Is, num_vertices, F::error_dim, f->get_vertex_sizes()[Is], F><<<num_blocks, threads_per_block>>>(
                         out,
                         in,
-                        f->residuals.data().get(),
                         f->device_ids.data().get(),
                         hessian_ids[Is],
                         num_threads,
                         jacs[Is],
                         f->vertex_descriptors[Is]->get_fixed_mask(),
                         f->precision_matrices.data().get(),
-                        f->loss.data().get(),
+                        f->chi2_derivative.data().get(),
                         std::make_index_sequence<num_vertices>{});
                     }()), ...);
                 }
@@ -527,7 +563,7 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
                     // std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
                     // std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
         
-                    compute_Jv_kernel<T, Is, num_vertices, F::error_dim, F><<<num_blocks, threads_per_block>>>(
+                    compute_Jv_kernel<T, Is, num_vertices, F::error_dim, f->get_vertex_sizes()[Is], F><<<num_blocks, threads_per_block>>>(
                         out,
                         in,
                         f->residuals.data().get(),
@@ -636,6 +672,7 @@ public:
 
         compute_chi2_kernel<T, F::error_dim><<<num_blocks, threads_per_block>>>(
             f->chi2_vec.data().get(),
+            f->chi2_derivative.data().get(),
             f->residuals.data().get(),
             num_threads,
             f->precision_matrices.data().get(),

@@ -47,7 +47,6 @@ class Graph {
     // Solver buffers
     thrust::device_vector<T> delta_x;
     thrust::device_vector<T> b;
-    thrust::device_vector<T> x_backup;
     // thrust::device_vector<T> error;
 
     T damping_factor;
@@ -164,7 +163,6 @@ class Graph {
 
         delta_x.resize(size_x);
         b.resize(size_x);
-        x_backup.resize(size_x);
         // error.resize(size_error);
 
         // // Build Hessian structure
@@ -240,6 +238,8 @@ class Graph {
         // }
         // std::cout << std::endl;
         
+        // auto start = std::chrono::steady_clock::now();
+
         solver.solve(
             visitor, 
             vertex_descriptors, 
@@ -247,6 +247,10 @@ class Graph {
             b.data().get(),
             delta_x.data().get(), 
             delta_x.size(), damping_factor, 100, 1e-6);
+
+        // auto end = std::chrono::steady_clock::now();
+        // std::chrono::duration<double> elapsed = end - start;
+        // std::cout << "Solver execution time: " << elapsed.count() << " seconds" << std::endl;
 
         // Print delta_x after solve
         // std::cout << "Delta x after solve: " << std::endl;
@@ -266,14 +270,6 @@ class Graph {
     }
 
     void backup_parameters() {
-        // size_t offset = 0;
-        // for (const auto & desc: vertex_descriptors) {
-        //     const size_t param_size = desc->dimension()*desc->count();
-        //     desc->get_parameters(x_backup.data().get()+offset);
-        //     // const T* x = desc->x();
-        //     // thrust::copy(x, x+param_size, x_backup.begin()+offset);
-        //     offset += param_size;
-        // }
 
         for (const auto & desc: vertex_descriptors) {
             desc->backup_parameters();
@@ -283,14 +279,6 @@ class Graph {
     }
 
     void revert_parameters() {
-        // size_t offset = 0;
-        // for (auto & desc: vertex_descriptors) {
-        //     const size_t param_size = desc->dimension()*desc->count();
-        //     desc->set_parameters(x_backup.data().get()+offset);
-        //     // T* x = desc->x();
-        //     // thrust::copy(x_backup.begin()+offset, x_backup.begin(), x);
-        //     offset += param_size;
-        // }
 
         for (auto & desc: vertex_descriptors) {
             desc->restore_parameters();

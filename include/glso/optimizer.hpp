@@ -26,7 +26,7 @@ public:
     bool optimize(Graph<T>* graph, const size_t num_iterations, T damping_factor=1e-2) {
 
         // Initialize something for all iterations
-        auto start = std::chrono::high_resolution_clock::now();
+        auto start = std::chrono::steady_clock::now();
         T mu = damping_factor;
         T nu = 2;
 
@@ -43,7 +43,7 @@ public:
 
         bool run  = true;
 
-        double time = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+        double time = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
         // Print iteration table headers
         std::cout << std::setw(10) << "Iteration" 
               << std::setw(16) << "Initial Chi2" 
@@ -55,7 +55,7 @@ public:
         std::cout << "------------------------------------------------------------------------------------------" << std::endl;
 
         for (size_t i = 0; i < num_iterations && run; i++) {
-            start = std::chrono::high_resolution_clock::now();
+            start = std::chrono::steady_clock::now();
             T chi2 = graph->chi2();
 
             if(!graph->compute_step()) {
@@ -94,7 +94,7 @@ public:
                 new_chi2 = chi2;
             }
 
-            double iteration_time = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+            double iteration_time = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
             time += iteration_time;
             std::cout << std::setw(10) << i 
                       << std::setw(16) << chi2 

@@ -69,13 +69,16 @@ public:
     using ConstraintDataType = C;
     using LossType = L<T, E>;
 
-    thrust::universal_vector<size_t> device_ids; // local ids
+    // thrust::universal_vector<size_t> device_ids; // local ids
+    thrust::host_vector<size_t> host_ids;
+    thrust::device_vector<size_t> device_ids;
     thrust::universal_vector<M> device_obs;
     thrust::device_vector<T> residuals;
     thrust::universal_vector<T> precision_matrices;
     thrust::universal_vector<C> data; 
 
     thrust::universal_vector<T> chi2_vec;
+    thrust::device_vector<T> chi2_derivative;
     thrust::universal_vector<LossType> loss;
 
     std::array<JacobianStorage<T>, N> jacobians;
@@ -110,6 +113,7 @@ public:
 
     void reserve(size_t size) {
         global_ids.reserve(size);
+        host_ids.reserve(size);
         device_ids.reserve(size);
         device_obs.reserve(size);
         global_to_local_map.reserve(size);
@@ -123,7 +127,7 @@ public:
         // Prefetch everything
         int cuda_device = cudaCpuDeviceId;
         constexpr cudaStream_t stream = 0;
-        prefetch_vector_on_device_async(device_ids, cuda_device, stream);
+        // prefetch_vector_on_device_async(device_ids, cuda_device, stream);
         prefetch_vector_on_device_async(device_obs, cuda_device, stream);
         prefetch_vector_on_device_async(precision_matrices, cuda_device, stream);
         prefetch_vector_on_device_async(data, cuda_device, stream);
@@ -229,11 +233,13 @@ public:
         
         // auto start = std::chrono::high_resolution_clock::now();
 
-        device_ids.resize(global_ids.size());
-        prefetch_vector_on_host(device_ids, 0);
+        // device_ids.resize(global_ids.size());
+        host_ids.resize(global_ids.size());
+        // prefetch_vector_on_host(device_ids, 0);
         for (size_t i = 0; i < global_ids.size(); i++) {
-            device_ids[i] = vertex_descriptors[i%N]->get_global_map().at(global_ids[i]);
+            host_ids[i] = vertex_descriptors[i%N]->get_global_map().at(global_ids[i]);
         }
+        device_ids = host_ids;
 
         // auto end = std::chrono::high_resolution_clock::now();
         // std::chrono::duration<double> elapsed = end - start;
@@ -242,12 +248,13 @@ public:
         // device_ids = host_ids;
         // device_obs = host_obs;
         chi2_vec.resize(count());
+        chi2_derivative.resize(count());
 
         // prefetch everything
         int cuda_device = 0;
         constexpr cudaStream_t stream = 0;
         cudaGetDevice(&cuda_device);
-        prefetch_vector_on_device_async(device_ids, cuda_device, stream);
+        // prefetch_vector_on_device_async(device_ids, cuda_device, stream);
         prefetch_vector_on_device_async(device_obs, cuda_device, stream);
         prefetch_vector_on_device_async(chi2_vec, cuda_device, stream);
         prefetch_vector_on_device_async(data, cuda_device, stream);

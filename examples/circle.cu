@@ -136,9 +136,9 @@ int main(void) {
     std::cout << "Graph built with " << num_vertices << " vertices and " << factor_desc->count() << " factors." << std::endl;
     std::cout << "Optimizing!" << std::endl;
 
-    auto start = std::chrono::high_resolution_clock::now();
+    auto start = std::chrono::steady_clock::now();
     opt.optimize(&graph, iterations);
-    auto end = std::chrono::high_resolution_clock::now();
+    auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double> elapsed = end - start;
     std::cout << "Optimization took " << elapsed.count() << " seconds." << std::endl;
 
