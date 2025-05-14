@@ -246,7 +246,7 @@ class Graph {
             factor_descriptors,
             b.data().get(),
             delta_x.data().get(), 
-            delta_x.size(), damping_factor, 100, 1e-6);
+            delta_x.size(), damping_factor, 50, 1e-6);
 
         // auto end = std::chrono::steady_clock::now();
         // std::chrono::duration<double> elapsed = end - start;

@@ -179,10 +179,10 @@ namespace glso {
                 T rz_new = thrust::inner_product(r.begin(), r.end(), z.begin(), 0.0);
 
                 // 7. Check termination criteria
-                // if (sqrt(rz_new / rz_0) < tol) {
-                //     std::cout << "Converged at iteration " << k << std::endl;
-                //     break;
-                // }
+                if (sqrt(rz_new / rz_0) < tol) {
+                    // std::cout << "Converged at iteration " << k << std::endl;
+                    break;
+                }
 
                 // 8. Compute beta
                 T beta = rz_new / rz;
