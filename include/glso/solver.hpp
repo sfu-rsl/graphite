@@ -107,12 +107,21 @@ namespace glso {
             // thrust::copy(r.begin(), r.end(), p.begin());
 
             // Apply preconditioner
-            IdentityPreconditioner<T> preconditioner;
-            preconditioner.precompute(vertex_descriptors, factor_descriptors, dim_h);
+            // IdentityPreconditioner<T> preconditioner;
+            BlockJacobiPreconditioner<T> preconditioner;
+            preconditioner.precompute(visitor, vertex_descriptors, factor_descriptors, dim_h, damping_factor);
             thrust::device_vector<T> z(dim_h);
+            thrust::fill(z.begin(), z.end(), 0);
             // std::cout << "Applying preconditioner" << std::endl;
-            preconditioner.apply(z.data().get(), r.data().get());
+            preconditioner.apply(visitor, z.data().get(), r.data().get());
 
+            // thrust::host_vector<T> h_z(z);
+            // std::cout << "First few values of h_z: ";
+            // for (size_t i = 0; i < std::min<size_t>(10, h_z.size()); ++i) {
+            //     std::cout << h_z[i] << " ";
+            // }
+            // std::cout << std::endl;
+            
             p = z;
             
             // 1. First compute dot(r, z)
@@ -165,14 +174,15 @@ namespace glso {
 
 
                 // Apply preconditioner again
-                preconditioner.apply(z.data().get(), r.data().get());
+                thrust::fill(z.begin(), z.end(), 0);
+                preconditioner.apply(visitor, z.data().get(), r.data().get());
                 T rz_new = thrust::inner_product(r.begin(), r.end(), z.begin(), 0.0);
 
                 // 7. Check termination criteria
-                if (sqrt(rz_new / rz_0) < tol) {
-                    // std::cout << "Converged at iteration " << k << std::endl;
-                    break;
-                }
+                // if (sqrt(rz_new / rz_0) < tol) {
+                //     std::cout << "Converged at iteration " << k << std::endl;
+                //     break;
+                // }
 
                 // 8. Compute beta
                 T beta = rz_new / rz;

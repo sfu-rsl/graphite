@@ -276,7 +276,7 @@ int main(void) {
 
 
     // Optimize
-    constexpr size_t iterations = 10;
+    constexpr size_t iterations = 50;
     Optimizer opt;
     std::cout << "Graph built with " << num_cameras << " cameras, " << num_points << " points, and " << r_desc->count() << " observations." << std::endl;
     std::cout << "Optimizing!" << std::endl;

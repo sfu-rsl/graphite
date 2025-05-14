@@ -15,14 +15,14 @@ if(CMAKE_HOST_SYSTEM_VERSION MATCHES "microsoft-standard-WSL2$")
 endif()
 
 # Libraries
+find_package(Eigen3 3.1 REQUIRED)
 add_library(glso INTERFACE)
 target_include_directories(glso INTERFACE include)
-target_link_libraries(glso INTERFACE Boost::boost)
+target_link_libraries(glso INTERFACE Boost::boost Eigen3::Eigen)
 
 # Examples
 add_executable(circle examples/circle.cu)
 target_link_libraries(circle glso)
 
-find_package(Eigen3 3.1 REQUIRED)
 add_executable(bal examples/bal.cu)
-target_link_libraries(bal glso Eigen3::Eigen)
+target_link_libraries(bal glso)

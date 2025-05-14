@@ -2,6 +2,7 @@
 #include <glso/vertex.hpp>
 #include <glso/factor.hpp>
 #include <Eigen/Dense>
+#include <glso/op.hpp>
 
 namespace glso {
 
@@ -9,10 +10,11 @@ template<typename T>
 class Preconditioner {
 
     virtual void precompute(
+        GraphVisitor<T>& visitor,
         std::vector<BaseVertexDescriptor<T>*>& vertex_descriptors,
-            std::vector<BaseFactorDescriptor<T>*>& factor_descriptors, size_t dimension) = 0;
+            std::vector<BaseFactorDescriptor<T>*>& factor_descriptors, size_t dimension, T mu) = 0;
 
-    virtual void apply(T* z, const T* r) = 0;
+    virtual void apply(GraphVisitor<T>& visitor, T* z, const T* r) = 0;
 };
 
 template<typename T>
@@ -21,123 +23,200 @@ class IdentityPreconditioner: public Preconditioner<T> {
         size_t dimension;
     public:
         void precompute(
+            GraphVisitor<T>& visitor,
             std::vector<BaseVertexDescriptor<T>*>& vertex_descriptors,
-            std::vector<BaseFactorDescriptor<T>*>& factor_descriptors, size_t dimension) override {
+            std::vector<BaseFactorDescriptor<T>*>& factor_descriptors, size_t dimension, T mu) override {
                 this->dimension = dimension;
             }
 
-        void apply(T* z, const T* r) override {
+        void apply(GraphVisitor<T>& visitor, T* z, const T* r) override {
             // thrust::copy(r, r + dimension, z);
             cudaMemcpy(z, r, dimension*sizeof(T), cudaMemcpyDeviceToDevice);
         }
 
 };
 
-template<typename T, int I, int N, int E, int D>
-__global__ void compute_hessian_diagonal_kernel(
-    T* diagonal_blocks, const T* jacs, const size_t* ids, const uint32_t* fixed, 
-    const T* pmat, const T* chi2_derivative, const size_t num_threads) {
-        int idx = blockIdx.x * blockDim.x + threadIdx.x;
+// template<typename T, int I, int N, int E, int D>
+// __global__ void compute_hessian_diagonal_kernel(
+//     T* diagonal_blocks, const T* jacs, const size_t* ids, const uint32_t* fixed, 
+//     const T* pmat, const T* chi2_derivative, const size_t num_threads) {
+//         int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-        if (idx >= num_threads) {
-            return;
-        }
+//         if (idx >= num_threads) {
+//             return;
+//         }
 
-    constexpr auto jacobian_size = D*E;
-    constexpr auto block_size = D*D;
+//     constexpr auto jacobian_size = D*E;
+//     constexpr auto block_size = D*D;
 
-    // Stored as E x d col major, but we need to transpose it to d x E, where d is the vertex size
-    const size_t factor_id = idx / block_size;
-    const size_t local_id = ids[factor_id*N+I]; // N is the number of vertices involved in the factor
-    if (is_fixed(fixed, local_id)) {
-        return;
-    }
-    const auto jacobian_offset = factor_id * jacobian_size;
+//     // Stored as E x d col major, but we need to transpose it to d x E, where d is the vertex size
+//     const size_t factor_id = idx / block_size;
+//     const size_t local_id = ids[factor_id*N+I]; // N is the number of vertices involved in the factor
+//     if (is_fixed(fixed, local_id)) {
+//         return;
+//     }
+//     const auto jacobian_offset = factor_id * jacobian_size;
 
-    constexpr auto precision_matrix_size = E*E;
-    const auto precision_offset = factor_id*precision_matrix_size;
+//     constexpr auto precision_matrix_size = E*E;
+//     const auto precision_offset = factor_id*precision_matrix_size;
     
-    // Identify H block row and column (column major)
-    const size_t row = idx % D;
-    const size_t col = idx / D;
+//     // Identify H block row and column (column major)
+//     const size_t row = idx % D;
+//     const size_t col = idx / D;
 
-    // left[i]*pmat[i*E+j]*right[i] = h value
-    // where i goes from 0 to E
-    const T* Jt = jacs + jacobian_offset + row*E;
-    const T* J = jacs + jacobian_offset + col*E;
+//     // left[i]*pmat[i*E+j]*right[i] = h value
+//     // where i goes from 0 to E
+//     const T* Jt = jacs + jacobian_offset + row*E;
+//     const T* J = jacs + jacobian_offset + col*E;
 
-    const T* precision_matrix = pmat + precision_offset;
+//     const T* precision_matrix = pmat + precision_offset;
 
-    T value = 0;
-    #pragma unroll
-    for (int i = 0; i < E; i++) { // pmat row
-        #pragma unroll
-        for (int j = 0; j < E; j++) { // pmat col
-            value += Jt[i]*J[i]*precision_matrix[i*E + j];
-        }
-    }
-    value *= chi2_derivative[factor_id];
+//     T value = 0;
+//     #pragma unroll
+//     for (int i = 0; i < E; i++) { // pmat row
+//         #pragma unroll
+//         for (int j = 0; j < E; j++) { // pmat col
+//             value += Jt[i]*J[i]*precision_matrix[i*E + j];
+//         }
+//     }
+//     value *= chi2_derivative[factor_id];
 
 
-    T* block = diagonal_blocks + local_id*block_size + (idx % block_size);
+//     T* block = diagonal_blocks + local_id*block_size + (idx % block_size);
     
-    atomicAdd(block, value);
+//     atomicAdd(block, value);
 
-}
+// }
 
-template<typename T, int I, int N, int E, int D>
-__global__ void invert_hessian_diagonal_kernel(
-    T* diagonal_blocks, const uint32_t* fixed, const T* chi2_derivative, const size_t num_threads) {
-        int idx = blockIdx.x * blockDim.x + threadIdx.x;
+// template<typename T>
+// class ComputeHessianDiagonal: public OpImpl<T, ComputeHessianDiagonal<T>> {
+//     private:
+//     public:
 
-        if (idx >= num_threads) {
-            return;
-        }
+//         template<typename F>
+//         void apply_op(Op<T>& op) override {
+
+//             std::cout << "ComputeHessianDiagonal applied!" << std::endl;
+//             std::cout << "Operating on " << typeid(F).name() << "\n";
+
+//             // auto* compute_hessian = dynamic_cast<ComputeHessianDiagonal<T>*>(&op);
+//             // if (compute_hessian) {
+//             //     compute_hessian->apply_op(op);
+//             // }
+//         }
+// };
+
+// template<typename T, int I, int N, int E, int D>
+// __global__ void invert_hessian_diagonal_kernel(
+//     T* diagonal_blocks, const uint32_t* fixed, const T* chi2_derivative, const size_t num_threads) {
+//         int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+//         if (idx >= num_threads) {
+//             return;
+//         }
 
 
-    constexpr auto block_size = D*D;
+//     constexpr auto block_size = D*D;
 
-    const auto vertex_id = idx;
-    if (is_fixed(fixed, vertex_id)) {
-        return;
-    }
+//     const auto vertex_id = idx;
+//     if (is_fixed(fixed, vertex_id)) {
+//         return;
+//     }
 
-    T* block = diagonal_blocks + vertex_id*block_size;
+//     T* block = diagonal_blocks + vertex_id*block_size;
 
-    Eigen::Map<Eigen::Matrix<T, D, D>> block_matrix(block);
-    block_matrix = block_matrix.inverse();
-}
+//     Eigen::Map<Eigen::Matrix<T, D, D>> block_matrix(block);
+//     block_matrix = block_matrix.inverse();
+// }
 
 
 template<typename T>
-class BlockJacobi: public Preconditioner<T> {
+class BlockJacobiPreconditioner: public Preconditioner<T> {
     private:
         size_t dimension;
         std::vector<std::pair<size_t, size_t>> block_sizes;
         std::unordered_map<BaseVertexDescriptor<T>*, thrust::device_vector<T>> block_diagonals;
+        std::vector<BaseVertexDescriptor<T>*>* vds;
+
     public:
         void precompute(
+            GraphVisitor<T>& visitor,
             std::vector<BaseVertexDescriptor<T>*>& vertex_descriptors,
-            std::vector<BaseFactorDescriptor<T>*>& factor_descriptors, size_t dimension) override {
+            std::vector<BaseFactorDescriptor<T>*>& factor_descriptors, size_t dimension,
+            T mu) override {
                 this->dimension = dimension;
+                this->vds = &vertex_descriptors;
 
                 for (auto & desc: vertex_descriptors) {
                     // Reserve space
                     const auto d = desc->dimension();
                     const size_t num_values = d*d*desc->count(); // this is not tightly packed since count includes fixed vertices
                     block_diagonals[desc] = thrust::device_vector<T>(num_values, 0);
+                    // block_diagonals.insert(desc, thrust::device_vector<T>(num_values, 0));
                 }
 
                 // Compute Hessian blocks on the diagonal
-                for (auto & desc: factor_descriptors) {
+                for (auto & desc: vertex_descriptors) {
+                    thrust::fill(block_diagonals[desc].begin(), block_diagonals[desc].end(), 0);
                 }
+                for (auto & desc: factor_descriptors) {
+                    desc->visit_block_diagonal(visitor, block_diagonals);
+                }
+                cudaDeviceSynchronize();
+
+                // Print first 5 blocks for each vertex desc
+                // for (auto & desc: vertex_descriptors) {
+                //     const auto d = desc->dimension();
+                //     // T* blocks = block_diagonals[desc].data().get();
+                //     thrust::host_vector<T> blocks = block_diagonals[desc];
+                //     const size_t num_values = desc->count(); // this is not tightly packed since count includes fixed vertices
+                //     T* p_blocks = blocks.data();
+                //     std::cout << "Block diagonal for vertex descriptor " << desc << ": ";
+                //     for (size_t i = 0; i < std::min(num_values, size_t(1)); i++) {
+                //         // std::cout << blocks[i] << " ";
+                //         auto map = Eigen::Map<Eigen::MatrixXd>(p_blocks + i*d*d, d, d);
+                //         std::cout << "Matrix:\n" << map << std::endl;
+                //     }
+                //     std::cout << std::endl;
+                // }
 
                 // Invert the blocks
                 for (auto & desc: vertex_descriptors) {
+                    desc->visit_invert_augmented_block_diagonal(visitor, block_diagonals[desc].data().get(), mu);
                 }
+
+                // for (auto & desc: vertex_descriptors) {
+                //     const auto d = desc->dimension();
+                //     // T* blocks = block_diagonals[desc].data().get();
+                //     thrust::host_vector<T> blocks = block_diagonals[desc];
+                //     const size_t num_values = desc->count(); // this is not tightly packed since count includes fixed vertices
+                //     T* p_blocks = blocks.data();
+                //     std::cout << "(post inversion) Block diagonal for vertex descriptor " << desc << ": ";
+                //     for (size_t i = 0; i < std::min(num_values, size_t(2)); i++) {
+                //         // std::cout << blocks[i] << " ";
+                //         auto map = Eigen::Map<Eigen::MatrixXd>(p_blocks + i*d*d, d, d);
+                //         std::cout << "Matrix:\n" << map << std::endl;
+                //                                 Eigen::MatrixXd inv = map.inverse();
+
+                //         // std::cout << "Inverse:\n" << inv << std::endl;
+                        
+                //     }
+                //     std::cout << std::endl;
+                // }
 
                 cudaDeviceSynchronize();
 
+            }
+
+            void apply(GraphVisitor<T>& visitor, T* z, const T* r) override {
+                // Apply the preconditioner
+                for (auto & desc: *vds) {
+                    const auto d = desc->dimension();
+                    T* blocks = block_diagonals[desc].data().get();
+                    // std::cout << "bd size: " << block_diagonals[desc].size() << std::endl;
+                    desc->visit_apply_block_jacobi(visitor, z, r, blocks);
+                }
+                cudaDeviceSynchronize();
             }
 };
 

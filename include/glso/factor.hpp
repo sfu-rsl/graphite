@@ -5,8 +5,11 @@
 #include <thrust/universal_vector.h>
 #include <glso/utils.hpp>
 #include <glso/loss.hpp>
+#include <glso/op.hpp>
 
 namespace glso {
+
+
 template<typename T>
 class JacobianStorage {
 public:
@@ -30,6 +33,9 @@ public:
     virtual void visit_b(GraphVisitor<T>& visitor) = 0;
     virtual void visit_Jv(GraphVisitor<T>& visitor, T* out, T* in) = 0;
     virtual void visit_Jtv(GraphVisitor<T>& visitor, T* out, T* in) = 0;
+    virtual void visit_block_diagonal(GraphVisitor<T>& visitor, 
+        std::unordered_map<BaseVertexDescriptor<T>*, thrust::device_vector<T>> & block_diagonals) = 0;
+    // virtual void apply_op(Op<T>& op) = 0;
  
     virtual JacobianStorage<T>* get_jacobians() = 0;
     virtual void initialize_jacobian_storage() = 0;
@@ -102,6 +108,24 @@ public:
     void visit_Jtv(GraphVisitor<T>& visitor, T* out, T* in) override {
         visitor.template compute_Jtv<Derived<T>, VDTypes...>(dynamic_cast<Derived<T>*>(this), out, in);
     }
+
+    void visit_block_diagonal(GraphVisitor<T>& visitor, std::unordered_map<BaseVertexDescriptor<T>*, thrust::device_vector<T>> & block_diagonals) override {
+        
+        std::array<T*, N> diagonal_blocks;
+        for (size_t i = 0; i < N; i++) {
+            diagonal_blocks[i] = block_diagonals[vertex_descriptors[i]].data().get();
+            // std::cout << "BD size: " << block_diagonals[vertex_descriptors[i]].size() << std::endl;
+        }
+        
+        visitor.template compute_block_diagonal<Derived<T>>(dynamic_cast<Derived<T>*>(this), diagonal_blocks);
+    }
+
+    // void apply_op(Op<T>& op) override {
+
+    //     auto & op_impl = dynamic_cast<OpImpl<T>&>(op);
+    //     op_impl.apply_to(dynamic_cast<Derived<T>*>(this));
+        
+    // }
     
     static constexpr size_t get_num_vertices() {
         return N;
