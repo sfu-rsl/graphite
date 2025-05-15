@@ -97,6 +97,8 @@ namespace glso {
                 factor_descriptors[i]->visit_scalar_diagonal(visitor, diag.data().get());
             }
             cudaDeviceSynchronize();
+            thrust::fill(diag.begin(), diag.end(), 1.0);
+
             damp_by_factor(dim_h, v2.data().get(), damping_factor, diag.data().get(), x, v2.data().get());
 
 

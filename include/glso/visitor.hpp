@@ -87,7 +87,8 @@ __global__ void augment_hessian_diagonal_kernel(
         T* block = diagonal_blocks + vertex_id*block_size;
 
         Eigen::Map<Eigen::Matrix<T, D, D>> block_matrix(block);
-        block_matrix += mu*block_matrix.diagonal().asDiagonal();
+        // block_matrix += mu*block_matrix.diagonal().asDiagonal();
+        block_matrix += (mu*Eigen::Matrix<T, D, D>::Identity()).eval();
 
 }
 
@@ -553,10 +554,12 @@ __global__ void compute_hessian_diagonal_kernel(
     T value = 0;
     #pragma unroll
     for (int i = 0; i < E; i++) { // pmat row
+        T pj = 0;
         #pragma unroll
         for (int j = 0; j < E; j++) { // pmat col
-            value += Jt[i]*J[i]*precision_matrix[i*E + j];
+            pj += precision_matrix[i*E + j]*J[j];
         }
+        value += Jt[i]*pj;
         // value += Jt[i]*J[i];
     }
 
@@ -637,10 +640,12 @@ __global__ void compute_hessian_scalar_diagonal_kernel(
     T value = 0;
     #pragma unroll
     for (int i = 0; i < E; i++) { // pmat row
+        T pj = 0;
         #pragma unroll
         for (int j = 0; j < E; j++) { // pmat col
-            value += Jt[i]*J[i]*precision_matrix[i*E + j];
+            pj += precision_matrix[i*E + j]*J[j];
         }
+        value += Jt[i]*pj;
     }
 
     value *= chi2_derivative[factor_id];
