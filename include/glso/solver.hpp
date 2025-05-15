@@ -20,6 +20,7 @@ namespace glso {
         thrust::device_vector<T> v2; // v2 = J^T v1 (dimension same as x)
         thrust::device_vector<T> r; // residual
         thrust::device_vector<T> p; // search direction
+        thrust::device_vector<T> diag; // diagonal of Hessian
 
         // thrust::device_vector<T> xout;
 
@@ -87,10 +88,21 @@ namespace glso {
 
             // 3. Add damping factor
             // v2 += damping_factor * x
-            saxpy(dim_h, v2.data().get(), damping_factor, x, v2.data().get());
+            // axpy(dim_h, v2.data().get(), damping_factor, x, v2.data().get());
+
+            // v2 += damping_factor*diag(H)*x
+            diag.resize(dim_h);
+            thrust::fill(diag.begin(), diag.end(), 0);
+            for (size_t i = 0; i < factor_descriptors.size(); i++) {
+                factor_descriptors[i]->visit_scalar_diagonal(visitor, diag.data().get());
+            }
+            cudaDeviceSynchronize();
+            damp_by_factor(dim_h, v2.data().get(), damping_factor, diag.data().get(), x, v2.data().get());
+
+
 
             // 4. Finally r = b - v2
-            saxpy(dim_h, r.data().get(), -1.0, (const T*)v2.data().get(), b);
+            axpy(dim_h, r.data().get(), -1.0, (const T*)v2.data().get(), b);
             // std::cout << "r: ";
             // for (size_t i = 0; i < r.size(); i++) {
             //     std::cout << r[i] << " ";
@@ -152,17 +164,19 @@ namespace glso {
                 }
                 cudaDeviceSynchronize();
                 // Add damping factor
-                saxpy(dim_h, v2.data().get(), damping_factor, p.data().get(), v2.data().get());
-                cudaDeviceSynchronize();
+                // axpy(dim_h, v2.data().get(), damping_factor, p.data().get(), v2.data().get());
+                // v2 += damping_factor*diag(H)*p
+                damp_by_factor(dim_h, v2.data().get(), damping_factor, diag.data().get(), p.data().get(), v2.data().get());
+                // cudaDeviceSynchronize();
 
                 // 4. Compute alpha = dot(r, z) / dot(p, v2)
                 T alpha = rz / thrust::inner_product(p.begin(), p.end(), v2.begin(), 0.0);
                 // std::cout << "alpha: " << alpha << ", rr: " << rr << ", dot(p, v2): " << thrust::inner_product(p.begin(), p.end(), v2.begin(), 0.0) << std::endl;
                 // 5. x  += alpha * p
-                saxpy(dim_h, x, alpha, (const T*)p.data().get(), x);
+                axpy(dim_h, x, alpha, (const T*)p.data().get(), x);
 
                 // 6. r -= alpha * v2
-                saxpy(dim_h, r.data().get(), -alpha, (const T*)v2.data().get(), r.data().get());
+                axpy(dim_h, r.data().get(), -alpha, (const T*)v2.data().get(), r.data().get());
                 cudaDeviceSynchronize();
 
                 // // 7. Check termination criteria
@@ -189,7 +203,7 @@ namespace glso {
                 rz = rz_new;
 
                 // 9. Update p
-                saxpy(dim_h, p.data().get(), beta, (const T*)p.data().get(), r.data().get());
+                axpy(dim_h, p.data().get(), beta, (const T*)p.data().get(), r.data().get());
                 cudaDeviceSynchronize();
             }
                 

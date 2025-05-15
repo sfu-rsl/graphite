@@ -620,6 +620,60 @@ __global__ void compute_hessian_diagonal_kernel(
 
 }
 
+template<typename T, size_t I, size_t N, size_t E, size_t D>
+__global__ void compute_hessian_scalar_diagonal_kernel(
+    T* diagonal, const T* jacs, 
+    const size_t* ids, const size_t* hessian_ids, const uint32_t* fixed, 
+    const T* pmat, const T* chi2_derivative, const size_t num_threads) {
+        size_t idx = ((size_t)blockIdx.x) * ((size_t)blockDim.x) + ((size_t)threadIdx.x);
+
+        if (idx >= num_threads) {
+            return;
+        }
+
+    constexpr size_t jacobian_size = D*E;
+
+    // Stored as E x d col major, but we need to transpose it to d x E, where d is the vertex size
+    const size_t factor_id = idx / D;
+    const size_t local_id = ids[factor_id*N+I]; // N is the number of vertices involved in the factor
+    if (is_fixed(fixed, local_id)) {
+        return;
+    }
+    const auto jacobian_offset = factor_id * jacobian_size;
+
+    constexpr auto precision_matrix_size = E*E;
+    const auto precision_offset = factor_id*precision_matrix_size;
+    
+    // Identify H block row and column (column major)
+    const size_t row = idx % D;
+    const size_t col = row;
+
+    // left[i]*pmat[i*E+j]*right[i] = h value
+    // where i goes from 0 to E
+    const T* Jt = jacs + jacobian_offset + row*E;
+    const T* J = jacs + jacobian_offset + col*E;
+
+    const T* precision_matrix = pmat + precision_offset;
+
+    T value = 0;
+    #pragma unroll
+    for (int i = 0; i < E; i++) { // pmat row
+        #pragma unroll
+        for (int j = 0; j < E; j++) { // pmat col
+            value += Jt[i]*J[i]*precision_matrix[i*E + j];
+        }
+    }
+
+    value *= chi2_derivative[factor_id];
+
+
+    // T* block = diagonal_blocks+(local_id*block_size + row + col*D);
+    const size_t hessian_offset = hessian_ids[local_id];
+    T* location = diagonal + hessian_offset + row;
+    atomicAdd(location, value);
+}
+
+
 template<typename T>
 class GraphVisitor {
 private:
@@ -780,6 +834,29 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
             }()), ...);
         }
 
+        template <typename F, std::size_t... Is>
+        void launch_kernel_scalar_diagonal(F* f, 
+            T* diagonal,  std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
+            (([&] {
+            constexpr size_t num_vertices = F::get_num_vertices();
+            constexpr size_t dimension = F::get_vertex_sizes()[Is];
+            const size_t num_threads = num_factors *dimension;
+
+            int threads_per_block = 256;
+            int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+
+            compute_hessian_scalar_diagonal_kernel<T, Is, num_vertices, F::error_dim, dimension><<<num_blocks, threads_per_block>>>(
+                diagonal,
+                jacs[Is],
+                f->device_ids.data().get(),
+                hessian_ids[Is],
+                f->vertex_descriptors[Is]->get_fixed_mask(),
+                f->precision_matrices.data().get(),
+                f->chi2_derivative.data().get(),
+                num_threads);
+
+            }()), ...);
+        }
 
 public:
     
@@ -981,6 +1058,32 @@ public:
         const auto num_factors = f->count();
 
         launch_kernel_block_diagonal(f, diagonal_blocks, hessian_ids, 
+            jacs, num_factors, std::make_index_sequence<num_vertices>{});
+        cudaDeviceSynchronize();
+
+    }
+
+   template<typename F>
+    void compute_scalar_diagonal(F* f, T* diagonal) {
+
+        // Then for each vertex, we need to compute the error
+        constexpr auto num_vertices = F::get_num_vertices();
+        constexpr auto vertex_sizes = F::get_vertex_sizes();
+
+        // At this point all necessary data should be on the GPU    
+        // std::array<T*, num_vertices> verts;
+        auto verts = f->get_vertices();
+        std::array<T*, num_vertices> jacs;
+        std::array<const size_t*, num_vertices> hessian_ids;
+        for (int i = 0; i < num_vertices; i++) {
+            jacs[i] = f->jacobians[i].data.data().get();
+            hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
+        }
+
+        
+        const auto num_factors = f->count();
+
+        launch_kernel_scalar_diagonal(f, diagonal, hessian_ids, 
             jacs, num_factors, std::make_index_sequence<num_vertices>{});
         cudaDeviceSynchronize();
 

@@ -35,6 +35,7 @@ public:
     virtual void visit_Jtv(GraphVisitor<T>& visitor, T* out, T* in) = 0;
     virtual void visit_block_diagonal(GraphVisitor<T>& visitor, 
         std::unordered_map<BaseVertexDescriptor<T>*, thrust::device_vector<T>> & block_diagonals) = 0;
+    virtual void visit_scalar_diagonal(GraphVisitor<T>& visitor, T* diagonal) = 0;
     // virtual void apply_op(Op<T>& op) = 0;
  
     virtual JacobianStorage<T>* get_jacobians() = 0;
@@ -119,6 +120,11 @@ public:
         
         visitor.template compute_block_diagonal<Derived<T>>(dynamic_cast<Derived<T>*>(this), diagonal_blocks);
     }
+
+    void visit_scalar_diagonal(GraphVisitor<T>& visitor, T* diagonal) override {    
+        visitor.template compute_scalar_diagonal<Derived<T>>(dynamic_cast<Derived<T>*>(this), diagonal);
+    }
+
 
     // void apply_op(Op<T>& op) override {
 
