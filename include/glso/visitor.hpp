@@ -92,7 +92,8 @@ __global__ void invert_hessian_diagonal_kernel(
         // } 
         // Eigen::Matrix<T,D, D> mat = (block_matrix+mu*Eigen::Matrix<T, D, D>::Identity()).eval();
         // block_matrix = mat.eval();
-        block_matrix += mu*Eigen::Matrix<T, D, D>::Identity();
+        // block_matrix += mu*Eigen::Matrix<T, D, D>::Identity();
+        block_matrix += mu*block_matrix.diagonal().asDiagonal();
         // mat = (mat+mu*Eigen::Matrix<T, D, D>::Identity()).eval();
         // mat = Eigen::Matrix<T, D, D>::Identity();
         // Eigen::Matrix<T, D, D> mat = (Eigen::Matrix<T, D, D>::Identity()).eval(); 
