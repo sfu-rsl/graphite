@@ -1,6 +1,5 @@
 #pragma once
 #include <glso/common.hpp>
-#include <Eigen/Dense>
 
 namespace glso {
 
@@ -85,11 +84,11 @@ __global__ void augment_hessian_diagonal_kernel(
         }
 
         T* block = diagonal_blocks + vertex_id*block_size;
-
-        Eigen::Map<Eigen::Matrix<T, D, D>> block_matrix(block);
-        // block_matrix += mu*block_matrix.diagonal().asDiagonal();
-        block_matrix += (mu*Eigen::Matrix<T, D, D>::Identity()).eval();
-
+        for (size_t i = 0; i < D; i++) {
+            // block[i*D + i] += mu;
+            // block[i*D + i] *= (1.0 + mu);
+            block[i*D+i] += mu*std::clamp(block[i*D+i], 1.0e-6, 1.0e32);
+        }
 }
 
 template<typename T, int D>

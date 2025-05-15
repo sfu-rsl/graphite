@@ -97,9 +97,14 @@ namespace glso {
                 factor_descriptors[i]->visit_scalar_diagonal(visitor, diag.data().get());
             }
             cudaDeviceSynchronize();
-            thrust::fill(diag.begin(), diag.end(), 1.0);
+            // thrust::fill(diag.begin(), diag.end(), 1.0);
+            
+            // Check for negative values in diag and print an error if found
+            T min_diag = 1.0e-6;
+            T max_diag = 1.0e32;
+            clamp(dim_h, min_diag, max_diag, diag.data().get());
 
-            damp_by_factor(dim_h, v2.data().get(), damping_factor, diag.data().get(), x, v2.data().get());
+            damp_by_factor(dim_h, v2.data().get(), damping_factor, diag.data().get(), x);
 
 
 
@@ -168,7 +173,7 @@ namespace glso {
                 // Add damping factor
                 // axpy(dim_h, v2.data().get(), damping_factor, p.data().get(), v2.data().get());
                 // v2 += damping_factor*diag(H)*p
-                damp_by_factor(dim_h, v2.data().get(), damping_factor, diag.data().get(), p.data().get(), v2.data().get());
+                damp_by_factor(dim_h, v2.data().get(), damping_factor, diag.data().get(), p.data().get());
                 // cudaDeviceSynchronize();
 
                 // 4. Compute alpha = dot(r, z) / dot(p, v2)

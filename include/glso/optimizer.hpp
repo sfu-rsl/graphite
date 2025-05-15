@@ -9,7 +9,7 @@ class Optimizer {
 private:
 
 
-T compute_rho(Graph<T>* graph, const T chi2, const T new_chi2, const T mu) {
+T compute_rho(Graph<T>* graph, const T chi2, const T new_chi2, const T mu, const bool step_is_good) {
     // Compute rho
     //  TODO: Don't store these in the graph
     auto & delta_x = graph->get_delta_x();
@@ -17,7 +17,13 @@ T compute_rho(Graph<T>* graph, const T chi2, const T new_chi2, const T mu) {
     T num = (chi2 - new_chi2);
     T denom = (mu * thrust::inner_product(delta_x.begin(), delta_x.end(), delta_x.begin(), 0.0));
     denom += thrust::inner_product(delta_x.begin(), delta_x.end(), b.begin(), 0.0);
-    return num / (denom+1e-10);
+    if (step_is_good) {
+        denom += 1e-3;
+    }
+    else {
+        denom = 1;
+    }
+    return num / (denom);
 }
 
 public:
@@ -72,7 +78,7 @@ public:
             // std::cout << "Iteration " << i << ", chi2: " << chi2 << ", candidate chi2: " << new_chi2 << std::endl;
             bool step_is_good = std::isfinite(new_chi2);
 
-            T rho = compute_rho(graph, chi2, new_chi2, mu);
+            T rho = compute_rho(graph, chi2, new_chi2, mu, step_is_good);
 
             if (step_is_good && rho > 0) {
                 // update hyperparameters

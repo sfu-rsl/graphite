@@ -299,7 +299,7 @@ int main(void) {
     std::cout << "Optimizing!" << std::endl;
 
     start = std::chrono::steady_clock::now();
-    opt.optimize(&graph, iterations, 1e4);
+    opt.optimize(&graph, iterations, 1e10);
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double> elapsed = end - start;
     std::cout << "Optimization took " << elapsed.count() << " seconds." << std::endl;
