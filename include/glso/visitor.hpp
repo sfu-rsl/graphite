@@ -4,6 +4,10 @@
 
 namespace glso {
 
+    __device__ size_t get_thread_id() {
+        return static_cast<size_t>(blockIdx.x) * static_cast<size_t>(blockDim.x) + static_cast<size_t>(threadIdx.x);
+    }
+
     template <typename VPtr, typename T, size_t D>
     __device__ void device_copy(const VPtr v, T* dst) {
         const std::array<T, D> src = v->parameters();
@@ -51,7 +55,7 @@ namespace glso {
 
 template<typename T, typename Descriptor, typename V>
 __global__ void apply_update_kernel(V** vertices, const T* delta_x, const size_t * hessian_ids, const uint32_t* fixed, const size_t num_threads) {
-    int vertex_id = blockIdx.x * blockDim.x + threadIdx.x;
+    const size_t vertex_id = get_thread_id();
 
     if (vertex_id >= num_threads || is_fixed(fixed, vertex_id)) {
         return;
@@ -67,7 +71,7 @@ __global__ void apply_update_kernel(V** vertices, const T* delta_x, const size_t
 template<typename T, int D>
 __global__ void augment_hessian_diagonal_kernel(
     T* diagonal_blocks, const T mu, const uint32_t* fixed, const size_t num_threads) {
-        int idx = blockIdx.x * blockDim.x + threadIdx.x;
+        const size_t idx = get_thread_id();
 
         if (idx >= num_threads) {
             return;
@@ -90,7 +94,7 @@ __global__ void augment_hessian_diagonal_kernel(
 template<typename T, int D>
 __global__ void apply_block_jacobi_kernel(
     T* z, const T* r, T* block_diagonal, const size_t* hessian_ids, const uint32_t* fixed, const size_t num_threads) {
-        size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+        const size_t idx = get_thread_id();
         const auto local_vertex_id = idx / D;
 
         if (idx >= num_threads || is_fixed(fixed, local_vertex_id)) {
@@ -117,7 +121,7 @@ __global__ void apply_block_jacobi_kernel(
 template<typename T, size_t I, size_t N, typename M, size_t E, typename F, typename VT, std::size_t... Is>
 __global__
 void compute_error_kernel_autodiff(const M* obs, T* error, const typename F::ConstraintDataType* constraint_data, size_t* ids, const size_t* hessian_ids, const size_t num_threads, VT args, std::array<T*, sizeof...(Is)> jacs, const uint32_t* fixed, std::index_sequence<Is...>) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+        const size_t idx = get_thread_id();
 
     if (idx >= num_threads) {
         return;
@@ -191,7 +195,7 @@ void compute_error_kernel_autodiff(const M* obs, T* error, const typename F::Con
 template<typename T, size_t N, typename M, size_t E, typename F, typename VT, std::size_t... Is>
 __global__
 void compute_error_kernel(const M* obs, T* error, const typename F::ConstraintDataType* constraint_data, size_t* ids, const size_t num_threads, VT args, std::index_sequence<Is...>) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+        const size_t idx = get_thread_id();
 
     if (idx >= num_threads) {
         return;
@@ -232,7 +236,7 @@ void compute_error_kernel(const M* obs, T* error, const typename F::ConstraintDa
 template<typename T, size_t I, size_t N, size_t E, typename F, std::size_t... Is>
 __global__ 
 void compute_b_kernel_no_precision_matrix(T* b, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, std::array<T*, sizeof...(Is)> jacs, std::index_sequence<Is...>) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+        const size_t idx = get_thread_id();
 
     if (idx >= num_threads) {
         return;
@@ -271,7 +275,7 @@ void compute_b_kernel_no_precision_matrix(T* b, T* error, size_t* ids, const siz
 template<typename T, size_t I, size_t N, size_t E, typename F, typename L, std::size_t... Is>
 __global__ 
 void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, T* jacs, const uint32_t* fixed, const T* pmat, const L* loss, std::index_sequence<Is...>) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+        const size_t idx = get_thread_id();
 
     if (idx >= num_threads) {
         return;
@@ -332,7 +336,7 @@ template<typename T, size_t I, size_t N, size_t E, size_t D, typename F, std::si
 __global__ 
 void compute_Jv_kernel(T*y, T* x, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, const T* jacs, const uint32_t* fixed, std::index_sequence<Is...>) {
     
-    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+        const size_t idx = get_thread_id();
 
     if (idx >= num_threads) {
         return;
@@ -382,7 +386,7 @@ void compute_Jv_kernel(T*y, T* x, T* error, size_t* ids, const size_t* hessian_i
 template<typename T, size_t I, size_t N, size_t E, typename F, std::size_t... Is>
 __global__ 
 void compute_Jtv_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, const size_t num_threads, T* jacs, std::index_sequence<Is...>) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+        const size_t idx = get_thread_id();
 
     if (idx >= num_threads) {
         return;
@@ -416,7 +420,7 @@ void compute_Jtv_kernel(T* y, T* x, size_t* ids, const size_t* hessian_ids, cons
 template<typename T, size_t I, size_t N, size_t E, size_t D, typename F, std::size_t... Is>
 __global__ 
 void compute_JtPv_kernel(T* y, const T* x, const size_t* ids, const size_t* hessian_ids, const size_t num_threads, const T* jacs, const uint32_t* fixed, const T* pmat, const T* chi2_derivative, std::index_sequence<Is...>) {
-    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+        const size_t idx = get_thread_id();
 
     if (idx >= num_threads) {
         return;
@@ -496,7 +500,7 @@ void compute_JtPv_kernel(T* y, const T* x, const size_t* ids, const size_t* hess
 template<typename T, size_t E, typename L>
 __global__ 
 void compute_chi2_kernel(T* chi2, T* chi2_derivative, const T* residuals, const size_t num_threads, const T* pmat, const L* loss) {
-    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+        const size_t idx = get_thread_id();
 
     if (idx >= num_threads) {
         return;
@@ -512,7 +516,7 @@ __global__ void compute_hessian_diagonal_kernel(
     T* diagonal_blocks, const T* jacs, 
     const size_t* ids, const uint32_t* fixed, 
     const T* pmat, const T* chi2_derivative, const size_t num_threads) {
-        size_t idx = ((size_t)blockIdx.x) * ((size_t)blockDim.x) + ((size_t)threadIdx.x);
+        const size_t idx = get_thread_id();
 
         if (idx >= num_threads) {
             return;
@@ -601,7 +605,7 @@ __global__ void compute_hessian_scalar_diagonal_kernel(
     T* diagonal, const T* jacs, 
     const size_t* ids, const size_t* hessian_ids, const uint32_t* fixed, 
     const T* pmat, const T* chi2_derivative, const size_t num_threads) {
-        size_t idx = ((size_t)blockIdx.x) * ((size_t)blockDim.x) + ((size_t)threadIdx.x);
+        const size_t idx = get_thread_id();
 
         if (idx >= num_threads) {
             return;

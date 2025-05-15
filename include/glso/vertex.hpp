@@ -36,7 +36,8 @@ namespace glso {
 template <typename VertexType, typename State, typename Descriptor, typename T>
 __global__ void backup_state_kernel(VertexType** vertices, State* dst, const uint32_t* fixed, const size_t num_vertices) {
         
-    const size_t vertex_id = blockIdx.x * blockDim.x + threadIdx.x;
+    const size_t vertex_id = get_thread_id();
+
 
     if (vertex_id >= num_vertices || is_fixed(fixed, vertex_id)) return;
 
@@ -46,7 +47,7 @@ __global__ void backup_state_kernel(VertexType** vertices, State* dst, const uin
 template <typename VertexType, typename State, typename Descriptor, typename T>
 __global__ void set_state_kernel(VertexType** vertices, const State* src, const uint32_t* fixed, const size_t num_vertices) {
         
-    const size_t vertex_id = blockIdx.x * blockDim.x + threadIdx.x;
+    const size_t vertex_id = get_thread_id();
 
     if (vertex_id >= num_vertices || is_fixed(fixed, vertex_id)) return;
 
@@ -174,44 +175,7 @@ public:
         const int block_size = 256;
         const auto num_blocks = (num_threads + block_size - 1) / block_size;
         set_state_kernel<VertexType, S, Derived<T>, T><<<num_blocks, block_size>>>(vertices, backup_state.data().get(), fixed_mask.data().get(), num_vertices);
-    }
-
-    // virtual void set_parameters(const T* src) override {
-    //     // const size_t param_size = desc->dimension()*desc->count();
-    //     VertexType* vertices = x_device.data().get();
-
-    //     const int num_vertices = static_cast<int>(count());
-    //     const int num_threads = num_vertices;
-    //     const int block_size = 256;
-    //     const auto num_blocks = (num_threads + block_size - 1) / block_size;
-    //     set_parameters_kernel<VertexType, T><<<num_blocks, block_size>>>(vertices, src, num_vertices);
-    // }
-
-    // __global__ static void set_parameters_kernel(VertexType* vertices, const T* src, const size_t num_vertices) {
-        
-    //     const size_t vertex_id = blockIdx.x * blockDim.x + threadIdx.x;
-
-    //     if (vertex_id >= num_vertices) return;
-        
-    //     const size_t src_offset = vertex_id * VertexType::dimension;
-
-    //     for (size_t i = 0; i < VertexType::dimension; ++i) {
-    //         vertices[vertex_id].update(src[src_offset + i]);
-    //     }
-    // }
-
-    // virtual void set_parameters(const T* src) override {
-    //     // const size_t param_size = desc->dimension()*desc->count();
-    //     VertexType* vertices = x_device.data().get();
-
-    //     const int num_vertices = static_cast<int>(count());
-    //     const int num_threads = num_vertices;
-    //     const int block_size = 256;
-    //     const auto num_blocks = (num_threads + block_size - 1) / block_size;
-    //     set_parameters_kernel<VertexType, T><<<num_blocks, block_size>>>(vertices, src, num_vertices);
-    // }
-
-    
+    }    
 
     virtual size_t count() const override {
         // TODO: Find a better way to get the dimension
