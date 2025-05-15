@@ -15,10 +15,11 @@ if(CMAKE_HOST_SYSTEM_VERSION MATCHES "microsoft-standard-WSL2$")
 endif()
 
 # Libraries
+find_package(CUDAToolkit REQUIRED)
 find_package(Eigen3 3.1 REQUIRED)
 add_library(glso INTERFACE)
 target_include_directories(glso INTERFACE include)
-target_link_libraries(glso INTERFACE Boost::boost Eigen3::Eigen)
+target_link_libraries(glso INTERFACE Boost::boost Eigen3::Eigen CUDA::cublas)
 
 # Examples
 add_executable(circle examples/circle.cu)

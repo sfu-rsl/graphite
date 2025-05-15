@@ -60,7 +60,7 @@ public:
 
     // virtual void update(const T* x, const T* delta) = 0;
     virtual void visit_update(GraphVisitor<T>& visitor) = 0;
-    virtual void visit_invert_augmented_block_diagonal(GraphVisitor<T>& visitor, T* block_diagonal, T mu) = 0;
+    virtual void visit_augment_block_diagonal(GraphVisitor<T>& visitor, T* block_diagonal, T mu) = 0;
     virtual void visit_apply_block_jacobi(GraphVisitor<T>& visitor, T* z, const T* r, T* block_diagonal) = 0;
     virtual size_t dimension() const = 0;
     virtual size_t count() const = 0;
@@ -116,8 +116,8 @@ public:
         visitor.template apply_step<Derived<T>>(dynamic_cast<Derived<T>*>(this));
     }
 
-    void visit_invert_augmented_block_diagonal(GraphVisitor<T>& visitor, T* block_diagonal, T mu) override {
-        visitor.template invert_augmented_block_diagonal<Derived<T>>(dynamic_cast<Derived<T>*>(this), block_diagonal, mu);
+    void visit_augment_block_diagonal(GraphVisitor<T>& visitor, T* block_diagonal, T mu) override {
+        visitor.template augment_block_diagonal<Derived<T>>(dynamic_cast<Derived<T>*>(this), block_diagonal, mu);
     }
 
     void visit_apply_block_jacobi(GraphVisitor<T>& visitor, T* z, const T* r, T* block_diagonal) override {

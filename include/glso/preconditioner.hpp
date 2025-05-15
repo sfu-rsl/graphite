@@ -3,6 +3,7 @@
 #include <glso/factor.hpp>
 #include <Eigen/Dense>
 #include <glso/op.hpp>
+#include <cublas_v2.h>
 
 namespace glso {
 
@@ -137,8 +138,15 @@ class BlockJacobiPreconditioner: public Preconditioner<T> {
         std::vector<std::pair<size_t, size_t>> block_sizes;
         std::unordered_map<BaseVertexDescriptor<T>*, thrust::device_vector<T>> block_diagonals;
         std::vector<BaseVertexDescriptor<T>*>* vds;
+        cublasHandle_t handle;
 
     public:
+
+        BlockJacobiPreconditioner() {
+            cublasCreate(&handle);
+            cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE);
+        }
+
         void precompute(
             GraphVisitor<T>& visitor,
             std::vector<BaseVertexDescriptor<T>*>& vertex_descriptors,
@@ -181,21 +189,58 @@ class BlockJacobiPreconditioner: public Preconditioner<T> {
                 // }
 
                 // Invert the blocks
+                 // TODO: Figure out a better way to handle the memory
+                thrust::device_vector<T> Ainv_data;
+                thrust::host_vector<T*> A_ptrs, Ainv_ptrs;
+                thrust::device_vector<T*> A_ptrs_device, Ainv_ptrs_device;
+                thrust::device_vector<int> info;
                 for (auto & desc: vertex_descriptors) {
-                    desc->visit_invert_augmented_block_diagonal(visitor, block_diagonals[desc].data().get(), mu);
-                }
-
-                for (auto & desc: vertex_descriptors) {
+                    desc->visit_augment_block_diagonal(visitor, block_diagonals[desc].data().get(), mu);
+                    // Invert the block diagonal using cublas
                     const auto d = desc->dimension();
                     const size_t num_blocks = desc->count();
-                    thrust::host_vector<T> blocks_host = block_diagonals[desc];
-                    T* p_blocks = blocks_host.data();
+                    const auto block_size = d*d;
+
+                   
+                    A_ptrs.resize(num_blocks);
+                    Ainv_ptrs.resize(num_blocks);
+                    Ainv_data.resize(num_blocks * block_size);
+                    info.resize(num_blocks);
+
+                    T* a_ptr = block_diagonals[desc].data().get();
+                    T* a_inv_ptr = Ainv_data.data().get();
                     for (size_t i = 0; i < num_blocks; ++i) {
-                        Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>> mat(p_blocks + i * d * d, d, d);
-                        mat = mat.inverse();
+                        A_ptrs[i] = a_ptr + i * block_size;
+                        Ainv_ptrs[i] = a_inv_ptr + i * block_size;
                     }
-                    block_diagonals[desc] = blocks_host;
+
+                    A_ptrs_device = A_ptrs;
+                    Ainv_ptrs_device = Ainv_ptrs;
+
+
+                    cublasDmatinvBatched(handle, d, A_ptrs_device.data().get(), 
+                    d, Ainv_ptrs_device.data().get(), d, info.data().get(), num_blocks);
+
+                    cudaDeviceSynchronize();
+
+                    // Copy back
+                    block_diagonals[desc] = Ainv_data;
                 }
+
+
+                
+
+                // for (auto & desc: vertex_descriptors) {
+                //     const auto d = desc->dimension();
+                //     const size_t num_blocks = desc->count();
+                //     thrust::host_vector<T> blocks_host = block_diagonals[desc];
+                //     T* p_blocks = blocks_host.data();
+                //     for (size_t i = 0; i < num_blocks; ++i) {
+                //         Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>> mat(p_blocks + i * d * d, d, d);
+                //         mat = mat.inverse();
+                //     }
+                //     block_diagonals[desc] = blocks_host;
+                // }
 
                 // for (auto & desc: vertex_descriptors) {
                 //     const auto d = desc->dimension();

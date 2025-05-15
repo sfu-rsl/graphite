@@ -48,6 +48,7 @@ namespace glso {
         return value;
     }
 
+
 template<typename T, typename Descriptor, typename V>
 __global__ void apply_update_kernel(V** vertices, const T* delta_x, const size_t * hessian_ids, const uint32_t* fixed, const size_t num_threads) {
     int vertex_id = blockIdx.x * blockDim.x + threadIdx.x;
@@ -64,7 +65,7 @@ __global__ void apply_update_kernel(V** vertices, const T* delta_x, const size_t
 }
 
 template<typename T, int D>
-__global__ void invert_hessian_diagonal_kernel(
+__global__ void augment_hessian_diagonal_kernel(
     T* diagonal_blocks, const T mu, const uint32_t* fixed, const size_t num_threads) {
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -82,34 +83,8 @@ __global__ void invert_hessian_diagonal_kernel(
         T* block = diagonal_blocks + vertex_id*block_size;
 
         Eigen::Map<Eigen::Matrix<T, D, D>> block_matrix(block);
-        // Eigen::Matrix<T, D, D> mat = block_matrix;
-        // #pragma unroll
-        // for (int i = 0; i < D; i++) {
-        //     #pragma unroll
-        //     for (int j = 0; j < D; j++) {
-        //         mat(i, j) = block[i + j*D];
-        //     }
-        // } 
-        // Eigen::Matrix<T,D, D> mat = (block_matrix+mu*Eigen::Matrix<T, D, D>::Identity()).eval();
-        // block_matrix = mat.eval();
-        // block_matrix += mu*Eigen::Matrix<T, D, D>::Identity();
         block_matrix += mu*block_matrix.diagonal().asDiagonal();
-        // mat = (mat+mu*Eigen::Matrix<T, D, D>::Identity()).eval();
-        // mat = Eigen::Matrix<T, D, D>::Identity();
-        // Eigen::Matrix<T, D, D> mat = (Eigen::Matrix<T, D, D>::Identity()).eval(); 
-        // Eigen::Matrix<T, D, D> mat_inv = mat.inverse().eval();
-        // block_matrix = mat_inv;
-        
-        // block_matrix = mat;
-        // block_matrix = Eigen::Matrix<T, D, D>::Identity().eval();
 
-        // #pragma unroll
-        // for (int i = 0; i < D; i++) {
-        //     #pragma unroll
-        //     for (int j = 0; j < D; j++) {
-        //         block[i + j*D] = mat(i, j);
-        //     }
-        // }
 }
 
 template<typename T, int D>
@@ -1110,18 +1085,18 @@ public:
     }
 
     template<typename V>
-    void invert_augmented_block_diagonal(V* v, T* block_diagonal, T mu) {
+    void augment_block_diagonal(V* v, T* block_diagonal, T mu) {
         const size_t num_threads = v->count();
         const auto threads_per_block = 256;
         const auto num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
 
-        invert_hessian_diagonal_kernel<T, V::dim><<<num_blocks, threads_per_block>>>(
+        augment_hessian_diagonal_kernel<T, V::dim><<<num_blocks, threads_per_block>>>(
             block_diagonal,
             mu,
             thrust::raw_pointer_cast(v->fixed_mask.data()),
             num_threads
         );
-        // cudaDeviceSynchronize();
+        cudaDeviceSynchronize();
 
     }
 
