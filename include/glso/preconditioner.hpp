@@ -185,6 +185,18 @@ class BlockJacobiPreconditioner: public Preconditioner<T> {
                     desc->visit_invert_augmented_block_diagonal(visitor, block_diagonals[desc].data().get(), mu);
                 }
 
+                for (auto & desc: vertex_descriptors) {
+                    const auto d = desc->dimension();
+                    const size_t num_blocks = desc->count();
+                    thrust::host_vector<T> blocks_host = block_diagonals[desc];
+                    T* p_blocks = blocks_host.data();
+                    for (size_t i = 0; i < num_blocks; ++i) {
+                        Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>> mat(p_blocks + i * d * d, d, d);
+                        mat = mat.inverse();
+                    }
+                    block_diagonals[desc] = blocks_host;
+                }
+
                 // for (auto & desc: vertex_descriptors) {
                 //     const auto d = desc->dimension();
                 //     // T* blocks = block_diagonals[desc].data().get();

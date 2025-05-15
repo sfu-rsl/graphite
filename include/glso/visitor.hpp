@@ -90,8 +90,9 @@ __global__ void invert_hessian_diagonal_kernel(
         //         mat(i, j) = block[i + j*D];
         //     }
         // } 
-        Eigen::Matrix<T,D, D> mat = (block_matrix+mu*Eigen::Matrix<T, D, D>::Identity()).eval();
-        block_matrix = mat.eval();
+        // Eigen::Matrix<T,D, D> mat = (block_matrix+mu*Eigen::Matrix<T, D, D>::Identity()).eval();
+        // block_matrix = mat.eval();
+        block_matrix += mu*Eigen::Matrix<T, D, D>::Identity();
         // mat = (mat+mu*Eigen::Matrix<T, D, D>::Identity()).eval();
         // mat = Eigen::Matrix<T, D, D>::Identity();
         // Eigen::Matrix<T, D, D> mat = (Eigen::Matrix<T, D, D>::Identity()).eval(); 
@@ -128,20 +129,12 @@ __global__ void apply_block_jacobi_kernel(
         const auto offset = idx % D;
         const auto row = offset;
 
-        Eigen::Map<Eigen::Matrix<T, D, D>> block_matrix(block);
-        // Eigen::Map<Eigen::Matrix<T, D, 1>> z_map(z + hessian_offset + offset);
-        // Eigen::Map<const Eigen::Matrix<T, D, 1>> r_map(r + hessian_offset + offset);   
-        // z_map += block_matrix*r_map;
-        // block_matrix = Eigen::Matrix<T, D, D>::Identity();
+
         T value = 0;
-        // #pragma unroll
-        // for (size_t i = 0; i < D; i++) {
-        //     value += block[row + i*D] * r[hessian_offset + i];
-        // }
-        // value  = r[hessian_offset + row];
-        // value  = (1.0/block[row+row*D])*r[hessian_offset + row];
-        value = (1.0/block_matrix(row, row))*r[hessian_offset + row];
-        // atomicAdd(z + hessian_offset + row, value);
+        #pragma unroll
+        for (size_t i = 0; i < D; i++) {
+            value += block[row + i*D] * r[hessian_offset + i];
+        }
         z[hessian_offset + row] = value;
 }
 
