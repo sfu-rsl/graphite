@@ -272,9 +272,9 @@ void compute_b_kernel_no_precision_matrix(T* b, T* error, size_t* ids, const siz
 }
 
 // Include precision matrix
-template<typename T, size_t I, size_t N, size_t E, typename F, typename L, std::size_t... Is>
+template<typename T, size_t I, size_t N, size_t E, typename F, std::size_t... Is>
 __global__ 
-void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, T* jacs, const uint32_t* fixed, const T* pmat, const L* loss, std::index_sequence<Is...>) {
+void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, const size_t num_threads, T* jacs, const uint32_t* fixed, const T* pmat, const T* loss_derivative, std::index_sequence<Is...>) {
         const size_t idx = get_thread_id();
 
     if (idx >= num_threads) {
@@ -296,8 +296,7 @@ void compute_b_kernel(T* b, T* error, size_t* ids, const size_t* hessian_ids, co
     const auto col_offset = (idx % vertex_sizes[I])*E; // for untransposed J
 
     // Use loss kernel
-    const auto chi2 = compute_chi2<T, E>(error, pmat, factor_id);
-    const auto dL = loss[factor_id].loss_derivative(chi2);
+    const auto dL = loss_derivative[factor_id];
 
     T value = 0;
     constexpr auto precision_matrix_size = E*E;
@@ -668,8 +667,8 @@ void launch_kernel_autodiff(F* f, std::array<const size_t*, F::get_num_vertices(
             const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
             // std::cout << "Launching autodiff kernel" << std::endl;
             // std::cout << "Num threads: " << num_threads << std::endl;
-            int threads_per_block = 256;
-            int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+            size_t threads_per_block = 256;
+            size_t num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
 
             // std::cout << "Checking obs ptr: " << f->device_obs.data().get() << std::endl;
             // std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
@@ -696,8 +695,8 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
             const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
             // std::cout << "Launching compute b kernel" << std::endl;
             // std::cout << "Num threads: " << num_threads << std::endl;
-            int threads_per_block = 256;
-            int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+            size_t threads_per_block = 256;
+            size_t num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
 
             // std::cout << "Checking obs ptr: " << f->device_obs.data().get() << std::endl;
             // std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
@@ -712,7 +711,7 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
                 jacs[Is],
                 f->vertex_descriptors[Is]->get_fixed_mask(),
                 f->precision_matrices.data().get(),
-                f->loss.data().get(),
+                f->chi2_derivative.data().get(),
                 std::make_index_sequence<num_vertices>{});
             }()), ...);
         }
@@ -726,8 +725,8 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
                     const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
                     // std::cout << "Launching compute Jtv kernel" << std::endl;
                     // std::cout << "Num threads: " << num_threads << std::endl;
-                    int threads_per_block = 256;
-                    int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+                    size_t threads_per_block = 256;
+                    size_t num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
         
                     // std::cout << "Checking obs ptr: " << f->device_obs.data().get() << std::endl;
                     // std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
@@ -754,8 +753,8 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
                     const auto num_threads = num_factors * F::error_dim;
                     // std::cout << "Launching compute Jv kernel" << std::endl;
                     // std::cout << "Num threads: " << num_threads << std::endl;
-                    int threads_per_block = 256;
-                    int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+                    size_t threads_per_block = 256;
+                    size_t num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
         
                     // std::cout << "Checking obs ptr: " << f->device_obs.data().get() << std::endl;
                     // std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
@@ -786,8 +785,8 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
             // std::cout << "Num threads: " << num_threads << std::endl;
             // std::cout << "dimension: " << dimension << std::endl;
             // std::cout << "num_factors: " << num_factors << std::endl;
-            int threads_per_block = 256;
-            int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+            size_t threads_per_block = 256;
+            size_t num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
 
             // std::cout << "Checking obs ptr: " << f->device_obs.data().get() << std::endl;
             // std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
@@ -822,8 +821,8 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
             constexpr size_t dimension = F::get_vertex_sizes()[Is];
             const size_t num_threads = num_factors *dimension;
 
-            int threads_per_block = 256;
-            int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+            size_t threads_per_block = 256;
+            size_t num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
 
             compute_hessian_scalar_diagonal_kernel<T, Is, num_vertices, F::error_dim, dimension><<<num_blocks, threads_per_block>>>(
                 diagonal,
@@ -893,8 +892,8 @@ public:
         const auto num_factors = f->count();
 
         const auto num_threads = num_factors;
-        int threads_per_block = 256;
-        int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+        size_t threads_per_block = 256;
+        size_t num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
 
         compute_error_kernel<T, num_vertices, typename F::ObservationType, F::error_dim, F, typename F::VertexPointerPointerTuple><<<num_blocks, threads_per_block>>>(
             f->device_obs.data().get(),
@@ -929,8 +928,8 @@ public:
         const auto num_factors = f->count();
 
         const auto num_threads = num_factors;
-        int threads_per_block = 256;
-        int num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+        size_t threads_per_block = 256;
+        size_t num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
 
         compute_chi2_kernel<T, F::error_dim><<<num_blocks, threads_per_block>>>(
             f->chi2_vec.data().get(),

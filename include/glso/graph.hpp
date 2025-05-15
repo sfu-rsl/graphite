@@ -211,7 +211,10 @@ class Graph {
 
         cudaDeviceSynchronize();
 
-        // TODO: Calculate b=J^T * r
+        // Compute chi2
+        chi2();
+
+        // Calculate b=J^T * r
         for (auto & fd: factor_descriptors) {
             fd->visit_b(visitor);
         }

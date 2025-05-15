@@ -92,6 +92,22 @@ struct Dual {
         T sqrt_real = std::sqrt(x.real);
         return Dual<T>(sqrt_real, x.dual / (2 * sqrt_real));
     }
+
+    __host__ __device__ bool operator<(const Dual<T>& other) const {
+        return real < other.real;
+    }
+
+    __host__ __device__ bool operator>(const Dual<T>& other) const {
+        return real > other.real;
+    }
+
+    __host__ __device__ bool operator<=(const Dual<T>& other) const {
+        return real <= other.real;
+    }
+
+    __host__ __device__ bool operator>=(const Dual<T>& other) const {
+        return real >= other.real;
+    }
 };
 
 } // namespace glso

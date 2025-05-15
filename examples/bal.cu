@@ -135,16 +135,32 @@ public:
             Eigen::Map<const Eigen::Matrix<D, 3, 1>> X(point);
             Eigen::Map<const Eigen::Matrix<D, 9, 1>> cam(camera);
             Eigen::Map<const Eigen::Matrix<T, 2, 1>> observation(obs->data());
+            Eigen::Matrix<D, 3, 1> P;
 
-            Eigen::Matrix<D, 3, 3> R;
-            R = Eigen::AngleAxis<D>(cam(0), Eigen::Matrix<D, 3, 1>::UnitX()) *
-                Eigen::AngleAxis<D>(cam(1), Eigen::Matrix<D, 3, 1>::UnitY()) *
-                Eigen::AngleAxis<D>(cam(2), Eigen::Matrix<D, 3, 1>::UnitZ());
+            // Rodrigues formula for rotation vector (angle-axis) with Taylor expansion for small theta
+            // Adapted from g2o bal example
+            Eigen::Matrix<D, 3, 1> rvec = cam.template head<3>();
+            D theta = rvec.norm();
 
-            Eigen::Matrix<D, 3, 1> t(cam(3), cam(4), cam(5));
-  
-            // Convert world coordinates to camera coordinates
-            Eigen::Matrix<D, 3, 1> P = R * X + t;
+            if (theta > D(0)) {
+                Eigen::Matrix<D, 3, 1> axis = rvec / theta;
+                D cth = cos(theta);
+                D sth = sin(theta);
+
+                Eigen::Matrix<D, 3, 1> axx = axis.cross(X);
+                D adx = axis.dot(X);
+
+                P = X*cth + axx * sth + axis * adx * (D(1) - cth);
+
+               
+            } else {
+                auto rxx = rvec.cross(X);
+                P = X + rxx + D(0.5) * rvec.cross(rxx);
+            }
+
+            // Translate
+            Eigen::Matrix<D, 3, 1> t = cam.template segment<3>(3);
+            P += t;
 
             // Perspective division
             Eigen::Matrix<D, 2, 1> p = -P.template head<2>() / P(2);
@@ -219,7 +235,6 @@ int main(void) {
     
 
     const auto loss = DefaultLoss<double, 2>();
-    // const auto loss = HuberLoss<double, 1>(200);
     Eigen::Matrix2d precision_matrix = Eigen::Matrix2d::Identity();
 
 
