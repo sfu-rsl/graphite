@@ -53,7 +53,7 @@ namespace glso {
 
 
 template<typename T, typename Descriptor, typename V>
-__global__ void apply_update_kernel(V** vertices, const T* delta_x, const size_t * hessian_ids, const uint32_t* fixed, const size_t num_threads) {
+__global__ void apply_update_kernel(V** vertices, const T* delta_x, const T* jacobian_scales, const size_t * hessian_ids, const uint32_t* fixed, const size_t num_threads) {
     const size_t vertex_id = get_thread_id();
 
     if (vertex_id >= num_threads || is_fixed(fixed, vertex_id)) {
@@ -61,9 +61,18 @@ __global__ void apply_update_kernel(V** vertices, const T* delta_x, const size_t
     }
 
     const T* delta = delta_x + hessian_ids[vertex_id];
+    const T* scales = jacobian_scales + hessian_ids[vertex_id];
+
+    std::array<T, Descriptor::dim> scaled_delta;
+    #pragma unroll
+    for (size_t i = 0; i < Descriptor::dim; i++) {
+        scaled_delta[i] = delta[i] * scales[i];
+        // scaled_delta[i] = delta[i];
+    }
+    
 
     // Descriptor::update(vertices[vertex_id], delta);
-    vertices[vertex_id]->update(delta);
+    vertices[vertex_id]->update(scaled_delta.data());
 
 }
 
@@ -601,6 +610,41 @@ __global__ void compute_hessian_diagonal_kernel(
 
 }
 
+
+template<typename T, size_t I, size_t N, size_t E, size_t D>
+__global__ void scale_jacobians_kernel(T* jacs, const T* jacobian_scales,
+    const size_t* ids, const size_t* hessian_ids, const uint32_t* fixed, const size_t num_threads) {
+
+        const size_t idx = get_thread_id();
+
+        if (idx >= num_threads) {
+            return;
+        }
+
+    constexpr size_t jacobian_size = D*E;
+
+    // This time, each factor will have D threads
+    const size_t factor_id = idx / D;
+    const size_t col = idx % D;
+
+    // Stored as E x d col major, but we need to transpose it to d x E, where d is the vertex size
+    const size_t local_id = ids[factor_id*N+I]; // N is the number of vertices involved in the factor
+    if (is_fixed(fixed, local_id)) {
+        return;
+    }
+
+    const auto jacobian_offset = factor_id * jacobian_size;
+    const size_t hessian_offset = hessian_ids[local_id]; 
+    const T scale = jacobian_scales[hessian_offset + col];
+
+    T* Jcol = jacs + jacobian_offset + col*E;
+    #pragma unroll
+    for (size_t i = 0; i < E; i++) {
+        Jcol[i] *= scale;
+    }
+    
+}
+
 template<typename T, size_t I, size_t N, size_t E, size_t D>
 __global__ void compute_hessian_scalar_diagonal_kernel(
     T* diagonal, const T* jacs, 
@@ -841,6 +885,28 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
             }()), ...);
         }
 
+        template <typename F, std::size_t... Is>
+        void launch_kernel_scale_jacobians(F* f, 
+            T* jacobian_scales,  std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
+            (([&] {
+            constexpr size_t num_vertices = F::get_num_vertices();
+            constexpr size_t dimension = F::get_vertex_sizes()[Is];
+            const size_t num_threads = num_factors *dimension;
+
+            size_t threads_per_block = 256;
+            size_t num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+
+            scale_jacobians_kernel<T, Is, num_vertices, F::error_dim, dimension><<<num_blocks, threads_per_block>>>(
+                jacs[Is],
+                jacobian_scales,
+                f->device_ids.data().get(),
+                hessian_ids[Is],
+                f->vertex_descriptors[Is]->get_fixed_mask(),
+                num_threads);
+
+            }()), ...);
+        }
+
 public:
     
     GraphVisitor(thrust::device_vector<T>& delta_x, thrust::device_vector<T>& b): delta_x(delta_x), b(b) {
@@ -1072,8 +1138,35 @@ public:
 
     }
 
+    template<typename F>
+    void scale_jacobians(F* f, T* jacobian_scales) {
+
+        // Then for each vertex, we need to compute the error
+        constexpr auto num_vertices = F::get_num_vertices();
+        constexpr auto vertex_sizes = F::get_vertex_sizes();
+
+        // At this point all necessary data should be on the GPU    
+        // std::array<T*, num_vertices> verts;
+        auto verts = f->get_vertices();
+        std::array<T*, num_vertices> jacs;
+        std::array<const size_t*, num_vertices> hessian_ids;
+        for (int i = 0; i < num_vertices; i++) {
+            jacs[i] = f->jacobians[i].data.data().get();
+            hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
+        }
+
+        
+        const auto num_factors = f->count();
+
+        launch_kernel_scale_jacobians(f, jacobian_scales, hessian_ids, 
+            jacs, num_factors, std::make_index_sequence<num_vertices>{});
+        cudaDeviceSynchronize();
+
+    }
+
+
     template<typename V>
-    void apply_step(V* v) {
+    void apply_step(V* v, T* jacobian_scales) {
         const size_t num_parameters =  v->count()*v->dimension();
         const size_t num_threads = v->count();
         const auto threads_per_block = 256;
@@ -1082,6 +1175,7 @@ public:
         apply_update_kernel<T, V, typename V::VertexType><<<num_blocks, threads_per_block>>>(
             v->vertices(),
             delta_x.data().get(),
+            jacobian_scales,
             v->get_hessian_ids(),
             thrust::raw_pointer_cast(v->fixed_mask.data()),
             num_threads

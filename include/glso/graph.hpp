@@ -3,6 +3,7 @@
 #include <glso/factor.hpp>
 #include <glso/vertex.hpp>
 #include <glso/solver.hpp>
+#include <limits>
 
 namespace glso {
 
@@ -47,6 +48,8 @@ class Graph {
     // Solver buffers
     thrust::device_vector<T> delta_x;
     thrust::device_vector<T> b;
+    thrust::device_vector<T> jacobian_scales;
+
     // thrust::device_vector<T> error;
 
     T damping_factor;
@@ -163,6 +166,7 @@ class Graph {
 
         delta_x.resize(size_x);
         b.resize(size_x);
+        jacobian_scales.resize(size_x);
         // error.resize(size_error);
 
         // // Build Hessian structure
@@ -195,6 +199,7 @@ class Graph {
         // clear delta_x and b
         thrust::fill(delta_x.begin(), delta_x.end(), 0);
         thrust::fill(b.begin(), b.end(), 0);
+        thrust::fill(jacobian_scales.begin(), jacobian_scales.end(), 0);
 
 
         for (auto & factor: factor_descriptors) {
@@ -213,6 +218,28 @@ class Graph {
 
         // Compute chi2
         chi2();
+
+        // Compute Jacobian scale
+        for (auto & factor: factor_descriptors) {
+            factor->visit_scalar_diagonal(visitor, jacobian_scales.data().get());
+        }
+
+        cudaDeviceSynchronize();
+        // thrust::fill(jacobian_scales.begin(), jacobian_scales.end(), 1.0);
+        thrust::transform(
+            jacobian_scales.begin(), jacobian_scales.end(), jacobian_scales.begin(),
+            [] __device__ (T value) {
+                // return 1.0 / (1.0 + sqrt(value));
+                return 1.0 / (std::numeric_limits<T>::epsilon() + sqrt(value));
+            }
+        );
+
+        // Scale Jacobians
+        for (auto & factor: factor_descriptors) {
+            factor->scale_jacobians(visitor, jacobian_scales.data().get());
+        }
+        cudaDeviceSynchronize();
+
 
         // Calculate b=J^T * r
         for (auto & fd: factor_descriptors) {
@@ -262,12 +289,20 @@ class Graph {
         // }
         // std::cout << std::endl;
 
+        // // If everything was okay, scale the step
+        // thrust::transform(
+        //     delta_x.begin(), delta_x.end(), jacobian_scales.begin(), delta_x.begin(),
+        //     [] __device__ (T dx, T scale) {
+        //         return dx * scale;
+        //     }
+        // );
+
         return true;
     }
 
     void apply_step() {
         for (auto & desc: vertex_descriptors) {
-            desc->visit_update(visitor);
+            desc->visit_update(visitor, jacobian_scales.data().get());
         }
         cudaDeviceSynchronize();
     }

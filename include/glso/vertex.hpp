@@ -60,7 +60,7 @@ public:
     virtual ~BaseVertexDescriptor() {};
 
     // virtual void update(const T* x, const T* delta) = 0;
-    virtual void visit_update(GraphVisitor<T>& visitor) = 0;
+    virtual void visit_update(GraphVisitor<T>& visitor, T* jacobian_scales) = 0;
     virtual void visit_augment_block_diagonal(GraphVisitor<T>& visitor, T* block_diagonal, T mu) = 0;
     virtual void visit_apply_block_jacobi(GraphVisitor<T>& visitor, T* z, const T* r, T* block_diagonal) = 0;
     virtual size_t dimension() const = 0;
@@ -113,8 +113,8 @@ public:
 public:
     virtual ~VertexDescriptor() {};
     
-    void visit_update(GraphVisitor<T>& visitor) override {
-        visitor.template apply_step<Derived<T>>(dynamic_cast<Derived<T>*>(this));
+    void visit_update(GraphVisitor<T>& visitor, T* jacobian_scales) override {
+        visitor.template apply_step<Derived<T>>(dynamic_cast<Derived<T>*>(this), jacobian_scales);
     }
 
     void visit_augment_block_diagonal(GraphVisitor<T>& visitor, T* block_diagonal, T mu) override {

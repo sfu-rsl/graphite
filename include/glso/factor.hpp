@@ -44,6 +44,7 @@ public:
 
     virtual size_t count() const = 0;
     virtual size_t get_residual_size() const = 0;
+    virtual void scale_jacobians(GraphVisitor<T>& visitor, T* jacobian_scales) = 0;
 
     virtual void to_device() = 0;
 
@@ -334,6 +335,10 @@ public:
         // return chi2;
         visitor.template compute_chi2<Derived<T>>(dynamic_cast<Derived<T>*>(this));
         return thrust::reduce(chi2_vec.begin(), chi2_vec.end(), 0.0, thrust::plus<T>());
+    }
+
+    virtual void scale_jacobians(GraphVisitor<T>& visitor, T* jacobian_scales) override {
+        visitor.template scale_jacobians<Derived<T>>(dynamic_cast<Derived<T>*>(this), jacobian_scales);
     }
 
 };

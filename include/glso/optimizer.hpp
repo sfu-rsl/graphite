@@ -18,7 +18,7 @@ T compute_rho(Graph<T>* graph, const T chi2, const T new_chi2, const T mu, const
     T denom = (mu * thrust::inner_product(delta_x.begin(), delta_x.end(), delta_x.begin(), 0.0));
     denom += thrust::inner_product(delta_x.begin(), delta_x.end(), b.begin(), 0.0);
     if (step_is_good) {
-        denom += 1e-3;
+        denom += std::numeric_limits<T>::epsilon();
     }
     else {
         denom = 1;
@@ -82,12 +82,13 @@ public:
 
             if (step_is_good && rho > 0) {
                 // update hyperparameters
-                mu *= std::max(std::max(static_cast<T>(1.0/3.0), 1 - pow(2*rho-1, 3)), 1e-12);
+                mu *= std::max(std::max(static_cast<T>(1.0/3.0), 1 - pow(2*rho-1, 3)), 1e-32);
                 nu = 2;
                 // Relinearize since step is accepted
                 graph->set_damping_factor(mu);
                 graph->linearize();
                 // std::cout << "Good step" << std::endl;
+                // std::cout << "rho: " << rho << std::endl;
             }
             else {
                 graph->revert_parameters();
