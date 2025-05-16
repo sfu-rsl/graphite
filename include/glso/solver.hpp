@@ -141,7 +141,8 @@ namespace glso {
             // }
             // std::cout << std::endl;
             
-            p = z;
+            p.resize(dim_h);
+            thrust::copy(z.begin(), z.end(), p.begin()); // p = z
             
             // 1. First compute dot(r, z)
             T rz = thrust::inner_product(r.begin(), r.end(), z.begin(), 0.0);
@@ -210,7 +211,7 @@ namespace glso {
                 rz = rz_new;
 
                 // 9. Update p
-                axpy(dim_h, p.data().get(), beta, (const T*)p.data().get(), r.data().get());
+                axpy(dim_h, p.data().get(), beta, (const T*)p.data().get(), z.data().get());
                 cudaDeviceSynchronize();
             }
                 

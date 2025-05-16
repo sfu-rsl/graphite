@@ -220,12 +220,17 @@ class Graph {
         chi2();
 
         // Compute Jacobian scale
-        for (auto & factor: factor_descriptors) {
-            factor->visit_scalar_diagonal(visitor, jacobian_scales.data().get());
+        constexpr bool scale_jacobians = true;
+        if (scale_jacobians) {
+            for (auto & factor: factor_descriptors) {
+                factor->visit_scalar_diagonal(visitor, jacobian_scales.data().get());
+            }
+        }
+        else {
+            thrust::fill(jacobian_scales.begin(), jacobian_scales.end(), 1.0);
         }
 
         cudaDeviceSynchronize();
-        // thrust::fill(jacobian_scales.begin(), jacobian_scales.end(), 1.0);
         thrust::transform(
             jacobian_scales.begin(), jacobian_scales.end(), jacobian_scales.begin(),
             [] __device__ (T value) {

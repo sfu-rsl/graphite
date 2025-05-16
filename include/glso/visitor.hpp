@@ -96,7 +96,7 @@ __global__ void augment_hessian_diagonal_kernel(
         for (size_t i = 0; i < D; i++) {
             // block[i*D + i] += mu;
             // block[i*D + i] *= (1.0 + mu);
-            block[i*D+i] += mu*std::clamp(block[i*D+i], 1.0e-6, 1.0e32);
+            block[i*D+i] += mu*std::clamp(block[i*D+i], 1e-6, 1e32);
         }
 }
 
