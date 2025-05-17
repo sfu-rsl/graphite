@@ -3,11 +3,13 @@
 #include <vector>
 #include <numeric>
 #include <array>
-#include <glso/core.hpp>
 #include <random>
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <fstream>
+
+#include <glso/core.hpp>
+#include <glso/solver.hpp>
 
 
 namespace glso {
@@ -291,21 +293,25 @@ int main(void) {
     std::cout << "Adding points took " << std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() << " seconds." << std::endl;
     file.close();
     
-
+    // Configure solver
+    auto preconditioner = std::make_shared<glso::BlockJacobiPreconditioner<double>>();
+    PCGSolver<double> solver(50, 1e-6, preconditioner);
 
     // Optimize
     constexpr size_t iterations = 50;
-    Optimizer opt;
     std::cout << "Graph built with " << num_cameras << " cameras, " << num_points << " points, and " << r_desc->count() << " observations." << std::endl;
     std::cout << "Optimizing!" << std::endl;
 
     start = std::chrono::steady_clock::now();
-    opt.optimize(&graph, iterations, 1e-6);
+    optimizer::levenberg_marquardt(&graph, &solver, iterations, 1e-6);
     auto end = std::chrono::steady_clock::now();
+    
     std::chrono::duration<double> elapsed = end - start;
     std::cout << "Optimization took " << elapsed.count() << " seconds." << std::endl;
+
     auto mse = graph.chi2() / num_observations;
     std::cout << "MSE: " << mse << std::endl;
     std::cout << "Half MSE: " << mse / 2 << std::endl;
+
     return 0;
 }

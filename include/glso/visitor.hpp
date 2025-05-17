@@ -704,10 +704,6 @@ __global__ void compute_hessian_scalar_diagonal_kernel(
 template<typename T>
 class GraphVisitor {
 private:
-
-thrust::device_vector<T>& delta_x;
-thrust::device_vector<T>& b;
-
 template <typename F, typename VT, std::size_t... Is>
 void launch_kernel_autodiff(F* f, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, VT & verts, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
             (([&] {
@@ -909,8 +905,7 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
 
 public:
     
-    GraphVisitor(thrust::device_vector<T>& delta_x, thrust::device_vector<T>& b): delta_x(delta_x), b(b) {
-    }
+    GraphVisitor() = default;
 
     template<typename F, typename... VertexTypes>
     void compute_error_autodiff(F* f) {
@@ -1015,7 +1010,7 @@ public:
     }
 
     template<typename F, typename... VertexTypes>
-    void compute_b(F* f) {
+    void compute_b(F* f, T* b) {
         constexpr auto num_vertices = F::get_num_vertices();
         constexpr auto vertex_sizes = F::get_vertex_sizes();
 
@@ -1033,9 +1028,7 @@ public:
         constexpr auto error_dim = F::error_dim;
         const auto num_factors = f->count();
 
-        T* b_ptr = b.data().get();
-
-        launch_kernel_compute_b(f, b_ptr, hessian_ids, jacs, num_factors, std::make_index_sequence<num_vertices>{});
+        launch_kernel_compute_b(f, b, hessian_ids, jacs, num_factors, std::make_index_sequence<num_vertices>{});
         cudaDeviceSynchronize();
 
     }
@@ -1166,7 +1159,7 @@ public:
 
 
     template<typename V>
-    void apply_step(V* v, T* jacobian_scales) {
+    void apply_step(V* v, const T* delta_x, T* jacobian_scales) {
         const size_t num_parameters =  v->count()*v->dimension();
         const size_t num_threads = v->count();
         const auto threads_per_block = 256;
@@ -1174,7 +1167,7 @@ public:
 
         apply_update_kernel<T, V, typename V::VertexType><<<num_blocks, threads_per_block>>>(
             v->vertices(),
-            delta_x.data().get(),
+            delta_x,
             jacobian_scales,
             v->get_hessian_ids(),
             thrust::raw_pointer_cast(v->fixed_mask.data()),

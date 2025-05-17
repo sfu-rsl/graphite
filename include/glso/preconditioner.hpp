@@ -9,6 +9,7 @@ namespace glso {
 
 template<typename T>
 class Preconditioner {
+    public:
 
     virtual void precompute(
         GraphVisitor<T>& visitor,
@@ -53,6 +54,10 @@ class BlockJacobiPreconditioner: public Preconditioner<T> {
             cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE);
         }
 
+        ~BlockJacobiPreconditioner() {
+            cublasDestroy(handle);
+        }
+
         void precompute(
             GraphVisitor<T>& visitor,
             std::vector<BaseVertexDescriptor<T>*>& vertex_descriptors,
@@ -77,22 +82,6 @@ class BlockJacobiPreconditioner: public Preconditioner<T> {
                     desc->visit_block_diagonal(visitor, block_diagonals);
                 }
                 cudaDeviceSynchronize();
-
-                // Print first 5 blocks for each vertex desc
-                // for (auto & desc: vertex_descriptors) {
-                //     const auto d = desc->dimension();
-                //     // T* blocks = block_diagonals[desc].data().get();
-                //     thrust::host_vector<T> blocks = block_diagonals[desc];
-                //     const size_t num_values = desc->count(); // this is not tightly packed since count includes fixed vertices
-                //     T* p_blocks = blocks.data();
-                //     std::cout << "Block diagonal for vertex descriptor " << desc << ": ";
-                //     for (size_t i = 0; i < std::min(num_values, size_t(1)); i++) {
-                //         // std::cout << blocks[i] << " ";
-                //         auto map = Eigen::Map<Eigen::MatrixXd>(p_blocks + i*d*d, d, d);
-                //         std::cout << "Matrix:\n" << map << std::endl;
-                //     }
-                //     std::cout << std::endl;
-                // }
 
                 // Invert the blocks
                  // TODO: Figure out a better way to handle the memory
@@ -132,40 +121,6 @@ class BlockJacobiPreconditioner: public Preconditioner<T> {
                     // Copy back
                     block_diagonals[desc] = Ainv_data;
                 }
-
-
-                
-
-                // for (auto & desc: vertex_descriptors) {
-                //     const auto d = desc->dimension();
-                //     const size_t num_blocks = desc->count();
-                //     thrust::host_vector<T> blocks_host = block_diagonals[desc];
-                //     T* p_blocks = blocks_host.data();
-                //     for (size_t i = 0; i < num_blocks; ++i) {
-                //         Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>> mat(p_blocks + i * d * d, d, d);
-                //         mat = mat.inverse();
-                //     }
-                //     block_diagonals[desc] = blocks_host;
-                // }
-
-                // for (auto & desc: vertex_descriptors) {
-                //     const auto d = desc->dimension();
-                //     // T* blocks = block_diagonals[desc].data().get();
-                //     thrust::host_vector<T> blocks = block_diagonals[desc];
-                //     const size_t num_values = desc->count(); // this is not tightly packed since count includes fixed vertices
-                //     T* p_blocks = blocks.data();
-                //     std::cout << "(post inversion) Block diagonal for vertex descriptor " << desc << ": ";
-                //     for (size_t i = 0; i < std::min(num_values, size_t(2)); i++) {
-                //         // std::cout << blocks[i] << " ";
-                //         auto map = Eigen::Map<Eigen::MatrixXd>(p_blocks + i*d*d, d, d);
-                //         std::cout << "Matrix:\n" << map << std::endl;
-                //                                 Eigen::MatrixXd inv = map.inverse();
-
-                //         // std::cout << "Inverse:\n" << inv << std::endl;
-                        
-                //     }
-                //     std::cout << std::endl;
-                // }
 
                 cudaDeviceSynchronize();
 

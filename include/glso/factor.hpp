@@ -30,7 +30,7 @@ public:
     virtual bool use_autodiff() = 0;
     virtual void visit_error(GraphVisitor<T>& visitor) = 0;
     virtual void visit_error_autodiff(GraphVisitor<T>& visitor) = 0;
-    virtual void visit_b(GraphVisitor<T>& visitor) = 0;
+    virtual void visit_b(GraphVisitor<T>& visitor, T* b) = 0;
     virtual void visit_Jv(GraphVisitor<T>& visitor, T* out, T* in) = 0;
     virtual void visit_Jtv(GraphVisitor<T>& visitor, T* out, T* in) = 0;
     virtual void visit_block_diagonal(GraphVisitor<T>& visitor, 
@@ -99,8 +99,8 @@ public:
         visitor.template compute_error_autodiff<Derived<T>, VDTypes...>(dynamic_cast<Derived<T>*>(this));
     }
 
-    void visit_b(GraphVisitor<T>& visitor) override {
-        visitor.template compute_b<Derived<T>, VDTypes...>(dynamic_cast<Derived<T>*>(this));
+    void visit_b(GraphVisitor<T>& visitor, T* b) override {
+        visitor.template compute_b<Derived<T>, VDTypes...>(dynamic_cast<Derived<T>*>(this), b);
     }
 
     void visit_Jv(GraphVisitor<T>& visitor, T* out, T* in) override {
