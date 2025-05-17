@@ -143,9 +143,9 @@ public:
     }
 
     void reserve(size_t size) {
-        global_ids.reserve(size);
-        host_ids.reserve(size);
-        device_ids.reserve(size);
+        global_ids.reserve(N*size);
+        host_ids.reserve(N*size);
+        device_ids.reserve(N*size);
         device_obs.reserve(size);
         global_to_local_map.reserve(size);
         local_to_global_map.reserve(size);
