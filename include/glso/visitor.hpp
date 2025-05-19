@@ -1,6 +1,7 @@
 #pragma once
 #include <glso/common.hpp>
-
+#include <cooperative_groups.h>
+#include <cooperative_groups/reduce.h>
 namespace glso {
 
     __device__ size_t get_thread_id() {
@@ -505,6 +506,164 @@ void compute_JtPv_kernel(T* y, const T* x, const size_t* ids, const size_t* hess
 
 }
 
+template<typename T, size_t I, size_t N, size_t E, size_t D, typename F, std::size_t... Is>
+__global__ 
+void compute_JtPv2_kernel(T* y, const T* x, const size_t* ids, const size_t* hessian_ids, const size_t num_threads, const T* jacs, const uint32_t* fixed, const T* pmat, const T* chi2_derivative, std::index_sequence<Is...>) {
+        const size_t idx = get_thread_id();
+
+    if (idx >= num_threads) {
+        return;
+    }
+
+    constexpr auto jacobian_size = D*E;
+    
+    // Stored as E x d col major, but we need to transpose it to d x E, where d is the vertex size
+    // const size_t factor_id = idx / D;
+    const size_t factor_id = blockIdx.x;
+
+    const size_t local_id = ids[factor_id*N+I]; // N is the number of vertices involved in the factor
+    if (is_fixed(fixed, local_id)) {
+        return;
+    }
+    const size_t sub_row = threadIdx.x;
+    const auto jacobian_offset = factor_id * jacobian_size;
+    const auto error_offset = factor_id*E;
+    const auto col_offset = sub_row*E; // for untransposed J
+
+    constexpr auto precision_matrix_size = E*E;
+    const auto precision_offset = factor_id*precision_matrix_size;
+
+    // Use loss kernel
+    // const auto dL = chi2_derivative[factor_id];
+
+    // T x2[E] = {0};
+    // T value = 0;
+
+    const T* jcol = jacs + jacobian_offset + col_offset;
+
+    const T* precision_matrix = pmat + precision_offset;
+    const T* x_start = x + error_offset;
+
+    __shared__ T shared_x[E];
+
+    // Coalesced load of x into shared memory
+    #pragma unroll
+    for (int i = threadIdx.x; i < E; i += blockDim.x) {
+        shared_x[i] = x_start[i];
+    }
+    __syncthreads();
+
+    __shared__ T shared_jacobian[E * D];
+
+    // // Each thread loads its column of the Jacobian into shared memory
+    // for (int i = threadIdx.x; i < E * D; i += blockDim.x) {
+    //     shared_jacobian[i] = jacs[jacobian_offset + i];
+    // }
+    // __syncthreads();
+
+    T value = 0;
+    #pragma unroll
+    for (int i = 0; i < E; i++) { // pmat row
+        T Px = 0;
+        #pragma unroll
+        for (int j = 0; j < E; j++) { // pmat col
+            Px += precision_matrix[i*E + j]*shared_x[j];
+        }
+        value += jcol[i]* Px;
+        // value += shared_jacobian[col_offset + i] * Px;
+        // value += shared_jacobian[col_offset + i] * shared_x[i];
+    }
+    value *= chi2_derivative[factor_id];
+
+
+    // T value = 0;
+    // #pragma unroll
+    // for (int i = 0; i < E; i++) {
+    //     value += jacs[jacobian_offset + col_offset + i] * x2[i];
+    // }
+
+    const auto hessian_offset = hessian_ids[local_id]; // each vertex has a hessian_ids array
+    
+    atomicAdd(&y[hessian_offset + sub_row], value);
+
+}
+
+template <typename T, int E>
+__inline__ __device__ T warp_consecutive_reduce(T val) {
+    unsigned int lane_id = threadIdx.x % 32;
+    
+    // Iterate over log2(E) steps
+    #pragma unroll
+    for (int offset = 1; offset < E; offset <<= 1) {
+        T other = __shfl_down_sync(0xffffffff, val, offset, 32);
+        // Only lanes that are multiples of E accumulate values
+        if ((lane_id % E) + offset < E)
+            val += other;
+    }
+    return val;
+}
+
+template<typename T, size_t I, size_t N, size_t E, size_t D, typename F, std::size_t... Is>
+__global__ 
+void compute_JtPv3_kernel(T* y, const T* x, const size_t* ids, const size_t* hessian_ids, const size_t num_threads, const T* jacs, const uint32_t* fixed, const T* pmat, const T* chi2_derivative, std::index_sequence<Is...>) {
+        const size_t idx = get_thread_id();
+
+    if (idx >= num_threads) {
+        return;
+    }
+
+    constexpr auto jacobian_size = D*E;
+    
+    // Stored as E x d col major, but we need to transpose it to d x E, where d is the vertex size
+    // const size_t factor_id = idx / D;
+    // const size_t factor_id = blockIdx.x;
+    constexpr auto warp_size = 32;
+    const size_t warp_id = idx / warp_size;
+    const auto factor_id = warp_id;
+
+    const size_t local_id = ids[factor_id*N+I]; // N is the number of vertices involved in the factor
+    if (is_fixed(fixed, local_id)) {
+        return;
+    }
+    const auto jacobian_offset = factor_id * jacobian_size;
+    const auto error_offset = factor_id*E;
+
+    constexpr auto precision_matrix_size = E*E;
+    const auto precision_offset = factor_id*precision_matrix_size;
+
+
+    const T* j = jacs + jacobian_offset;
+
+    const T* precision_matrix = pmat + precision_offset;
+    const T* x_start = x + error_offset;
+
+    const size_t lane = threadIdx.x % warp_size;
+    constexpr auto row_size = E;
+    constexpr auto rows_per_warp = warp_size / row_size;
+
+    const size_t row = lane / row_size;
+    const size_t col = lane % row_size;
+
+    // __shared__ T shared_out[E*D];
+    const auto hessian_offset = hessian_ids[local_id]; // each vertex has a hessian_ids array
+    namespace cg = cooperative_groups;
+
+    const T dL = chi2_derivative[factor_id];
+
+
+    for (int i = row; i < D; i += rows_per_warp) {
+        const T tmp = j[i*E + col] * x_start[col];
+        auto active = cg::coalesced_threads();
+        auto tile = cg::tiled_partition(active, row_size);
+        T value = cg::reduce(tile, tmp, cg::plus<T>());
+        if (tile.thread_rank() == 0) {
+            value *= dL;
+            atomicAdd(&y[hessian_offset + i], value);
+        }
+    }
+
+}
+
 template<typename T, size_t E, typename L>
 __global__ 
 void compute_chi2_kernel(T* chi2, T* chi2_derivative, const T* residuals, const size_t num_threads, const T* pmat, const L* loss) {
@@ -779,6 +938,76 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
                     // std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
         
                     compute_JtPv_kernel<T, Is, num_vertices, F::error_dim, f->get_vertex_sizes()[Is], F><<<num_blocks, threads_per_block>>>(
+                        out,
+                        in,
+                        f->device_ids.data().get(),
+                        hessian_ids[Is],
+                        num_threads,
+                        jacs[Is],
+                        f->vertex_descriptors[Is]->get_fixed_mask(),
+                        f->precision_matrices.data().get(),
+                        f->chi2_derivative.data().get(),
+                        std::make_index_sequence<num_vertices>{});
+                    }()), ...);
+                }
+
+        template <typename F, std::size_t... Is>
+        void launch_kernel_compute_JtPv2(F* f, T* out, T* in, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
+                    (([&] {
+                    constexpr auto num_vertices = F::get_num_vertices();
+                    const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
+                    // std::cout << "Launching compute Jtv kernel" << std::endl;
+                    // std::cout << "Num threads: " << num_threads << std::endl;
+                    size_t threads_per_block = F::get_vertex_sizes()[Is];
+                    // size_t num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+                    size_t num_blocks = num_factors;
+        
+                    // std::cout << "Checking obs ptr: " << f->device_obs.data().get() << std::endl;
+                    // std::cout << "Checking residual ptr: " << f->residuals.data().get() << std::endl;
+                    // std::cout << "Checking ids ptr: " << f->device_ids.data().get() << std::endl;
+        
+                    compute_JtPv2_kernel<T, Is, num_vertices, F::error_dim, f->get_vertex_sizes()[Is], F><<<num_blocks, threads_per_block>>>(
+                        out,
+                        in,
+                        f->device_ids.data().get(),
+                        hessian_ids[Is],
+                        num_threads,
+                        jacs[Is],
+                        f->vertex_descriptors[Is]->get_fixed_mask(),
+                        f->precision_matrices.data().get(),
+                        f->chi2_derivative.data().get(),
+                        std::make_index_sequence<num_vertices>{});
+                    }()), ...);
+                }
+
+
+        template <typename F, std::size_t... Is>
+        void launch_kernel_compute_JtPv3(F* f, T* out, T* in, std::array<const size_t*, F::get_num_vertices()>& hessian_ids, std::array<T*, F::get_num_vertices()> & jacs, const size_t num_factors, std::index_sequence<Is...>) {
+                    (([&] {
+                    constexpr size_t dimension = F::get_vertex_sizes()[Is];
+                    constexpr auto num_vertices = F::get_num_vertices();
+
+                    // We want each warp to load a whole row of Jt (a column of J) with coalescing.
+                    // How many whole columns (rows of Jt) can we load in a warp?
+                    constexpr size_t warp_size = 32;
+                    constexpr size_t row_size = F::error_dim;
+                    static_assert(warp_size >= row_size, "JtPv3: warp size must be greater than or equal to row size");
+                    constexpr size_t rows_per_warp = warp_size / row_size;
+
+                    // Each warp handles one block
+                    // Each block corresponds to one factor
+                    const size_t num_threads = num_factors * warp_size; // might under-utilize threads
+
+                    // const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
+                    // std::cout << "Launching compute Jtv kernel" << std::endl;
+                    // std::cout << "Num threads: " << num_threads << std::endl;
+                    // size_t threads_per_block = F::get_vertex_sizes()[Is];
+                    // size_t threads_per_block = warp_size;
+                    size_t threads_per_block = 256;
+                    size_t num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+                    // size_t num_blocks = num_factors;
+        
+                    compute_JtPv3_kernel<T, Is, num_vertices, F::error_dim, dimension, F><<<num_blocks, threads_per_block>>>(
                         out,
                         in,
                         f->device_ids.data().get(),
@@ -1076,7 +1305,7 @@ public:
         
         const auto num_factors = f->count();
 
-        launch_kernel_compute_JtPv(f, out, in, hessian_ids, jacs, num_factors, std::make_index_sequence<num_vertices>{});
+        launch_kernel_compute_JtPv3(f, out, in, hessian_ids, jacs, num_factors, std::make_index_sequence<num_vertices>{});
         cudaDeviceSynchronize();
 
     }
