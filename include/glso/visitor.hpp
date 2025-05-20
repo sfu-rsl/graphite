@@ -613,52 +613,56 @@ void compute_JtPv3_kernel(T* y, const T* x, const size_t* ids, const size_t* hes
     }
 
     constexpr auto jacobian_size = D*E;
-    
+    constexpr auto precision_matrix_size = E*E;
+
+    constexpr auto row_size = E;
+    constexpr auto warp_size = 32;
+
     // Stored as E x d col major, but we need to transpose it to d x E, where d is the vertex size
     // const size_t factor_id = idx / D;
     // const size_t factor_id = blockIdx.x;
-    constexpr auto warp_size = 32;
-    const size_t warp_id = idx / warp_size;
-    const auto factor_id = warp_id;
+    // const size_t warp_id = idx / warp_size;
+    // const auto factor_id = warp_id;
+    constexpr auto rows_per_warp = warp_size / row_size;
+    // const auto factor_id = idx / jacobian_size;
+    // const auto factor_id = idx / (D * row_size);
+    // const auto factor_id = idx / warp_size;
+    const auto factor_id = idx / (rows_per_warp * row_size);
 
     const size_t local_id = ids[factor_id*N+I]; // N is the number of vertices involved in the factor
     if (is_fixed(fixed, local_id)) {
         return;
     }
-    const auto jacobian_offset = factor_id * jacobian_size;
     const auto error_offset = factor_id*E;
-
-    constexpr auto precision_matrix_size = E*E;
     const auto precision_offset = factor_id*precision_matrix_size;
 
 
-    const T* j = jacs + jacobian_offset;
-
+    const T* j = jacs + factor_id * jacobian_size;
     const T* precision_matrix = pmat + precision_offset;
     const T* x_start = x + error_offset;
 
     const size_t lane = threadIdx.x % warp_size;
-    constexpr auto row_size = E;
-    constexpr auto rows_per_warp = warp_size / row_size;
+
 
     const size_t row = lane / row_size;
     const size_t col = lane % row_size;
 
-    // __shared__ T shared_out[E*D];
-    const auto hessian_offset = hessian_ids[local_id]; // each vertex has a hessian_ids array
     namespace cg = cooperative_groups;
 
-    const T dL = chi2_derivative[factor_id];
-
-
-    for (int i = row; i < D; i += rows_per_warp) {
-        const T tmp = j[i*E + col] * x_start[col];
-        auto active = cg::coalesced_threads();
-        auto tile = cg::tiled_partition(active, row_size);
-        T value = cg::reduce(tile, tmp, cg::plus<T>());
-        if (tile.thread_rank() == 0) {
-            value *= dL;
-            atomicAdd(&y[hessian_offset + i], value);
+    if (row < rows_per_warp) { 
+        // if this thread in the warp is part of a whole row
+        // then we compute the output
+        for (int i = row; i < D; i += rows_per_warp) {
+            // however the block can change between iterations
+            const T tmp = j[i*E + col] * x_start[col];
+            auto active = cg::coalesced_threads();
+            auto tile = cg::tiled_partition(active, row_size);
+            T value = cg::reduce(tile, tmp, cg::plus<T>());
+            if (tile.thread_rank() == 0) {
+                value *= chi2_derivative[factor_id];
+                const auto hessian_offset = hessian_ids[local_id]; // each vertex has a hessian_ids array
+                atomicAdd(&y[hessian_offset + i], value);
+            }
         }
     }
 
@@ -993,19 +997,42 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
                     constexpr size_t row_size = F::error_dim;
                     static_assert(warp_size >= row_size, "JtPv3: warp size must be greater than or equal to row size");
                     constexpr size_t rows_per_warp = warp_size / row_size;
+                    constexpr size_t jacobian_size = F::error_dim * dimension;
 
                     // Each warp handles one block
                     // Each block corresponds to one factor
-                    const size_t num_threads = num_factors * warp_size; // might under-utilize threads
+                    // const size_t num_threads = num_factors * warp_size; // might under-utilize threads
+                    
+                    // the priority is fitting as many rows as possible
+                    // into a full warp
+                    // const size_t num_threads = num_factors*jacobian_size;
+                    // const size_t num_threads = num_factors*warp_size;
+                    // const size_t num_threads = num_factors*rows_per_warp*row_size; 
+                    // const size_t num_threads = num_factors*jacobian_size;
 
                     // const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
                     // std::cout << "Launching compute Jtv kernel" << std::endl;
                     // std::cout << "Num threads: " << num_threads << std::endl;
                     // size_t threads_per_block = F::get_vertex_sizes()[Is];
                     // size_t threads_per_block = warp_size;
-                    size_t threads_per_block = 256;
-                    size_t num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
-                    // size_t num_blocks = num_factors;
+                    // size_t threads_per_block = 256;
+                
+                    // block size should depend on how many rows full rows we can fit in a warp
+                    
+                    size_t threads_per_block = rows_per_warp*row_size;
+                    size_t num_blocks = num_factors;
+                    size_t num_threads = threads_per_block* num_blocks;
+
+                    std::cout << "For dimension: " << dimension << std::endl;
+                    std::cout << "Row size: " << row_size << std::endl;
+                    std::cout << "Rows per warp: " << rows_per_warp << std::endl;
+                    std::cout << "Threads per block: " << threads_per_block << std::endl;   
+                    std::cout << "Num factors: " << num_factors << std::endl;
+                    std::cout << "Num threads: " << num_factors*threads_per_block << std::endl;
+                    // size_t threads_per_block = 256;
+                    // size_t num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+
+            
         
                     compute_JtPv3_kernel<T, Is, num_vertices, F::error_dim, dimension, F><<<num_blocks, threads_per_block>>>(
                         out,
