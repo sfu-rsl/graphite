@@ -1,6 +1,7 @@
 #pragma once
 #include <glso/common.hpp>
 #include <glso/visitor.hpp>
+#include <glso/vector.hpp>
 namespace glso {
 
 #define SOLVER_FUNC __host__ __device__
@@ -105,7 +106,7 @@ public:
     std::vector<size_t> local_to_global_map;
     thrust::host_vector<size_t> local_to_hessian_offsets;
     thrust::device_vector<size_t> hessian_ids;
-    thrust::universal_vector<uint32_t> fixed_mask;
+    uninitialized_vector<uint32_t> fixed_mask;
 
     static constexpr size_t dim = V::dimension;
     // static constexpr size_t dim = V::dimension;
@@ -189,7 +190,7 @@ public:
         global_to_local_map.reserve(size);
         local_to_global_map.reserve(size);
         local_to_hessian_offsets.reserve(size);
-        fixed_mask.resize((size + 31) / 32, 0);
+        fixed_mask.reserve((size + 31) / 32);
     }
 
     void remove_vertex(const size_t id) {

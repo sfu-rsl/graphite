@@ -18,6 +18,9 @@ template <typename T, int E>
 class DefaultLoss: public Loss<T, E> {
     public:
 
+    __device__ __host__ DefaultLoss() {}
+    __device__ __host__ DefaultLoss(const DefaultLoss& other) {}
+
     virtual __device__ __host__ T loss(const T& x) const override {
         return x;
     };
@@ -34,6 +37,7 @@ class HuberLoss : public Loss<T, E> {
     T delta;
 
     __device__ __host__ HuberLoss() : delta(100.0) {}
+    __device__ __host__ HuberLoss(const HuberLoss& other) : delta(other.delta) {}
 
 
     __device__ __host__ HuberLoss(T delta) : delta(delta) {}

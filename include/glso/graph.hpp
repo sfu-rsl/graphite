@@ -3,6 +3,7 @@
 #include <glso/factor.hpp>
 #include <glso/vertex.hpp>
 #include <limits>
+#include <thrust/execution_policy.h>
 
 namespace glso {
 
@@ -161,10 +162,6 @@ class Graph {
     }
 
     void linearize() {
-        // clear vectors
-        thrust::fill(b.begin(), b.end(), 0);
-        thrust::fill(jacobian_scales.begin(), jacobian_scales.end(), 0);
-
 
         for (auto & factor: factor_descriptors) {
             // compute error
@@ -186,22 +183,24 @@ class Graph {
         // Compute Jacobian scale
         constexpr bool scale_jacobians = true;
         if (scale_jacobians) {
+            thrust::fill(jacobian_scales.begin(), jacobian_scales.end(), 0);
             for (auto & factor: factor_descriptors) {
                 factor->visit_scalar_diagonal(visitor, jacobian_scales.data().get());
             }
+            cudaDeviceSynchronize();
+
+            thrust::transform(thrust::device,
+                jacobian_scales.begin(), jacobian_scales.end(), jacobian_scales.begin(),
+                [] __device__ (T value) {
+                    // return 1.0 / (1.0 + sqrt(value));
+                    return 1.0 / (std::numeric_limits<T>::epsilon() + sqrt(value));
+                }
+            );
         }
         else {
             thrust::fill(jacobian_scales.begin(), jacobian_scales.end(), 1.0);
         }
 
-        cudaDeviceSynchronize();
-        thrust::transform(
-            jacobian_scales.begin(), jacobian_scales.end(), jacobian_scales.begin(),
-            [] __device__ (T value) {
-                // return 1.0 / (1.0 + sqrt(value));
-                return 1.0 / (std::numeric_limits<T>::epsilon() + sqrt(value));
-            }
-        );
 
         // Scale Jacobians
         for (auto & factor: factor_descriptors) {
@@ -211,6 +210,7 @@ class Graph {
 
 
         // Calculate b=J^T * r
+        thrust::fill(b.begin(), b.end(), 0);
         for (auto & fd: factor_descriptors) {
             fd->visit_b(visitor, b.data().get());
         }

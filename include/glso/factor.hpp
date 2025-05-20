@@ -6,6 +6,8 @@
 #include <glso/utils.hpp>
 #include <glso/loss.hpp>
 #include <glso/op.hpp>
+#include <glso/vector.hpp>
+#include <thrust/execution_policy.h>
 
 namespace glso {
 
@@ -77,17 +79,17 @@ public:
     using ConstraintDataType = C;
     using LossType = L<T, E>;
 
-    // thrust::universal_vector<size_t> device_ids; // local ids
+    // uninitialized_vector<size_t> device_ids; // local ids
     thrust::host_vector<size_t> host_ids;
     thrust::device_vector<size_t> device_ids;
-    thrust::universal_vector<M> device_obs;
+    uninitialized_vector<M> device_obs;
     thrust::device_vector<T> residuals;
-    thrust::universal_vector<T> precision_matrices;
-    thrust::universal_vector<C> data; 
+    uninitialized_vector<T> precision_matrices;
+    uninitialized_vector<C> data; 
 
-    thrust::universal_vector<T> chi2_vec;
+    uninitialized_vector<T> chi2_vec;
     thrust::device_vector<T> chi2_derivative;
-    thrust::universal_vector<LossType> loss;
+    uninitialized_vector<LossType> loss;
 
     std::array<JacobianStorage<T>, N> jacobians;
 
@@ -230,11 +232,19 @@ public:
 
         constexpr size_t precision_matrix_size = error_dim*error_dim;
         if (precision_matrix) {
-            precision_matrices.insert(precision_matrices.end(), precision_matrix, precision_matrix + precision_matrix_size);
+            // precision_matrices.insert(precision_matrices.end(), precision_matrix, precision_matrix + precision_matrix_size);
+            precision_matrices.resize(precision_matrices.size() + precision_matrix_size);
+            for (size_t i = 0; i < precision_matrix_size; i++) {
+                precision_matrices[local_id*precision_matrix_size + i] = precision_matrix[i];
+            }
         }
         else {
             constexpr auto pmat = get_default_precision_matrix();
-            precision_matrices.insert(precision_matrices.end(), pmat.data(), pmat.data() + precision_matrix_size);
+            // precision_matrices.insert(precision_matrices.end(), pmat.data(), pmat.data() + precision_matrix_size);
+            precision_matrices.resize(precision_matrices.size() + precision_matrix_size);
+            for (size_t i = 0; i < precision_matrix_size; i++) {
+                precision_matrices[local_id*precision_matrix_size + i] = precision_matrix[i];
+            }
 
         }
 
@@ -331,10 +341,8 @@ public:
 
     // TODO: Make this consider kernels and active edges
     virtual T chi2(GraphVisitor<T>& visitor) override {
-        // T chi2 = thrust::inner_product(residuals.begin(), residuals.end(), residuals.begin(), 0.0);
-        // return chi2;
         visitor.template compute_chi2<Derived<T>>(dynamic_cast<Derived<T>*>(this));
-        return thrust::reduce(chi2_vec.begin(), chi2_vec.end(), 0.0, thrust::plus<T>());
+        return thrust::reduce(thrust::device, chi2_vec.begin(), chi2_vec.end(), 0.0, thrust::plus<T>());
     }
 
     virtual void scale_jacobians(GraphVisitor<T>& visitor, T* jacobian_scales) override {
