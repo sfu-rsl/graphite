@@ -606,8 +606,9 @@ __inline__ __device__ T warp_consecutive_reduce(T val) {
 template<typename T, size_t I, size_t N, size_t E, size_t D, typename F, std::size_t... Is>
 __global__ 
 void compute_JtPv3_kernel(T* y, const T* x, const size_t* ids, const size_t* hessian_ids, const size_t num_threads, const T* jacs, const uint32_t* fixed, const T* pmat, const T* chi2_derivative, std::index_sequence<Is...>) {
-        const size_t idx = get_thread_id();
+    const size_t idx = get_thread_id();
 
+    __syncthreads();
     if (idx >= num_threads) {
         return;
     }
@@ -627,19 +628,8 @@ void compute_JtPv3_kernel(T* y, const T* x, const size_t* ids, const size_t* hes
     // const auto factor_id = idx / jacobian_size;
     // const auto factor_id = idx / (D * row_size);
     // const auto factor_id = idx / warp_size;
-    const auto factor_id = idx / (rows_per_warp * row_size);
-
-    const size_t local_id = ids[factor_id*N+I]; // N is the number of vertices involved in the factor
-    if (is_fixed(fixed, local_id)) {
-        return;
-    }
-    const auto error_offset = factor_id*E;
-    const auto precision_offset = factor_id*precision_matrix_size;
 
 
-    const T* j = jacs + factor_id * jacobian_size;
-    const T* precision_matrix = pmat + precision_offset;
-    const T* x_start = x + error_offset;
 
     const size_t lane = threadIdx.x % warp_size;
 
@@ -647,23 +637,63 @@ void compute_JtPv3_kernel(T* y, const T* x, const size_t* ids, const size_t* hes
     const size_t row = lane / row_size;
     const size_t col = lane % row_size;
 
-    namespace cg = cooperative_groups;
 
+    __shared__ T s_out[rows_per_warp*row_size];
+
+
+            const auto factor_id = idx / (rows_per_warp * row_size);
+
+            const size_t local_id = ids[factor_id*N+I]; // N is the number of vertices involved in the factor
+            if (is_fixed(fixed, local_id)) {
+                return;
+            }
+            const auto error_offset = factor_id*E;
+            const auto precision_offset = factor_id*precision_matrix_size;
+
+
+            const T* j = jacs + factor_id * jacobian_size;
+            const T* precision_matrix = pmat + precision_offset;
+            const T* x_start = x + error_offset;
+
+            const T x_val = x_start[col];
+
+            const T* j_col = j + col;
+
+    namespace cg = cooperative_groups;
     if (row < rows_per_warp) { 
         // if this thread in the warp is part of a whole row
         // then we compute the output
         for (int i = row; i < D; i += rows_per_warp) {
             // however the block can change between iterations
-            const T tmp = j[i*E + col] * x_start[col];
-            auto active = cg::coalesced_threads();
-            auto tile = cg::tiled_partition(active, row_size);
-            T value = cg::reduce(tile, tmp, cg::plus<T>());
-            if (tile.thread_rank() == 0) {
-                value *= chi2_derivative[factor_id];
-                const auto hessian_offset = hessian_ids[local_id]; // each vertex has a hessian_ids array
-                atomicAdd(&y[hessian_offset + i], value);
+            const T tmp =  j_col[i*E]*x_val;
+            s_out[row*E+col] = tmp;
+
+            // Strided reduction across columns for each row
+            for (int stride = row_size / 2; stride > 0; stride >>= 1) {
+                __syncthreads();
+                if (col < stride) {
+                    s_out[row * E + col] += s_out[row * E + col + stride];
+                }
             }
+            __syncthreads();
+            if (col == 0) {
+                T sum = s_out[row * E];
+                sum *= chi2_derivative[factor_id];
+                const auto hessian_offset = hessian_ids[local_id];
+                atomicAdd(&y[hessian_offset + i], sum);
+            }
+
+
+            // auto active = cg::coalesced_threads();
+            // auto tile = cg::tiled_partition(active, row_size);
+            // T value = cg::reduce(tile, tmp, cg::plus<T>());
+            // if (tile.thread_rank() == 0) {
+            //     value *= chi2_derivative[factor_id];
+            //     const auto hessian_offset = hessian_ids[local_id]; // each vertex has a hessian_ids array
+            //     atomicAdd(&y[hessian_offset + i], value);
+            // }
         }
+
     }
 
 }
@@ -1023,12 +1053,12 @@ void launch_kernel_compute_b(F* f, T* b, std::array<const size_t*, F::get_num_ve
                     size_t num_blocks = num_factors;
                     size_t num_threads = threads_per_block* num_blocks;
 
-                    std::cout << "For dimension: " << dimension << std::endl;
-                    std::cout << "Row size: " << row_size << std::endl;
-                    std::cout << "Rows per warp: " << rows_per_warp << std::endl;
-                    std::cout << "Threads per block: " << threads_per_block << std::endl;   
-                    std::cout << "Num factors: " << num_factors << std::endl;
-                    std::cout << "Num threads: " << num_factors*threads_per_block << std::endl;
+                    // std::cout << "For dimension: " << dimension << std::endl;
+                    // std::cout << "Row size: " << row_size << std::endl;
+                    // std::cout << "Rows per warp: " << rows_per_warp << std::endl;
+                    // std::cout << "Threads per block: " << threads_per_block << std::endl;   
+                    // std::cout << "Num factors: " << num_factors << std::endl;
+                    // std::cout << "Num threads: " << num_factors*threads_per_block << std::endl;
                     // size_t threads_per_block = 256;
                     // size_t num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
 
