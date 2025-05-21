@@ -15,24 +15,24 @@ class Loss {
 };
 
 template <typename T, int E>
-class DefaultLoss: public Loss<T, E> {
+class DefaultLoss final : public Loss<T, E> {
     public:
 
     __device__ __host__ DefaultLoss() {}
     __device__ __host__ DefaultLoss(const DefaultLoss& other) {}
 
-    virtual __device__ __host__ T loss(const T& x) const override {
+    __device__ __host__ T loss(const T& x) const override {
         return x;
     };
 
-    virtual __device__ __host__ T loss_derivative(const T& x) const override {
+    __device__ __host__ T loss_derivative(const T& x) const override {
         return 1;
     };
 
 };
 
 template<typename T, int E>
-class HuberLoss : public Loss<T, E> {
+class HuberLoss final : public Loss<T, E> {
     public:
     T delta;
 

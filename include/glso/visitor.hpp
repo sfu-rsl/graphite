@@ -514,11 +514,8 @@ void compute_chi2_kernel(T* chi2, T* chi2_derivative, const T* residuals, const 
         return;
     }
     T raw_chi2 = compute_chi2<T, E>(residuals, pmat, idx);
-    
-    L loss_func;
-    new (&loss_func) L(loss[idx]);
-    chi2[idx] = loss_func.loss(raw_chi2);
-    chi2_derivative[idx] = loss_func.loss_derivative(raw_chi2);
+    chi2[idx] = loss[idx].loss(raw_chi2);
+    chi2_derivative[idx] = loss[idx].loss_derivative(raw_chi2);
 }
 
 template<typename T, size_t I, size_t N, size_t E, size_t D>
