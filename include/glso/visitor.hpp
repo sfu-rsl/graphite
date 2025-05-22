@@ -906,7 +906,7 @@ public:
     
     GraphVisitor() = default;
 
-    template<typename F, typename... VertexTypes>
+    template<typename F>
     void compute_error_autodiff(F* f) {
         // Assume autodiff
 
@@ -936,7 +936,7 @@ public:
 
     }
 
-    template<typename F, typename... VertexTypes>
+    template<typename F>
     void compute_error(F* f) {
         // Then for each vertex, we need to compute the error
         constexpr auto num_vertices = F::get_num_vertices();
@@ -1008,7 +1008,7 @@ public:
 
     }
 
-    template<typename F, typename... VertexTypes>
+    template<typename F>
     void compute_b(F* f, T* b) {
         constexpr auto num_vertices = F::get_num_vertices();
         constexpr auto vertex_sizes = F::get_vertex_sizes();
@@ -1032,7 +1032,7 @@ public:
 
     }
 
-    template<typename F, typename... VertexTypes>
+    template<typename F>
     void compute_Jv(F* f, T* out, T* in) {
         constexpr auto num_vertices = F::get_num_vertices();
         constexpr auto vertex_sizes = F::get_vertex_sizes();
@@ -1056,7 +1056,7 @@ public:
     }
 
 
-    template<typename F, typename... VertexTypes>
+    template<typename F>
     void compute_Jtv(F* f, T* out, T* in) {
         constexpr auto num_vertices = f->get_num_vertices();
         constexpr auto vertex_sizes = F::get_vertex_sizes();

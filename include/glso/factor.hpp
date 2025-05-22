@@ -54,7 +54,49 @@ public:
 
 };
 
-template <typename T, int E, typename M, typename C, template <typename, int> class L, template <typename> class Derived, typename... VDTypes>
+template<typename T>
+struct FactorTraits {
+
+    static constexpr size_t dimension = T::dimension;
+    
+    using ObservationType = typename T::ObservationType;
+    using ConstraintDataType = typename T::ConstraintDataType;
+    template<typename F, int E>
+    using LossType = typename T::LossType<F, E>;
+    using VertexDescriptors = typename T::VertexDescriptors;
+};
+
+
+template <typename T>
+struct get_vertex_type {
+    using type = typename T::VertexType;
+};
+
+template <typename T>
+struct get_vertex_pointer_type {
+    using type = typename T::VertexType*;
+};
+
+template <typename T>
+struct get_vertex_pointer_pointer_type {
+    using type = typename T::VertexType**;
+};
+
+
+template <typename Tuple, template <typename> class MetaFunc>
+struct transform_tuple;
+
+// Partial specialization for std::tuple
+template <typename... Ts, template <typename> class MetaFunc>
+struct transform_tuple<std::tuple<Ts...>, MetaFunc> {
+    using type = std::tuple<typename MetaFunc<Ts>::type...>;
+};
+
+template <typename Tuple, template <typename> class MetaFunc>
+using transform_tuple_t = typename transform_tuple<Tuple, MetaFunc>::type;
+
+// template <typename T, int E, typename M, typename C, template <typename, int> class L, template <typename> class Derived, typename... VDTypes>
+template <typename T, template <typename> class Derived>
 class FactorDescriptor : public BaseFactorDescriptor<T> {
 
 private:
@@ -68,24 +110,36 @@ private:
 
 public:
 
-    static constexpr size_t N = sizeof...(VDTypes);
-    static constexpr size_t error_dim = E;
+    // static constexpr size_t N = sizeof...(VDTypes);
+    static constexpr size_t N = std::tuple_size<typename FactorTraits<Derived<T>>::VertexDescriptors>::value;
+    // static constexpr size_t error_dim = E;
+    static constexpr size_t error_dim = FactorTraits<Derived<T>>::dimension;
 
     std::array<BaseVertexDescriptor<T>*, N> vertex_descriptors;
-    using VertexTypesTuple = std::tuple<typename VDTypes::VertexType...>;
-    using VertexPointerTuple = std::tuple<typename VDTypes::VertexType*...>;
-    using VertexPointerPointerTuple = std::tuple<typename VDTypes::VertexType**...>;
-    using ObservationType = M;
-    using ConstraintDataType = C;
-    using LossType = L<T, E>;
+    // using VertexTypesTuple = std::tuple<typename VDTypes::VertexType...>;
+    // using VertexPointerTuple = std::tuple<typename VDTypes::VertexType*...>;
+    // using VertexPointerPointerTuple = std::tuple<typename VDTypes::VertexType**...>;
+        
+    using VertexDescriptorTuple = typename FactorTraits<Derived<T>>::VertexDescriptors;
+    using VertexTypesTuple = transform_tuple_t<VertexDescriptorTuple, get_vertex_type>;
+    using VertexPointerTuple = transform_tuple_t<VertexDescriptorTuple, get_vertex_pointer_type>;
+    using VertexPointerPointerTuple = transform_tuple_t<VertexDescriptorTuple, get_vertex_pointer_pointer_type>;
+
+    using ObservationType = typename FactorTraits<Derived<T>>::ObservationType;
+    using ConstraintDataType = typename FactorTraits<Derived<T>>::ConstraintDataType;
+    using LossType = typename FactorTraits<Derived<T>>::LossType<T, error_dim>;
+    
+    // using ObservationType = M;
+    // using ConstraintDataType = C;
+    // using LossType = L<T, E>;
 
     // uninitialized_vector<size_t> device_ids; // local ids
     thrust::host_vector<size_t> host_ids;
     thrust::device_vector<size_t> device_ids;
-    uninitialized_vector<M> device_obs;
+    uninitialized_vector<ObservationType> device_obs;
     thrust::device_vector<T> residuals;
     uninitialized_vector<T> precision_matrices;
-    uninitialized_vector<C> data; 
+    uninitialized_vector<ConstraintDataType> data; 
 
     uninitialized_vector<T> chi2_vec;
     thrust::device_vector<T> chi2_derivative;
@@ -94,23 +148,23 @@ public:
     std::array<JacobianStorage<T>, N> jacobians;
 
     void visit_error(GraphVisitor<T>& visitor) override {
-        visitor.template compute_error<Derived<T>, VDTypes...>(dynamic_cast<Derived<T>*>(this));
+        visitor.template compute_error<Derived<T>>(dynamic_cast<Derived<T>*>(this));
     }
 
     void visit_error_autodiff(GraphVisitor<T>& visitor) override {
-        visitor.template compute_error_autodiff<Derived<T>, VDTypes...>(dynamic_cast<Derived<T>*>(this));
+        visitor.template compute_error_autodiff<Derived<T>>(dynamic_cast<Derived<T>*>(this));
     }
 
     void visit_b(GraphVisitor<T>& visitor, T* b) override {
-        visitor.template compute_b<Derived<T>, VDTypes...>(dynamic_cast<Derived<T>*>(this), b);
+        visitor.template compute_b<Derived<T>>(dynamic_cast<Derived<T>*>(this), b);
     }
 
     void visit_Jv(GraphVisitor<T>& visitor, T* out, T* in) override {
-        visitor.template compute_Jv<Derived<T>, VDTypes...>(dynamic_cast<Derived<T>*>(this), out, in);
+        visitor.template compute_Jv<Derived<T>>(dynamic_cast<Derived<T>*>(this), out, in);
     }
 
     void visit_Jtv(GraphVisitor<T>& visitor, T* out, T* in) override {
-        visitor.template compute_Jtv<Derived<T>, VDTypes...>(dynamic_cast<Derived<T>*>(this), out, in);
+        visitor.template compute_Jtv<Derived<T>>(dynamic_cast<Derived<T>*>(this), out, in);
     }
 
     void visit_block_diagonal(GraphVisitor<T>& visitor, std::unordered_map<BaseVertexDescriptor<T>*, thrust::device_vector<T>> & block_diagonals) override {
@@ -219,7 +273,7 @@ public:
     }
         
 
-    size_t add_factor(const std::array<size_t, N>& ids, const M& obs, const T* precision_matrix, const C& constraint_data, const LossType& loss_func) {
+    size_t add_factor(const std::array<size_t, N>& ids, const ObservationType& obs, const T* precision_matrix, const ConstraintDataType& constraint_data, const LossType& loss_func) {
         
         const auto id = hm.get();
         const auto local_id = count();
@@ -254,7 +308,8 @@ public:
     }
 
     // TODO: Make this private later
-    constexpr static std::array<T, E*E> get_default_precision_matrix() {
+    constexpr static std::array<T, error_dim*error_dim> get_default_precision_matrix() {
+        constexpr size_t E = error_dim;
         return []() constexpr {
             std::array<T, E*E> pmat = {};
             for (size_t i = 0; i < E; i++) {
@@ -316,7 +371,8 @@ public:
 
     template <std::size_t... I>
     VertexPointerPointerTuple get_vertices_impl(std::index_sequence<I...>) {
-        return std::make_tuple((static_cast<typename std::tuple_element<I, std::tuple<VDTypes...>>::type*>(vertex_descriptors[I])->vertices())...);
+        // return std::make_tuple((static_cast<typename std::tuple_element<I, std::tuple<VDTypes...>>::type*>(vertex_descriptors[I])->vertices())...);
+        return std::make_tuple((static_cast<typename std::tuple_element<I, VertexDescriptorTuple>::type*>(vertex_descriptors[I])->vertices())...);
     }
     
     // Return tuple of N vertex pointers from this->vertex_descriptors[i]->vertices()
@@ -325,7 +381,9 @@ public:
     }
 
     static constexpr std::array<size_t, N> get_vertex_sizes() {
-        return {VDTypes::dim...};
+        return []<std::size_t... I>(std::index_sequence<I...>) {
+            return std::array<size_t, N>{std::tuple_element_t<I, VertexDescriptorTuple>::dim...};
+        }(std::make_index_sequence<N>{});
     }
 
     void initialize_jacobian_storage() override {
@@ -354,8 +412,11 @@ public:
 // Templated derived class for AutoDiffFactorDescriptor using CRTP
 // N is the number of vertices involved in the constraint
 // M is the dimension of each observation
-template <typename T, int E, typename M, typename C, template <typename, int> class L, template <typename> class Derived, typename... VDTypes>
-class AutoDiffFactorDescriptor : public FactorDescriptor<T, E, M, C, L, Derived, VDTypes...> {
+// template <typename T, int E, typename M, typename C, template <typename, int> class L, template <typename> class Derived, typename... VDTypes>
+// class AutoDiffFactorDescriptor : public FactorDescriptor<T, E, M, C, L, Derived, VDTypes...> {
+
+template <typename T, template <typename> class Derived>
+class AutoDiffFactorDescriptor : public FactorDescriptor<T, Derived> {
 public:
     virtual bool use_autodiff() override {
         return true;

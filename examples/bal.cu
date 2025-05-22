@@ -97,9 +97,22 @@ class CameraDescriptor: public VertexDescriptor<T, Camera<T>, CameraDescriptor> 
 
 using Observation2D = Eigen::Vector2d;
 using ConstraintData = unsigned char;
+
+
+
 template <typename T>
-class ReprojectionError : public AutoDiffFactorDescriptor<T, 2, Observation2D, ConstraintData, DefaultLoss, ReprojectionError, CameraDescriptor<T>, PointDescriptor<T>> {
+// class ReprojectionError : public AutoDiffFactorDescriptor<T, 2, Observation2D, ConstraintData, DefaultLoss, ReprojectionError, CameraDescriptor<T>, PointDescriptor<T>> {
+
+class ReprojectionError : public AutoDiffFactorDescriptor<T, ReprojectionError> {
 public:
+
+    // static constexpr size_t dimension = 2;
+    // using ObservationType = Eigen::Vector2d;
+    // using ConstraintDataType = unsigned char;
+    // template<typename F, int E>
+    // using LossType = DefaultLoss;
+    // using VertexDescriptors = std::tuple<CameraDescriptor<T>, PointDescriptor<T>>;
+
 
     template <typename D, typename M>
     __device__ static void error(
@@ -185,6 +198,19 @@ public:
             
         }
 };
+
+
+template <>
+struct FactorTraits<ReprojectionError<double>> {
+    static constexpr size_t dimension = 2;
+    using VertexDescriptors = std::tuple<CameraDescriptor<double>, PointDescriptor<double>>;
+    using ObservationType = Eigen::Vector2d;
+    using ConstraintDataType = unsigned char;
+    template<typename F, int E>
+    using LossType = DefaultLoss<F, E>;
+};
+
+
 } // namespace glso
 
 int main(void) {
