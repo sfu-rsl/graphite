@@ -54,15 +54,15 @@ public:
 
 };
 
-template<typename T>
+template<typename FP, typename T>
 struct FactorTraits {
 
     static constexpr size_t dimension = T::dimension;
     
     using ObservationType = typename T::ObservationType;
     using ConstraintDataType = typename T::ConstraintDataType;
-    template<typename F, int E>
-    using LossType = typename T::LossType<F, E>;
+    template<int E>
+    using LossType = typename T::LossType<FP, E>;
     using VertexDescriptors = typename T::VertexDescriptors;
 };
 
@@ -109,25 +109,26 @@ private:
     HandleManager <size_t> hm;
 
 public:
+    using FTraits = FactorTraits<T, Derived<T>>;
 
     // static constexpr size_t N = sizeof...(VDTypes);
-    static constexpr size_t N = std::tuple_size<typename FactorTraits<Derived<T>>::VertexDescriptors>::value;
+    static constexpr size_t N = std::tuple_size<typename FTraits::VertexDescriptors>::value;
     // static constexpr size_t error_dim = E;
-    static constexpr size_t error_dim = FactorTraits<Derived<T>>::dimension;
+    static constexpr size_t error_dim = FTraits::dimension;
 
     std::array<BaseVertexDescriptor<T>*, N> vertex_descriptors;
     // using VertexTypesTuple = std::tuple<typename VDTypes::VertexType...>;
     // using VertexPointerTuple = std::tuple<typename VDTypes::VertexType*...>;
     // using VertexPointerPointerTuple = std::tuple<typename VDTypes::VertexType**...>;
         
-    using VertexDescriptorTuple = typename FactorTraits<Derived<T>>::VertexDescriptors;
+    using VertexDescriptorTuple = typename FTraits::VertexDescriptors;
     using VertexTypesTuple = transform_tuple_t<VertexDescriptorTuple, get_vertex_type>;
     using VertexPointerTuple = transform_tuple_t<VertexDescriptorTuple, get_vertex_pointer_type>;
     using VertexPointerPointerTuple = transform_tuple_t<VertexDescriptorTuple, get_vertex_pointer_pointer_type>;
 
-    using ObservationType = typename FactorTraits<Derived<T>>::ObservationType;
-    using ConstraintDataType = typename FactorTraits<Derived<T>>::ConstraintDataType;
-    using LossType = typename FactorTraits<Derived<T>>::LossType<T, error_dim>;
+    using ObservationType = typename FTraits::ObservationType;
+    using ConstraintDataType = typename FTraits::ConstraintDataType;
+    using LossType = typename FTraits::LossType<error_dim>;
     
     // using ObservationType = M;
     // using ConstraintDataType = C;

@@ -200,14 +200,14 @@ public:
 };
 
 
-template <>
-struct FactorTraits<ReprojectionError<double>> {
+template <typename FP>
+struct FactorTraits<FP, ReprojectionError<FP>> {
     static constexpr size_t dimension = 2;
-    using VertexDescriptors = std::tuple<CameraDescriptor<double>, PointDescriptor<double>>;
-    using ObservationType = Eigen::Vector2d;
+    using VertexDescriptors = std::tuple<CameraDescriptor<FP>, PointDescriptor<FP>>;
+    using ObservationType = Eigen::Matrix<FP, 2, 1>;
     using ConstraintDataType = unsigned char;
-    template<typename F, int E>
-    using LossType = DefaultLoss<F, E>;
+    template<int E>
+    using LossType = DefaultLoss<FP, E>;
 };
 
 
