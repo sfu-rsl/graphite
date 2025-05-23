@@ -7,120 +7,120 @@ namespace glso {
 
 namespace optimizer {
 
-template<typename T>
-T compute_rho(Graph<T>* graph, thrust::device_vector<T>& delta_x, const T chi2, const T new_chi2, const T mu, const bool step_is_good) {
-    // Compute rho
-    //  TODO: Don't store these in the graph
-    auto & b = graph->get_b();
-    T num = (chi2 - new_chi2);
-    T denom = (mu * thrust::inner_product(delta_x.begin(), delta_x.end(), delta_x.begin(), 0.0));
-    denom += thrust::inner_product(delta_x.begin(), delta_x.end(), b.begin(), 0.0);
-    if (step_is_good) {
-        denom += std::numeric_limits<T>::epsilon();
-    }
-    else {
-        denom = 1;
-    }
-    return num / (denom);
+template <typename T>
+T compute_rho(Graph<T> *graph, thrust::device_vector<T> &delta_x, const T chi2,
+              const T new_chi2, const T mu, const bool step_is_good) {
+  // Compute rho
+  //  TODO: Don't store these in the graph
+  auto &b = graph->get_b();
+  T num = (chi2 - new_chi2);
+  T denom = (mu * thrust::inner_product(delta_x.begin(), delta_x.end(),
+                                        delta_x.begin(), 0.0));
+  denom +=
+      thrust::inner_product(delta_x.begin(), delta_x.end(), b.begin(), 0.0);
+  if (step_is_good) {
+    denom += std::numeric_limits<T>::epsilon();
+  } else {
+    denom = 1;
+  }
+  return num / (denom);
 }
 
+template <typename T>
+bool levenberg_marquardt(Graph<T> *graph, Solver<T> *solver,
+                         const size_t num_iterations, T damping_factor = 1e-2) {
 
-template<typename T>
-bool levenberg_marquardt(Graph<T>* graph, Solver<T>* solver, const size_t num_iterations, T damping_factor=1e-2) {
+  // Initialize something for all iterations
+  auto start = std::chrono::steady_clock::now();
+  T mu = damping_factor;
+  T nu = 2;
 
-    // Initialize something for all iterations
-    auto start = std::chrono::steady_clock::now();
-    T mu = damping_factor;
-    T nu = 2;
+  if (!graph->initialize_optimization()) {
+    return false;
+  }
 
-    if (!graph->initialize_optimization()) {
-        return false;
-    }
+  if (!graph->build_structure()) {
+    return false;
+  }
 
-    if (!graph->build_structure()) {
-        return false;
-    }
+  graph->linearize();
 
-    graph->linearize();
+  thrust::device_vector<T> delta_x(graph->get_hessian_dimension());
 
-    thrust::device_vector<T> delta_x(graph->get_hessian_dimension());
+  bool run = true;
 
-    bool run  = true;
-
-    double time = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-    // Print iteration table headers
-    std::cout << std::setw(10) << "Iteration" 
-            << std::setw(16) << "Initial Chi2" 
-            << std::setw(16) << "Current Chi2" 
-            << std::setw(16) << "Lambda" 
-            << std::setw(16) << "Time" 
-            << std::setw(16) << "Total Time" 
+  double time =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
+          .count();
+  // Print iteration table headers
+  std::cout << std::setw(10) << "Iteration" << std::setw(16) << "Initial Chi2"
+            << std::setw(16) << "Current Chi2" << std::setw(16) << "Lambda"
+            << std::setw(16) << "Time" << std::setw(16) << "Total Time"
             << std::endl;
-    std::cout << "------------------------------------------------------------------------------------------" << std::endl;
+  std::cout << "---------------------------------------------------------------"
+               "---------------------------"
+            << std::endl;
 
-    for (size_t i = 0; i < num_iterations && run; i++) {
-        
-        start = std::chrono::steady_clock::now();
-        T chi2 = graph->chi2();
-        
-        if (!solver->solve(graph, delta_x.data().get(), mu)) {
-            std::cerr << "Solver failed" << std::endl;
-            return false;
-        }
+  for (size_t i = 0; i < num_iterations && run; i++) {
 
-        graph->backup_parameters();
-        graph->apply_step(delta_x.data().get());
+    start = std::chrono::steady_clock::now();
+    T chi2 = graph->chi2();
 
-        // Try step
-        graph->compute_error();
-        T new_chi2 = graph->chi2();
-
-        bool step_is_good = std::isfinite(new_chi2);
-
-        T rho = compute_rho(graph, delta_x, chi2, new_chi2, mu, step_is_good);
-
-        if (step_is_good && rho > 0) {
-            // update hyperparameters
-            mu *= std::max(std::max(static_cast<T>(1.0/3.0), 1 - pow(2*rho-1, 3)), 1e-32);
-            nu = 2;
-            // Relinearize since step is accepted
-            graph->linearize();
-            // std::cout << "Good step" << std::endl;
-            // std::cout << "rho: " << rho << std::endl;
-        }
-        else {
-            graph->revert_parameters();
-            graph->compute_error();
-            // update hyperparameters
-            mu *= nu;
-            nu *= 2;
-            // std::cout << "Bad step" << std::endl;
-            new_chi2 = chi2;
-        }
-
-        double iteration_time = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-        time += iteration_time;
-        std::cout << std::setw(10) << i 
-                    << std::setw(16) << chi2 
-                    << std::setw(16) << new_chi2 
-                    << std::setw(16) << mu 
-                    << std::setw(16) << iteration_time
-                    << std::setw(16) << time
-                    << std::endl;
-
-
-        if (!std::isfinite(mu)) {
-            std::cout << "Damping factor is infinite, terminating optimization" << std::endl;
-            run = false;
-        }
-
+    if (!solver->solve(graph, delta_x.data().get(), mu)) {
+      std::cerr << "Solver failed" << std::endl;
+      return false;
     }
 
-    // Should only really do this when optimization is successful
-    graph->to_host();
+    graph->backup_parameters();
+    graph->apply_step(delta_x.data().get());
 
-    return run;
+    // Try step
+    graph->compute_error();
+    T new_chi2 = graph->chi2();
+
+    bool step_is_good = std::isfinite(new_chi2);
+
+    T rho = compute_rho(graph, delta_x, chi2, new_chi2, mu, step_is_good);
+
+    if (step_is_good && rho > 0) {
+      // update hyperparameters
+      mu *= std::max(
+          std::max(static_cast<T>(1.0 / 3.0), 1 - pow(2 * rho - 1, 3)), 1e-32);
+      nu = 2;
+      // Relinearize since step is accepted
+      graph->linearize();
+      // std::cout << "Good step" << std::endl;
+      // std::cout << "rho: " << rho << std::endl;
+    } else {
+      graph->revert_parameters();
+      graph->compute_error();
+      // update hyperparameters
+      mu *= nu;
+      nu *= 2;
+      // std::cout << "Bad step" << std::endl;
+      new_chi2 = chi2;
+    }
+
+    double iteration_time =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
+            .count();
+    time += iteration_time;
+    std::cout << std::setw(10) << i << std::setw(16) << chi2 << std::setw(16)
+              << new_chi2 << std::setw(16) << mu << std::setw(16)
+              << iteration_time << std::setw(16) << time << std::endl;
+
+    if (!std::isfinite(mu)) {
+      std::cout << "Damping factor is infinite, terminating optimization"
+                << std::endl;
+      run = false;
+    }
+  }
+
+  // Should only really do this when optimization is successful
+  graph->to_host();
+
+  return run;
 }
 
-}
-}
+} // namespace optimizer
+} // namespace glso
