@@ -43,7 +43,8 @@ private:
 
 public:
   managed_vector() : m_capacity(0), m_size(0), m_data(nullptr) {}
-  managed_vector(size_t size): m_capacity(size), m_size(size), m_data(alloc.allocate(size)) {}
+  managed_vector(size_t size)
+      : m_capacity(size), m_size(size), m_data(alloc.allocate(size)) {}
 
   managed_vector(const managed_vector &) = delete;
   managed_vector &operator=(const managed_vector &) = delete;
@@ -123,7 +124,6 @@ public:
   }
 };
 
-template <typename T>
-using uninitialized_vector = managed_vector<T>;
+template <typename T> using uninitialized_vector = managed_vector<T>;
 
 } // namespace glso

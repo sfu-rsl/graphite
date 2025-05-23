@@ -30,10 +30,7 @@ public:
   Camera(const std::array<T, 9> &cam) : params(cam.data()) {}
 };
 
-template <typename T>
-class PointDescriptor : public VertexDescriptor<T, PointDescriptor> {};
-
-template <typename T> struct VertexTraits<T, PointDescriptor> {
+template <typename T> struct PointTraits {
   static constexpr size_t dimension = 3;
   using State = Point<T>;
   using Vertex = Point<T>;
@@ -54,10 +51,7 @@ template <typename T> struct VertexTraits<T, PointDescriptor> {
   }
 };
 
-template <typename T>
-class CameraDescriptor : public VertexDescriptor<T, CameraDescriptor> {};
-
-template <typename T> struct VertexTraits<T, CameraDescriptor> {
+template <typename T> struct CameraTraits {
   static constexpr size_t dimension = 9;
   using State = Camera<T>;
   using Vertex = Camera<T>;
@@ -79,25 +73,29 @@ template <typename T> struct VertexTraits<T, CameraDescriptor> {
 };
 
 template <typename T>
-class ReprojectionError
-    : public AutoDiffFactorDescriptor<T, ReprojectionError> {};
+using PointDescriptor = VertexDescriptor<T, PointTraits<T>>;
 
-template <typename T> struct FactorTraits<T, ReprojectionError> {
+template <typename T>
+using CameraDescriptor = VertexDescriptor<T, CameraTraits<T>>;
+
+template <typename T> struct ReprojectionErrorTraits {
   static constexpr size_t dimension = 2;
   using VertexDescriptors = std::tuple<CameraDescriptor<T>, PointDescriptor<T>>;
-  using ObservationType = Eigen::Vector2d;
-  using ConstraintDataType = unsigned char;
-
-  using LossType = DefaultLoss<T, dimension>;
+  using Observation = Eigen::Vector2d;
+  using Data = unsigned char;
+  using Loss = DefaultLoss<T, dimension>;
+  using Differentiation = DifferentiationMode::Auto;
 
   template <typename D, typename M>
   __device__ static void
   error(const D *camera, const D *point, const M *obs, D *error,
-        const std::tuple<Camera<T> *, Point<T> *> &vertices,
-        const ConstraintDataType *data) {
+        const std::tuple<Camera<T> *, Point<T> *> &vertices, const Data *data) {
     bal_reprojection_error<D, M, T>(camera, point, obs, error);
   }
 };
+
+template <typename T>
+using ReprojectionError = FactorDescriptor<T, ReprojectionErrorTraits<T>>;
 
 } // namespace glso
 

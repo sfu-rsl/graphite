@@ -4,34 +4,7 @@
 #include <glso/visitor.hpp>
 namespace glso {
 
-template <typename T, template <typename> class VD> struct VertexTraits {};
-// template <typename T>
-// struct BaseVertexTraits;
-
-// T is the float type and D is the dimension of the parameterization
-// template <typename T, int D, typename Derived>
-// class BaseVertex {
-// public:
-
-// SOLVER_FUNC void update(const T* delta) {
-//     static_cast<Derived*>(this)->update(delta);
-// }
-
-// SOLVER_FUNC State get_state() const {
-//     return static_cast<const Derived*>(this)->get_state();
-// }
-
-// SOLVER_FUNC void set_state(const State& state) {
-//     static_cast<Derived*>(this)->set_state(state);
-// }
-
-// SOLVER_FUNC State parameters() const {
-//     return static_cast<const Derived*>(this)->parameters();
-// }
-
-// };
-
-template <typename VertexType, typename State, typename Descriptor, typename T>
+template <typename VertexType, typename State, typename Traits, typename T>
 __global__ void backup_state_kernel(VertexType **vertices, State *dst,
                                     const uint32_t *fixed,
                                     const size_t num_vertices) {
@@ -41,10 +14,10 @@ __global__ void backup_state_kernel(VertexType **vertices, State *dst,
   if (vertex_id >= num_vertices || is_fixed(fixed, vertex_id))
     return;
 
-  dst[vertex_id] = Descriptor::Traits::get_state(*vertices[vertex_id]);
+  dst[vertex_id] = Traits::get_state(*vertices[vertex_id]);
 }
 
-template <typename VertexType, typename State, typename Descriptor, typename T>
+template <typename VertexType, typename State, typename Traits, typename T>
 __global__ void set_state_kernel(VertexType **vertices, const State *src,
                                  const uint32_t *fixed,
                                  const size_t num_vertices) {
@@ -54,7 +27,7 @@ __global__ void set_state_kernel(VertexType **vertices, const State *src,
   if (vertex_id >= num_vertices || is_fixed(fixed, vertex_id))
     return;
 
-  Descriptor::Traits::set_state(*vertices[vertex_id], src[vertex_id]);
+  Traits::set_state(*vertices[vertex_id], src[vertex_id]);
 }
 
 template <typename T> class BaseVertexDescriptor {
@@ -70,14 +43,12 @@ public:
                                         const T *r, T *block_diagonal) = 0;
   virtual size_t dimension() const = 0;
   virtual size_t count() const = 0;
-  // virtual T* x() = 0;
-  // virtual void get_parameters(T* dst) const = 0;
-  // virtual void set_parameters(const T* src) = 0;
+
   virtual void backup_parameters() = 0;
   virtual void restore_parameters() = 0;
   virtual void to_device() = 0;
   virtual void to_host() = 0;
-  // virtual void add_vertex(const size_t id, const BaseVertex<T> & vertex) = 0;
+
   virtual const std::unordered_map<size_t, size_t> &get_global_map() const = 0;
   virtual const size_t *get_hessian_ids() const = 0;
   virtual void set_hessian_column(size_t global_id, size_t hessian_column) = 0;
@@ -85,19 +56,15 @@ public:
   virtual const uint32_t *get_fixed_mask() const = 0;
 };
 
-template <typename T, template <typename> class Derived>
+template <typename T, typename VTraits>
 class VertexDescriptor : public BaseVertexDescriptor<T> {
 public:
-  using Traits = VertexTraits<T, Derived>;
+  using Traits = class VTraits;
 
   using VertexType = typename Traits::Vertex;
   using S = typename Traits::State;
 
 private:
-  // Vertex values
-  // thrust::device_vector<T> x_device;
-  // thrust::host_vector<T> x_host;
-
   thrust::device_vector<VertexType *> x_device;
   thrust::host_vector<VertexType *> x_host;
   thrust::device_vector<S> backup_state;
@@ -111,27 +78,23 @@ public:
   uninitialized_vector<uint32_t> fixed_mask;
 
   static constexpr size_t dim = Traits::dimension;
-  // static constexpr size_t dim = V::dimension;
 
 public:
   virtual ~VertexDescriptor(){};
 
   void visit_update(GraphVisitor<T> &visitor, const T *delta_x,
                     T *jacobian_scales) override {
-    visitor.template apply_step<Derived<T>>(dynamic_cast<Derived<T> *>(this),
-                                            delta_x, jacobian_scales);
+    visitor.template apply_step(this, delta_x, jacobian_scales);
   }
 
   void visit_augment_block_diagonal(GraphVisitor<T> &visitor, T *block_diagonal,
                                     T mu) override {
-    visitor.template augment_block_diagonal<Derived<T>>(
-        dynamic_cast<Derived<T> *>(this), block_diagonal, mu);
+    visitor.template augment_block_diagonal(this, block_diagonal, mu);
   }
 
   void visit_apply_block_jacobi(GraphVisitor<T> &visitor, T *z, const T *r,
                                 T *block_diagonal) override {
-    visitor.template apply_block_jacobi<Derived<T>>(
-        dynamic_cast<Derived<T> *>(this), z, r, block_diagonal);
+    visitor.template apply_block_jacobi(this, z, r, block_diagonal);
   }
 
   virtual void to_device() override {
@@ -152,7 +115,7 @@ public:
     const auto num_blocks = (num_threads + block_size - 1) / block_size;
     backup_state.resize(num_vertices);
 
-    backup_state_kernel<VertexType, S, Derived<T>, T>
+    backup_state_kernel<VertexType, S, Traits, T>
         <<<num_blocks, block_size>>>(vertices, backup_state.data().get(),
                                      fixed_mask.data().get(), num_vertices);
   }
@@ -164,7 +127,7 @@ public:
     const int num_threads = num_vertices;
     const int block_size = 256;
     const auto num_blocks = (num_threads + block_size - 1) / block_size;
-    set_state_kernel<VertexType, S, Derived<T>, T>
+    set_state_kernel<VertexType, S, Traits, T>
         <<<num_blocks, block_size>>>(vertices, backup_state.data().get(),
                                      fixed_mask.data().get(), num_vertices);
   }

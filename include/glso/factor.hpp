@@ -50,17 +50,18 @@ public:
   virtual T chi2(GraphVisitor<T> &visitor) = 0;
 };
 
-template <typename T, template <typename> class F> struct FactorTraits {
-
-  static constexpr size_t dimension = F<T>::dimension;
-
-  using ObservationType = typename F<T>::ObservationType;
-  using ConstraintDataType = typename F<T>::ConstraintDataType;
-
-  using LossType = typename F<T>::LossType<T, dimension>;
-
-  using VertexDescriptors = typename F<T>::VertexDescriptors;
+struct DifferentiationMode {
+  struct Auto {};
+  struct Manual {};
 };
+
+template <typename DiffMode> constexpr bool use_autodiff_impl() {
+  return false;
+}
+
+template <> constexpr bool use_autodiff_impl<DifferentiationMode::Auto>() {
+  return true;
+}
 
 template <typename T> struct get_vertex_type {
   using type = typename T::VertexType;
@@ -88,7 +89,7 @@ using transform_tuple_t = typename transform_tuple<Tuple, MetaFunc>::type;
 
 // template <typename T, int E, typename M, typename C, template <typename, int>
 // class L, template <typename> class Derived, typename... VDTypes>
-template <typename T, template <typename> class Derived>
+template <typename T, typename FTraits>
 class FactorDescriptor : public BaseFactorDescriptor<T> {
 
 private:
@@ -101,7 +102,8 @@ private:
   HandleManager<size_t> hm;
 
 public:
-  using Traits = FactorTraits<T, Derived>;
+  // using Traits = FactorTraits<T, Derived>;
+  using Traits = class FTraits;
 
   // static constexpr size_t N = sizeof...(VDTypes);
   static constexpr size_t N =
@@ -123,10 +125,10 @@ public:
   using VertexPointerPointerTuple =
       transform_tuple_t<VertexDescriptorTuple, get_vertex_pointer_pointer_type>;
 
-  using ObservationType = typename Traits::ObservationType;
-  using ConstraintDataType = typename Traits::ConstraintDataType;
+  using ObservationType = typename Traits::Observation;
+  using ConstraintDataType = typename Traits::Data;
   // using LossType = typename Traits::LossType<error_dim>;
-  using LossType = typename Traits::LossType;
+  using LossType = typename Traits::Loss;
 
   // using ObservationType = M;
   // using ConstraintDataType = C;
@@ -147,27 +149,23 @@ public:
   std::array<JacobianStorage<T>, N> jacobians;
 
   void visit_error(GraphVisitor<T> &visitor) override {
-    visitor.template compute_error<Derived<T>>(
-        dynamic_cast<Derived<T> *>(this));
+    visitor.template compute_error(this);
   }
 
   void visit_error_autodiff(GraphVisitor<T> &visitor) override {
-    visitor.template compute_error_autodiff<Derived<T>>(
-        dynamic_cast<Derived<T> *>(this));
+    visitor.template compute_error_autodiff(this);
   }
 
   void visit_b(GraphVisitor<T> &visitor, T *b) override {
-    visitor.template compute_b<Derived<T>>(dynamic_cast<Derived<T> *>(this), b);
+    visitor.template compute_b(this, b);
   }
 
   void visit_Jv(GraphVisitor<T> &visitor, T *out, T *in) override {
-    visitor.template compute_Jv<Derived<T>>(dynamic_cast<Derived<T> *>(this),
-                                            out, in);
+    visitor.template compute_Jv(this, out, in);
   }
 
   void visit_Jtv(GraphVisitor<T> &visitor, T *out, T *in) override {
-    visitor.template compute_Jtv<Derived<T>>(dynamic_cast<Derived<T> *>(this),
-                                             out, in);
+    visitor.template compute_Jtv(this, out, in);
   }
 
   void visit_block_diagonal(
@@ -182,21 +180,12 @@ public:
       // block_diagonals[vertex_descriptors[i]].size() << std::endl;
     }
 
-    visitor.template compute_block_diagonal<Derived<T>>(
-        dynamic_cast<Derived<T> *>(this), diagonal_blocks);
+    visitor.template compute_block_diagonal(this, diagonal_blocks);
   }
 
   void visit_scalar_diagonal(GraphVisitor<T> &visitor, T *diagonal) override {
-    visitor.template compute_scalar_diagonal<Derived<T>>(
-        dynamic_cast<Derived<T> *>(this), diagonal);
+    visitor.template compute_scalar_diagonal(this, diagonal);
   }
-
-  // void apply_op(Op<T>& op) override {
-
-  //     auto & op_impl = dynamic_cast<OpImpl<T>&>(op);
-  //     op_impl.apply_to(dynamic_cast<Derived<T>*>(this));
-
-  // }
 
   static constexpr size_t get_num_vertices() { return N; }
 
@@ -422,29 +411,19 @@ public:
 
   // TODO: Make this consider kernels and active edges
   virtual T chi2(GraphVisitor<T> &visitor) override {
-    visitor.template compute_chi2<Derived<T>>(dynamic_cast<Derived<T> *>(this));
+    visitor.template compute_chi2(this);
     return thrust::reduce(thrust::device, chi2_vec.begin(), chi2_vec.end(), 0.0,
                           thrust::plus<T>());
   }
 
   virtual void scale_jacobians(GraphVisitor<T> &visitor,
                                T *jacobian_scales) override {
-    visitor.template scale_jacobians<Derived<T>>(
-        dynamic_cast<Derived<T> *>(this), jacobian_scales);
+    visitor.template scale_jacobians(this, jacobian_scales);
+  }
+
+  virtual bool use_autodiff() override {
+    return use_autodiff_impl<typename Traits::Differentiation>();
   }
 };
 
-// Templated derived class for AutoDiffFactorDescriptor using CRTP
-// N is the number of vertices involved in the constraint
-// M is the dimension of each observation
-// template <typename T, int E, typename M, typename C, template <typename, int>
-// class L, template <typename> class Derived, typename... VDTypes> class
-// AutoDiffFactorDescriptor : public FactorDescriptor<T, E, M, C, L, Derived,
-// VDTypes...> {
-
-template <typename T, template <typename> class Derived>
-class AutoDiffFactorDescriptor : public FactorDescriptor<T, Derived> {
-public:
-  virtual bool use_autodiff() override { return true; }
-};
 } // namespace glso
