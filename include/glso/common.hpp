@@ -28,3 +28,7 @@ template <> struct hash<std::pair<size_t, size_t>> {
   }
 };
 } // namespace std
+
+namespace glso {
+#define hd_fn __host__ __device__
+} // namespace glso

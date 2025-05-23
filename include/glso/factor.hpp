@@ -101,13 +101,13 @@ private:
   HandleManager<size_t> hm;
 
 public:
-  using FTraits = FactorTraits<T, Derived>;
+  using Traits = FactorTraits<T, Derived>;
 
   // static constexpr size_t N = sizeof...(VDTypes);
   static constexpr size_t N =
-      std::tuple_size<typename FTraits::VertexDescriptors>::value;
+      std::tuple_size<typename Traits::VertexDescriptors>::value;
   // static constexpr size_t error_dim = E;
-  static constexpr size_t error_dim = FTraits::dimension;
+  static constexpr size_t error_dim = Traits::dimension;
 
   std::array<BaseVertexDescriptor<T> *, N> vertex_descriptors;
   // using VertexTypesTuple = std::tuple<typename VDTypes::VertexType...>;
@@ -115,7 +115,7 @@ public:
   // using VertexPointerPointerTuple = std::tuple<typename
   // VDTypes::VertexType**...>;
 
-  using VertexDescriptorTuple = typename FTraits::VertexDescriptors;
+  using VertexDescriptorTuple = typename Traits::VertexDescriptors;
   using VertexTypesTuple =
       transform_tuple_t<VertexDescriptorTuple, get_vertex_type>;
   using VertexPointerTuple =
@@ -123,10 +123,10 @@ public:
   using VertexPointerPointerTuple =
       transform_tuple_t<VertexDescriptorTuple, get_vertex_pointer_pointer_type>;
 
-  using ObservationType = typename FTraits::ObservationType;
-  using ConstraintDataType = typename FTraits::ConstraintDataType;
-  // using LossType = typename FTraits::LossType<error_dim>;
-  using LossType = typename FTraits::LossType;
+  using ObservationType = typename Traits::ObservationType;
+  using ConstraintDataType = typename Traits::ConstraintDataType;
+  // using LossType = typename Traits::LossType<error_dim>;
+  using LossType = typename Traits::LossType;
 
   // using ObservationType = M;
   // using ConstraintDataType = C;

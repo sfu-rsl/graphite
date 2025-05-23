@@ -4,8 +4,7 @@
 #include <glso/visitor.hpp>
 namespace glso {
 
-#define SOLVER_FUNC __host__ __device__
-
+template <typename T, template <typename> class VD> struct VertexTraits {};
 // template <typename T>
 // struct BaseVertexTraits;
 
@@ -42,7 +41,7 @@ __global__ void backup_state_kernel(VertexType **vertices, State *dst,
   if (vertex_id >= num_vertices || is_fixed(fixed, vertex_id))
     return;
 
-  dst[vertex_id] = vertices[vertex_id]->get_state();
+  dst[vertex_id] = Descriptor::Traits::get_state(*vertices[vertex_id]);
 }
 
 template <typename VertexType, typename State, typename Descriptor, typename T>
@@ -55,7 +54,7 @@ __global__ void set_state_kernel(VertexType **vertices, const State *src,
   if (vertex_id >= num_vertices || is_fixed(fixed, vertex_id))
     return;
 
-  vertices[vertex_id]->set_state(src[vertex_id]);
+  Descriptor::Traits::set_state(*vertices[vertex_id], src[vertex_id]);
 }
 
 template <typename T> class BaseVertexDescriptor {
@@ -86,11 +85,13 @@ public:
   virtual const uint32_t *get_fixed_mask() const = 0;
 };
 
-template <typename T, typename V, template <typename> class Derived>
+template <typename T, template <typename> class Derived>
 class VertexDescriptor : public BaseVertexDescriptor<T> {
 public:
-  using VertexType = V;
-  using S = typename V::State;
+  using Traits = VertexTraits<T, Derived>;
+
+  using VertexType = typename Traits::Vertex;
+  using S = typename Traits::State;
 
 private:
   // Vertex values
@@ -109,7 +110,7 @@ public:
   thrust::device_vector<size_t> hessian_ids;
   uninitialized_vector<uint32_t> fixed_mask;
 
-  static constexpr size_t dim = V::dimension;
+  static constexpr size_t dim = Traits::dimension;
   // static constexpr size_t dim = V::dimension;
 
 public:
@@ -140,23 +141,7 @@ public:
 
   virtual void to_host() override { x_host = x_device; }
 
-  // virtual T* x() override {
-  //     return x_device.data().get();
-  // }
-
   VertexType **vertices() { return x_device.data().get(); }
-
-  // virtual void get_parameters(T* dst) const override {
-  //     // const size_t param_size = desc->dimension()*desc->count();
-  //     const VertexType* vertices = x_device.data().get();
-
-  //     const int num_vertices = static_cast<int>(count());
-  //     const int num_threads = num_vertices;
-  //     const int block_size = 256;
-  //     const auto num_blocks = (num_threads + block_size - 1) / block_size;
-  //     backup_parameters_kernel<VertexType, T><<<num_blocks,
-  //     block_size>>>(vertices, dst, num_vertices);
-  // }
 
   virtual void backup_parameters() override {
     VertexType **vertices = x_device.data().get();
@@ -184,12 +169,7 @@ public:
                                      fixed_mask.data().get(), num_vertices);
   }
 
-  virtual size_t count() const override {
-    // TODO: Find a better way to get the dimension
-    // const auto dim = dynamic_cast<const Derived<T>*>(this)->dimension();
-    // return x_device.size()/dim;
-    return x_host.size();
-  }
+  virtual size_t count() const override { return x_host.size(); }
 
   void reserve(size_t size) {
     x_host.reserve(size);

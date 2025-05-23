@@ -16,68 +16,67 @@ namespace glso {
 
 template <typename T> class Point {
 public:
-  T x;
-  T y;
-  T z;
+  Eigen::Matrix<T, 3, 1> p;
 
-  Point() : x(0), y(0), z(0) {}
-
-  Point(T x, T y, T z) : x(x), y(y), z(z) {}
-
-  using State = Point<T>;
-  constexpr static size_t dimension = 3;
-
-  SOLVER_FUNC std::array<T, dimension> parameters() const { return {x, y, z}; }
-
-  SOLVER_FUNC void update(const T *delta) {
-    x += delta[0];
-    y += delta[1];
-    z += delta[2];
-  }
-
-  SOLVER_FUNC State get_state() const { return *this; }
-
-  SOLVER_FUNC void set_state(const State &state) {
-    x = state.x;
-    y = state.y;
-    z = state.z;
-  }
+  Point() = default;
+  Point(T x, T y, T z) : p(x, y, z) {}
 };
 
 template <typename T> class Camera {
 public:
-  std::array<T, 9> params;
+  Eigen::Matrix<T, 9, 1> params;
 
-  Camera() : params{} {}
-  Camera(const std::array<T, 9> &cam) : params(cam) {}
+  Camera() = default;
+  Camera(const std::array<T, 9> &cam) : params(cam.data()) {}
+};
 
-  // Camera(T x, T y) : x(x), y(y) {}
+template <typename T>
+class PointDescriptor : public VertexDescriptor<T, PointDescriptor> {};
 
-  using State = Camera<T>;
-  constexpr static size_t dimension = 9;
+template <typename T> struct VertexTraits<T, PointDescriptor> {
+  static constexpr size_t dimension = 3;
+  using State = Point<T>;
+  using Vertex = Point<T>;
 
-  SOLVER_FUNC std::array<T, dimension> parameters() const { return params; }
-
-  SOLVER_FUNC void update(const T *delta) {
-    Eigen::Map<Eigen::Matrix<T, 9, 1>> p(params.data());
-    Eigen::Map<const Eigen::Matrix<T, 9, 1>> d(delta);
-    p += d;
+  hd_fn static std::array<T, dimension> parameters(const Vertex &vertex) {
+    return vector_to_array<T, dimension>(vertex.p);
   }
 
-  SOLVER_FUNC State get_state() const { return *this; }
+  hd_fn static void update(Vertex &vertex, const T *delta) {
+    Eigen::Map<const Eigen::Matrix<T, 3, 1>> d(delta);
+    vertex.p += d;
+  }
 
-  SOLVER_FUNC void set_state(const State &state) { params = state.params; }
+  hd_fn static State get_state(const Vertex &vertex) { return vertex; }
+
+  hd_fn static void set_state(Vertex &vertex, const State &state) {
+    vertex.p = state.p;
+  }
 };
 
 template <typename T>
-class PointDescriptor : public VertexDescriptor<T, Point<T>, PointDescriptor> {
+class CameraDescriptor : public VertexDescriptor<T, CameraDescriptor> {};
+
+template <typename T> struct VertexTraits<T, CameraDescriptor> {
+  static constexpr size_t dimension = 9;
+  using State = Camera<T>;
+  using Vertex = Camera<T>;
+
+  hd_fn static std::array<T, dimension> parameters(const Vertex &vertex) {
+    return vector_to_array<T, dimension>(vertex.params);
+  }
+
+  hd_fn static void update(Vertex &vertex, const T *delta) {
+    Eigen::Map<const Eigen::Matrix<T, 9, 1>> d(delta);
+    vertex.params += d;
+  }
+
+  hd_fn static State get_state(const Vertex &vertex) { return vertex; }
+
+  hd_fn static void set_state(Vertex &vertex, const State &state) {
+    vertex.params = state.params;
+  }
 };
-
-template <typename T>
-class CameraDescriptor
-    : public VertexDescriptor<T, Camera<T>, CameraDescriptor> {};
-
-using Observation2D = Eigen::Vector2d;
 
 template <typename T>
 class ReprojectionError
@@ -86,7 +85,7 @@ class ReprojectionError
 template <typename T> struct FactorTraits<T, ReprojectionError> {
   static constexpr size_t dimension = 2;
   using VertexDescriptors = std::tuple<CameraDescriptor<T>, PointDescriptor<T>>;
-  using ObservationType = Observation2D;
+  using ObservationType = Eigen::Vector2d;
   using ConstraintDataType = unsigned char;
 
   using LossType = DefaultLoss<T, dimension>;
@@ -165,7 +164,7 @@ int main(void) {
     file >> camera_idx >> point_idx >> x >> y;
 
     // Store the observation
-    const Observation2D obs(x, y);
+    const Eigen::Vector2d obs(x, y);
 
     // Add constraint to the graph
     r_desc->add_factor({camera_idx, point_idx}, obs, precision_matrix.data(), 0,

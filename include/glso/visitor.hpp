@@ -1,6 +1,6 @@
 #pragma once
 #include <glso/common.hpp>
-
+#include <glso/vertex.hpp>
 namespace glso {
 
 __device__ size_t get_thread_id() {
@@ -8,18 +8,20 @@ __device__ size_t get_thread_id() {
          static_cast<size_t>(threadIdx.x);
 }
 
-template <typename VPtr, typename T, size_t D>
+template <typename VPtr, class VD, typename T, size_t D>
 __device__ void device_copy(const VPtr v, T *dst) {
-  const std::array<T, D> src = v->parameters();
+  // const std::array<T, D> src = v->parameters();
+  const std::array<T, D> src = VD::Traits::parameters(*v);
 #pragma unroll
   for (size_t i = 0; i < D; i++) {
     dst[i] = src[i];
   }
 }
 
-template <typename VPtr, typename T, size_t D>
+template <typename VPtr, class VD, typename T, size_t D>
 __device__ void real_to_dual(const VPtr v, Dual<T> *dst) {
-  const std::array<T, D> src = v->parameters();
+  // const std::array<T, D> src = v->parameters();
+  const std::array<T, D> src = VD::Traits::parameters(*v);
 #pragma unroll
   for (size_t i = 0; i < D; i++) {
     dst[i] = Dual<T>(src[i]);
@@ -72,11 +74,10 @@ apply_update_kernel(V **vertices, const T *delta_x, const T *jacobian_scales,
 #pragma unroll
   for (size_t i = 0; i < Descriptor::dim; i++) {
     scaled_delta[i] = delta[i] * scales[i];
-    // scaled_delta[i] = delta[i];
   }
 
-  // Descriptor::update(vertices[vertex_id], delta);
-  vertices[vertex_id]->update(scaled_delta.data());
+  // vertices[vertex_id]->update(scaled_delta.data());
+  Descriptor::Traits::update(*vertices[vertex_id], scaled_delta.data());
 }
 
 template <typename T, int D>
@@ -168,8 +169,10 @@ __global__ void compute_error_kernel_autodiff(
       std::make_tuple((*(std::get<Is>(args) + ids[factor_id * N + Is]))...);
 
   auto copy_vertices = [&v, &vertex_sizes, &vargs](auto &&...ptrs) {
-    ((real_to_dual<decltype(std::get<Is>(vargs)), T, vertex_sizes[Is]>(
-         std::get<Is>(vargs), cuda::std::get<Is>(v).data())),
+    ((real_to_dual<
+         decltype(std::get<Is>(vargs)),
+         std::tuple_element<Is, typename F::Traits::VertexDescriptors>::type, T,
+         vertex_sizes[Is]>(std::get<Is>(vargs), cuda::std::get<Is>(v).data())),
      ...);
   };
 
@@ -177,8 +180,8 @@ __global__ void compute_error_kernel_autodiff(
 
   cuda::std::get<I>(v)[idx % vertex_sizes[I]].dual = static_cast<T>(1);
 
-  F::FTraits::error(cuda::std::get<Is>(v).data()..., local_obs, local_error,
-                    vargs, local_data);
+  F::Traits::error(cuda::std::get<Is>(v).data()..., local_obs, local_error,
+                   vargs, local_data);
 
   constexpr auto j_size = vertex_sizes[I] * E;
   // constexpr auto col_offset = I*E;
@@ -241,15 +244,17 @@ compute_error_kernel(const M *obs, T *error,
       std::make_tuple((*(std::get<Is>(args) + ids[factor_id * N + Is]))...);
 
   auto copy_vertices = [&v, &ids, &vertex_sizes, &vargs](auto &&...ptrs) {
-    ((device_copy<decltype(std::get<Is>(vargs)), T, vertex_sizes[Is]>(
-         std::get<Is>(vargs), cuda::std::get<Is>(v).data())),
+    ((device_copy<
+         decltype(std::get<Is>(vargs)),
+         std::tuple_element<Is, typename F::Traits::VertexDescriptors>::type, T,
+         vertex_sizes[Is]>(std::get<Is>(vargs), cuda::std::get<Is>(v).data())),
      ...);
   };
 
   std::apply(copy_vertices, vargs);
 
-  F::FTraits::error(cuda::std::get<Is>(v).data()..., local_obs, local_error,
-                    vargs, local_data);
+  F::Traits::error(cuda::std::get<Is>(v).data()..., local_obs, local_error,
+                   vargs, local_data);
 
 #pragma unroll
   for (size_t i = 0; i < E; ++i) {
