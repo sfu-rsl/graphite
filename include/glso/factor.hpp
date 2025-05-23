@@ -54,16 +54,17 @@ public:
 
 };
 
-template<typename FP, typename T>
+template<typename T, template <typename> class F>
 struct FactorTraits {
 
-    static constexpr size_t dimension = T::dimension;
+    static constexpr size_t dimension = F<T>::dimension;
     
-    using ObservationType = typename T::ObservationType;
-    using ConstraintDataType = typename T::ConstraintDataType;
-    template<int E>
-    using LossType = typename T::LossType<FP, E>;
-    using VertexDescriptors = typename T::VertexDescriptors;
+    using ObservationType = typename F<T>::ObservationType;
+    using ConstraintDataType = typename F<T>::ConstraintDataType;
+
+    using LossType = typename F<T>::LossType<T, dimension>;
+
+    using VertexDescriptors = typename F<T>::VertexDescriptors;
 };
 
 
@@ -109,7 +110,7 @@ private:
     HandleManager <size_t> hm;
 
 public:
-    using FTraits = FactorTraits<T, Derived<T>>;
+    using FTraits = FactorTraits<T, Derived>;
 
     // static constexpr size_t N = sizeof...(VDTypes);
     static constexpr size_t N = std::tuple_size<typename FTraits::VertexDescriptors>::value;
@@ -128,7 +129,8 @@ public:
 
     using ObservationType = typename FTraits::ObservationType;
     using ConstraintDataType = typename FTraits::ConstraintDataType;
-    using LossType = typename FTraits::LossType<error_dim>;
+    // using LossType = typename FTraits::LossType<error_dim>;
+    using LossType = typename FTraits::LossType;
     
     // using ObservationType = M;
     // using ConstraintDataType = C;

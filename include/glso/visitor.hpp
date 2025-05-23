@@ -168,7 +168,7 @@ void compute_error_kernel_autodiff(const M* obs, T* error, const typename F::Con
 
 
 
-    F::error(cuda::std::get<Is>(v).data()..., local_obs, local_error, vargs, local_data);
+    F::FTraits::error(cuda::std::get<Is>(v).data()..., local_obs, local_error, vargs, local_data);
 
 
     constexpr auto j_size = vertex_sizes[I]*E;
@@ -228,7 +228,7 @@ void compute_error_kernel(const M* obs, T* error, const typename F::ConstraintDa
 
     std::apply(copy_vertices, vargs);
 
-    F::error(cuda::std::get<Is>(v).data()..., local_obs, local_error, vargs, local_data);
+    F::FTraits::error(cuda::std::get<Is>(v).data()..., local_obs, local_error, vargs, local_data);
 
 
     #pragma unroll
