@@ -27,3 +27,22 @@ target_link_libraries(circle glso)
 
 add_executable(bal examples/bal.cu)
 target_link_libraries(bal glso)
+
+# Formatter
+find_program(CLANG_FORMAT_BIN NAMES clang-format)
+if(CLANG_FORMAT_BIN)
+  file(GLOB_RECURSE FORMAT_FILES
+    "include/*.cpp" "include/*.hpp" "include/*.c" "include/*.h" "include/*.cu" "include/*.cuh"
+    "examples/*.cpp" "examples/*.hpp" "examples/*.c" "examples/*.h" "examples/*.cu" "examples/*.cuh"
+  )
+  add_custom_target(format
+    COMMAND ${CLANG_FORMAT_BIN}
+      -i
+      --style=file
+      ${FORMAT_FILES}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Formatting source files"
+  )
+else()
+  message(WARNING "clang-format not found! 'format' target will not be available.")
+endif()
