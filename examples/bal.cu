@@ -133,8 +133,8 @@ int main(void) {
   std::cout << "Number of points: " << num_points << std::endl;
   std::cout << "Number of observations: " << num_observations << std::endl;
 
-  thrust::universal_vector<Point<double>> points(num_points);
-  thrust::universal_vector<Camera<double>> cameras(num_cameras);
+  uninitialized_vector<Point<double>> points(num_points);
+  uninitialized_vector<Camera<double>> cameras(num_cameras);
 
   // Create vertices
   auto point_desc = new PointDescriptor<double>();

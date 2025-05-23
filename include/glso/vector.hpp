@@ -21,9 +21,7 @@ struct uninitialized_allocator : thrust::cuda::universal_allocator<T> {
   __host__ __device__ void construct(T *) {}
 };
 
-template <typename T> class ManagedVector {
-  // static_assert(std::is_trivially_copyable<T>::value,
-  //     "ManagedVector only supports trivially copyable types.");
+template <typename T> class managed_vector {
 
 private:
   size_t m_capacity;
@@ -39,18 +37,20 @@ private:
         m_data[i].~T();
       }
       alloc.deallocate(m_data, m_capacity);
+      m_data = nullptr;
     }
   }
 
 public:
-  ManagedVector() : m_capacity(0), m_size(0), m_data(nullptr) {}
+  managed_vector() : m_capacity(0), m_size(0), m_data(nullptr) {}
+  managed_vector(size_t size): m_capacity(size), m_size(size), m_data(alloc.allocate(size)) {}
 
-  ManagedVector(const ManagedVector &) = delete;
-  ManagedVector &operator=(const ManagedVector &) = delete;
-  ManagedVector(ManagedVector &&) = delete;
-  ManagedVector &operator=(ManagedVector &&) = delete;
+  managed_vector(const managed_vector &) = delete;
+  managed_vector &operator=(const managed_vector &) = delete;
+  managed_vector(managed_vector &&) = delete;
+  managed_vector &operator=(managed_vector &&) = delete;
 
-  ~ManagedVector() { deallocate(); }
+  ~managed_vector() { deallocate(); }
 
   size_t capacity() const { return m_capacity; }
 
@@ -123,10 +123,7 @@ public:
   }
 };
 
-template <typename T> using uninitialized_vector = ManagedVector<T>;
-
-// template <typename T>
-// using uninitialized_vector = thrust::universal_vector<T,
-// uninitialized_allocator<T>>;
+template <typename T>
+using uninitialized_vector = managed_vector<T>;
 
 } // namespace glso
