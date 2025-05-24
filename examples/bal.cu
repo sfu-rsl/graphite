@@ -32,7 +32,6 @@ public:
 
 template <typename T> struct PointTraits {
   static constexpr size_t dimension = 3;
-  using State = Point<T>;
   using Vertex = Point<T>;
 
   hd_fn static std::array<T, dimension> parameters(const Vertex &vertex) {
@@ -43,17 +42,11 @@ template <typename T> struct PointTraits {
     Eigen::Map<const Eigen::Matrix<T, 3, 1>> d(delta);
     vertex.p += d;
   }
-
-  hd_fn static State get_state(const Vertex &vertex) { return vertex; }
-
-  hd_fn static void set_state(Vertex &vertex, const State &state) {
-    vertex.p = state.p;
-  }
 };
 
 template <typename T> struct CameraTraits {
   static constexpr size_t dimension = 9;
-  using State = Camera<T>;
+  using State = Camera<T>; // State can be optionally defined
   using Vertex = Camera<T>;
 
   hd_fn static std::array<T, dimension> parameters(const Vertex &vertex) {
@@ -65,10 +58,11 @@ template <typename T> struct CameraTraits {
     vertex.params += d;
   }
 
+  // Defining the state requires custom setters and getters
   hd_fn static State get_state(const Vertex &vertex) { return vertex; }
 
   hd_fn static void set_state(Vertex &vertex, const State &state) {
-    vertex.params = state.params;
+    vertex = state;
   }
 };
 

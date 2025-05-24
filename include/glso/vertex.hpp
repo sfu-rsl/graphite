@@ -2,7 +2,30 @@
 #include <glso/common.hpp>
 #include <glso/vector.hpp>
 #include <glso/visitor.hpp>
+#include <type_traits>
+
 namespace glso {
+
+template <typename, typename = void>
+struct has_type_alias_State : std::false_type {};
+
+template <typename T>
+struct has_type_alias_State<T, std::void_t<typename T::State>>
+    : std::true_type {};
+
+template <typename T, typename Fallback, typename = void> struct get_State_or {
+  using type = Fallback;
+};
+
+// Specialization: use T::State if it exists
+template <typename T, typename Fallback>
+struct get_State_or<T, Fallback, std::void_t<typename T::State>> {
+  using type = typename T::State;
+};
+
+// Helper alias
+template <typename T, typename Fallback>
+using get_State_or_t = typename get_State_or<T, Fallback>::type;
 
 template <typename VertexType, typename State, typename Traits, typename T>
 __global__ void backup_state_kernel(VertexType **vertices, State *dst,
@@ -13,8 +36,11 @@ __global__ void backup_state_kernel(VertexType **vertices, State *dst,
 
   if (vertex_id >= num_vertices || is_fixed(fixed, vertex_id))
     return;
-
-  dst[vertex_id] = Traits::get_state(*vertices[vertex_id]);
+  if constexpr (has_type_alias_State<Traits>::value) {
+    dst[vertex_id] = Traits::get_state(*vertices[vertex_id]);
+  } else {
+    dst[vertex_id] = *vertices[vertex_id];
+  }
 }
 
 template <typename VertexType, typename State, typename Traits, typename T>
@@ -27,7 +53,11 @@ __global__ void set_state_kernel(VertexType **vertices, const State *src,
   if (vertex_id >= num_vertices || is_fixed(fixed, vertex_id))
     return;
 
-  Traits::set_state(*vertices[vertex_id], src[vertex_id]);
+  if constexpr (has_type_alias_State<Traits>::value) {
+    Traits::set_state(*vertices[vertex_id], src[vertex_id]);
+  } else {
+    *vertices[vertex_id] = src[vertex_id];
+  }
 }
 
 template <typename T> class BaseVertexDescriptor {
@@ -62,7 +92,7 @@ public:
   using Traits = class VTraits;
 
   using VertexType = typename Traits::Vertex;
-  using S = typename Traits::State;
+  using S = get_State_or_t<Traits, VertexType>;
 
 private:
   thrust::device_vector<VertexType *> x_device;
