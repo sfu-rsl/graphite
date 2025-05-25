@@ -283,8 +283,6 @@ public:
 
     constexpr size_t precision_matrix_size = error_dim * error_dim;
     if (precision_matrix) {
-      // precision_matrices.insert(precision_matrices.end(), precision_matrix,
-      // precision_matrix + precision_matrix_size);
       precision_matrices.resize(precision_matrices.size() +
                                 precision_matrix_size);
       for (size_t i = 0; i < precision_matrix_size; i++) {
@@ -293,13 +291,11 @@ public:
       }
     } else {
       constexpr auto pmat = get_default_precision_matrix();
-      // precision_matrices.insert(precision_matrices.end(), pmat.data(),
-      // pmat.data() + precision_matrix_size);
       precision_matrices.resize(precision_matrices.size() +
                                 precision_matrix_size);
+
       for (size_t i = 0; i < precision_matrix_size; i++) {
-        precision_matrices[local_id * precision_matrix_size + i] =
-            precision_matrix[i];
+        precision_matrices[local_id * precision_matrix_size + i] = pmat[i];
       }
     }
 

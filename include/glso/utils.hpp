@@ -1,4 +1,6 @@
 #pragma once
+#include <Eigen/Dense>
+#include <array>
 #include <glso/vector.hpp>
 #include <thrust/device_vector.h>
 

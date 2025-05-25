@@ -81,7 +81,7 @@ template <typename T> struct ReprojectionErrorTraits {
   using Differentiation = DifferentiationMode::Auto;
 
   template <typename D, typename M>
-  __device__ static void
+  hd_fn static void
   error(const D *camera, const D *point, const M *obs, D *error,
         const std::tuple<Camera<T> *, Point<T> *> &vertices, const Data *data) {
     bal_reprojection_error<D, M, T>(camera, point, obs, error);
