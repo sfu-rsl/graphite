@@ -75,7 +75,7 @@ using CameraDescriptor = VertexDescriptor<T, CameraTraits<T>>;
 template <typename T> struct ReprojectionErrorTraits {
   static constexpr size_t dimension = 2;
   using VertexDescriptors = std::tuple<CameraDescriptor<T>, PointDescriptor<T>>;
-  using Observation = Eigen::Vector2d;
+  using Observation = Eigen::Matrix<T, dimension, 1>;
   using Data = unsigned char;
   using Loss = DefaultLoss<T, dimension>;
   using Differentiation = DifferentiationMode::Auto;
@@ -97,6 +97,9 @@ int main(void) {
 
   using namespace glso;
 
+  using FP = double;
+  // using FP = float;
+
   // std::string file_path = "../data/bal/problem-16-22106-pre.txt";
   std::string file_path = "../data/bal/problem-21-11315-pre.txt";
   // std::string file_path = "../data/bal/problem-257-65132-pre.txt";
@@ -106,7 +109,7 @@ int main(void) {
   initialize_cuda();
 
   // Create graph
-  Graph<double> graph;
+  Graph<FP> graph;
 
   size_t num_points = 0;
   size_t num_cameras = 0;
@@ -125,88 +128,87 @@ int main(void) {
   std::cout << "Number of points: " << num_points << std::endl;
   std::cout << "Number of observations: " << num_observations << std::endl;
 
-  uninitialized_vector<Point<double>> points(num_points);
-  uninitialized_vector<Camera<double>> cameras(num_cameras);
+  uninitialized_vector<Point<FP>> points(num_points);
+  uninitialized_vector<Camera<FP>> cameras(num_cameras);
 
   // Create vertices
-  auto point_desc = new PointDescriptor<double>();
+  auto point_desc = new PointDescriptor<FP>();
   point_desc->reserve(num_points);
   graph.add_vertex_descriptor(point_desc);
 
-  auto camera_desc = new CameraDescriptor<double>();
+  auto camera_desc = new CameraDescriptor<FP>();
   camera_desc->reserve(num_cameras);
   graph.add_vertex_descriptor(camera_desc);
 
   // Create edges
-  auto r_desc = graph.add_factor_descriptor<ReprojectionError<double>>(
-      camera_desc, point_desc);
+  auto r_desc = graph.add_factor_descriptor<ReprojectionError<FP>>(camera_desc,
+                                                                   point_desc);
   r_desc->reserve(num_observations);
 
-  const auto loss = DefaultLoss<double, 2>();
-  Eigen::Matrix2d precision_matrix = Eigen::Matrix2d::Identity();
+  const auto loss = DefaultLoss<FP, 2>();
+  Eigen::Matrix<FP, 2, 2> precision_matrix =
+      Eigen::Matrix<FP, 2, 2>::Identity();
 
   auto start = std::chrono::steady_clock::now();
 
   // Read observations and create constraints
   for (size_t i = 0; i < num_observations; ++i) {
     size_t camera_idx, point_idx;
-    double x, y;
+    FP x, y;
 
     // Read observation data
     file >> camera_idx >> point_idx >> x >> y;
 
     // Store the observation
-    const Eigen::Vector2d obs(x, y);
+    const Eigen::Matrix<FP, 2, 1> obs(x, y);
 
     // Add constraint to the graph
     r_desc->add_factor({camera_idx, point_idx}, obs, precision_matrix.data(), 0,
                        loss);
   }
   std::cout << "Adding constraints took "
-            << std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                             start)
+            << std::chrono::duration<FP>(std::chrono::steady_clock::now() -
+                                         start)
                    .count()
             << " seconds." << std::endl;
 
   start = std::chrono::steady_clock::now();
   // Create all camera vertices
   for (size_t i = 0; i < num_cameras; ++i) {
-    std::array<double, 9> camera_params;
+    std::array<FP, 9> camera_params;
     for (size_t j = 0; j < 9; ++j) {
       file >> camera_params[j];
     }
-    cameras[i] = Camera<double>(camera_params);
+    cameras[i] = Camera<FP>(camera_params);
     camera_desc->add_vertex(i, &cameras[i]);
   }
 
   std::cout << "Adding cameras took "
-            << std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                             start)
+            << std::chrono::duration<FP>(std::chrono::steady_clock::now() -
+                                         start)
                    .count()
             << " seconds." << std::endl;
 
   start = std::chrono::steady_clock::now();
   // Create all point vertices
   for (size_t i = 0; i < num_points; ++i) {
-    double point_params[3];
+    FP point_params[3];
     for (size_t j = 0; j < 3; ++j) {
       file >> point_params[j];
     }
-    points[i] =
-        Point<double>(point_params[0], point_params[1], point_params[2]);
+    points[i] = Point<FP>(point_params[0], point_params[1], point_params[2]);
     point_desc->add_vertex(i, &points[i]);
   }
   std::cout << "Adding points took "
-            << std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                             start)
+            << std::chrono::duration<FP>(std::chrono::steady_clock::now() -
+                                         start)
                    .count()
             << " seconds." << std::endl;
   file.close();
 
   // Configure solver
-  auto preconditioner =
-      std::make_shared<glso::BlockJacobiPreconditioner<double>>();
-  PCGSolver<double> solver(50, 1e-6, preconditioner);
+  auto preconditioner = std::make_shared<glso::BlockJacobiPreconditioner<FP>>();
+  PCGSolver<FP> solver(50, 1e-6, preconditioner);
 
   // Optimize
   constexpr size_t iterations = 50;
@@ -216,10 +218,10 @@ int main(void) {
   std::cout << "Optimizing!" << std::endl;
 
   start = std::chrono::steady_clock::now();
-  optimizer::levenberg_marquardt(&graph, &solver, iterations, 1e-6);
+  optimizer::levenberg_marquardt<FP>(&graph, &solver, iterations, 1e-6);
   auto end = std::chrono::steady_clock::now();
 
-  std::chrono::duration<double> elapsed = end - start;
+  std::chrono::duration<FP> elapsed = end - start;
   std::cout << "Optimization took " << elapsed.count() << " seconds."
             << std::endl;
 

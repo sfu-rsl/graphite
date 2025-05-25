@@ -84,8 +84,7 @@ bool levenberg_marquardt(Graph<T> *graph, Solver<T> *solver,
 
     if (step_is_good && rho > 0) {
       // update hyperparameters
-      mu *= std::max(
-          std::max(static_cast<T>(1.0 / 3.0), 1 - pow(2 * rho - 1, 3)), 1e-32);
+      mu *= std::max(std::max(1.0 / 3.0, 1.0 - pow(2.0 * rho - 1, 3)), 1e-32);
       nu = 2;
       // Relinearize since step is accepted
       graph->linearize();

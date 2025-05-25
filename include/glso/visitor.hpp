@@ -99,9 +99,8 @@ __global__ void augment_hessian_diagonal_kernel(T *diagonal_blocks, const T mu,
 
   T *block = diagonal_blocks + vertex_id * block_size;
   for (size_t i = 0; i < D; i++) {
-    // block[i*D + i] += mu;
-    // block[i*D + i] *= (1.0 + mu);
-    block[i * D + i] += mu * std::clamp(block[i * D + i], 1e-6, 1e32);
+    block[i * D + i] +=
+        mu * std::clamp(static_cast<double>(block[i * D + i]), 1e-6, 1e32);
   }
 }
 

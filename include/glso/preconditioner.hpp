@@ -4,6 +4,7 @@
 #include <glso/factor.hpp>
 #include <glso/op.hpp>
 #include <glso/vertex.hpp>
+#include <thrust/execution_policy.h>
 
 namespace glso {
 
@@ -31,7 +32,6 @@ public:
   }
 
   void apply(GraphVisitor<T> &visitor, T *z, const T *r) override {
-    // thrust::copy(r, r + dimension, z);
     cudaMemcpy(z, r, dimension * sizeof(T), cudaMemcpyDeviceToDevice);
   }
 };
@@ -45,6 +45,13 @@ private:
       block_diagonals;
   std::vector<BaseVertexDescriptor<T> *> *vds;
   cublasHandle_t handle;
+
+  // For batched inversion
+  // TODO: Figure out a better way to handle the memory
+  thrust::device_vector<T> Ainv_data;
+  thrust::host_vector<T *> A_ptrs, Ainv_ptrs;
+  thrust::device_vector<T *> A_ptrs_device, Ainv_ptrs_device;
+  thrust::device_vector<int> info;
 
 public:
   BlockJacobiPreconditioner() {
@@ -82,11 +89,7 @@ public:
     cudaDeviceSynchronize();
 
     // Invert the blocks
-    // TODO: Figure out a better way to handle the memory
-    thrust::device_vector<T> Ainv_data;
-    thrust::host_vector<T *> A_ptrs, Ainv_ptrs;
-    thrust::device_vector<T *> A_ptrs_device, Ainv_ptrs_device;
-    thrust::device_vector<int> info;
+
     for (auto &desc : vertex_descriptors) {
       desc->visit_augment_block_diagonal(
           visitor, block_diagonals[desc].data().get(), mu);
@@ -110,14 +113,27 @@ public:
       A_ptrs_device = A_ptrs;
       Ainv_ptrs_device = Ainv_ptrs;
 
-      cublasDmatinvBatched(handle, d, A_ptrs_device.data().get(), d,
-                           Ainv_ptrs_device.data().get(), d, info.data().get(),
-                           num_blocks);
+      if constexpr (std::is_same<T, double>::value) {
+
+        cublasDmatinvBatched(handle, d, A_ptrs_device.data().get(), d,
+                             Ainv_ptrs_device.data().get(), d,
+                             info.data().get(), num_blocks);
+      } else if constexpr (std::is_same<T, float>::value) {
+        cublasSmatinvBatched(handle, d, A_ptrs_device.data().get(), d,
+                             Ainv_ptrs_device.data().get(), d,
+                             info.data().get(), num_blocks);
+      } else {
+        static_assert(
+            std::is_same<T, float>::value || std::is_same<T, double>::value,
+            "BlockJacobiPreconditioner only supports float or double types.");
+      }
 
       cudaDeviceSynchronize();
 
       // Copy back
-      block_diagonals[desc] = Ainv_data;
+      // block_diagonals[desc] = Ainv_data;
+      thrust::copy(thrust::device, Ainv_data.begin(), Ainv_data.end(),
+                   block_diagonals[desc].begin());
     }
 
     cudaDeviceSynchronize();

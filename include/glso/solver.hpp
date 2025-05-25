@@ -100,7 +100,7 @@ public:
                    x);
 
     // 4. Finally r = b - v2
-    axpy(dim_h, r.data().get(), -1.0, (const T *)v2.data().get(), b);
+    axpy(dim_h, r.data().get(), (T)-1.0, (const T *)v2.data().get(), b);
 
     cudaDeviceSynchronize();
 
