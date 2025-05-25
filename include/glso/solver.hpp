@@ -31,11 +31,10 @@ private:
   size_t max_iter;
   T tol;
 
-  std::shared_ptr<Preconditioner<T>> preconditioner;
+  Preconditioner<T> *preconditioner;
 
 public:
-  PCGSolver(size_t max_iter, T tol,
-            std::shared_ptr<Preconditioner<T>> preconditioner)
+  PCGSolver(size_t max_iter, T tol, Preconditioner<T> *preconditioner)
       : max_iter(max_iter), tol(tol), preconditioner(preconditioner) {}
 
   // Assumes that x is already initialized

@@ -114,9 +114,8 @@ int main(void) {
   point_desc->set_fixed(num_vertices - 1 + id_offset, true);
 
   // Configure solver
-  auto preconditioner =
-      std::make_shared<glso::IdentityPreconditioner<double>>();
-  glso::PCGSolver<double> solver(50, 1e-6, preconditioner);
+  glso::IdentityPreconditioner<double> preconditioner;
+  glso::PCGSolver<double> solver(50, 1e-6, &preconditioner);
 
   // Optimize
   constexpr size_t iterations = 10;

@@ -36,16 +36,8 @@ private:
   GraphVisitor<T> visitor;
   std::vector<BaseVertexDescriptor<T> *> vertex_descriptors;
   std::vector<BaseFactorDescriptor<T> *> factor_descriptors;
-
-  // std::unordered_map<std::pair<size_t, size_t>,
-  // std::shared_ptr<JacobianStorage<T>>> jacobians; std::unordered_map<size_t,
-  // std::pair<size_t, size_t>> hessian_to_local_map; std::unordered_map<size_t,
-  // size_t> hessian_offset; Solver buffers
   thrust::device_vector<T> b;
   thrust::device_vector<T> jacobian_scales;
-
-  // thrust::device_vector<T> error;
-
   size_t hessian_column;
 
 public:

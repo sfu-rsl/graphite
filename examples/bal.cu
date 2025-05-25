@@ -207,8 +207,8 @@ int main(void) {
   file.close();
 
   // Configure solver
-  auto preconditioner = std::make_shared<glso::BlockJacobiPreconditioner<FP>>();
-  PCGSolver<FP> solver(50, 1e-6, preconditioner);
+  glso::BlockJacobiPreconditioner<FP> preconditioner;
+  PCGSolver<FP> solver(50, 1e-6, &preconditioner);
 
   // Optimize
   constexpr size_t iterations = 50;
