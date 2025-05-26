@@ -148,6 +148,12 @@ public:
 
   std::array<JacobianStorage<T>, N> jacobians;
 
+  template <typename... VertexDescPtrs,
+            typename = std::enable_if_t<sizeof...(VertexDescPtrs) == N>>
+  FactorDescriptor(VertexDescPtrs... vertex_descriptors) {
+    link_factors({vertex_descriptors...});
+  }
+
   void visit_error(GraphVisitor<T> &visitor) override {
     visitor.template compute_error(this);
   }

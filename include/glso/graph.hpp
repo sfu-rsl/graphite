@@ -59,16 +59,8 @@ public:
     vertex_descriptors.push_back(descriptor);
   }
 
-  template <typename F, typename... Ts>
-  F *add_factor_descriptor(Ts... vertices) {
-
-    // Link factor to vertices
-    auto factor = new F();
-    factor->link_factors({vertices...});
-
+  template <typename F> void add_factor_descriptor(F *factor) {
     factor_descriptors.push_back(factor);
-
-    return factor;
   }
 
   bool initialize_optimization() {

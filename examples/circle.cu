@@ -68,9 +68,9 @@ int main(void) {
   const size_t num_vertices = 5;
 
   // Create vertices
-  auto point_desc = new PointDescriptor<double>();
-  point_desc->reserve(num_vertices);
-  graph.add_vertex_descriptor(point_desc);
+  auto point_desc = PointDescriptor<double>();
+  point_desc.reserve(num_vertices);
+  graph.add_vertex_descriptor(&point_desc);
 
   double center[2] = {0.0, 0.0};
 
@@ -97,21 +97,20 @@ int main(void) {
     std::cout << "Adding point " << vertex_id << "=(" << point[0] << ", "
               << point[1] << ") with radius="
               << sqrt(point[0] * point[0] + point[1] * point[1]) << std::endl;
-    point_desc->add_vertex(vertex_id + id_offset, &pts[vertex_id]);
+    point_desc.add_vertex(vertex_id + id_offset, &pts[vertex_id]);
   }
   // Create edges
-  auto factor_desc =
-      graph.add_factor_descriptor<CircleFactor<double>>(point_desc);
-  factor_desc->reserve(num_vertices);
+  auto factor_desc = CircleFactor<double>(&point_desc);
+  factor_desc.reserve(num_vertices);
+  graph.add_factor_descriptor(&factor_desc);
 
   const auto loss = DefaultLoss<double, 1>();
-
   for (size_t vertex_id = 0; vertex_id < num_vertices; ++vertex_id) {
-    factor_desc->add_factor({vertex_id + id_offset}, radius, nullptr, 0, loss);
+    factor_desc.add_factor({vertex_id + id_offset}, radius, nullptr, 0, loss);
   }
 
   // Set the last vertex as fixed
-  point_desc->set_fixed(num_vertices - 1 + id_offset, true);
+  point_desc.set_fixed(num_vertices - 1 + id_offset, true);
 
   // Configure solver
   glso::IdentityPreconditioner<double> preconditioner;
@@ -120,7 +119,7 @@ int main(void) {
   // Optimize
   constexpr size_t iterations = 10;
   std::cout << "Graph built with " << num_vertices << " vertices and "
-            << factor_desc->count() << " factors." << std::endl;
+            << factor_desc.count() << " factors." << std::endl;
   std::cout << "Optimizing!" << std::endl;
 
   auto start = std::chrono::steady_clock::now();
@@ -132,7 +131,7 @@ int main(void) {
 
   // Read back optimized values
   for (size_t vertex_id = 0; vertex_id < num_vertices; ++vertex_id) {
-    const auto point = point_desc->get_vertex(vertex_id + id_offset);
+    const auto point = point_desc.get_vertex(vertex_id + id_offset);
     const auto &p = *point;
     auto x = p(0);
     auto y = p(1);

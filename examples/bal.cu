@@ -132,18 +132,18 @@ int main(void) {
   uninitialized_vector<Camera<FP>> cameras(num_cameras);
 
   // Create vertices
-  auto point_desc = new PointDescriptor<FP>();
-  point_desc->reserve(num_points);
-  graph.add_vertex_descriptor(point_desc);
+  auto point_desc = PointDescriptor<FP>();
+  point_desc.reserve(num_points);
+  graph.add_vertex_descriptor(&point_desc);
 
-  auto camera_desc = new CameraDescriptor<FP>();
-  camera_desc->reserve(num_cameras);
-  graph.add_vertex_descriptor(camera_desc);
+  auto camera_desc = CameraDescriptor<FP>();
+  camera_desc.reserve(num_cameras);
+  graph.add_vertex_descriptor(&camera_desc);
 
   // Create edges
-  auto r_desc = graph.add_factor_descriptor<ReprojectionError<FP>>(camera_desc,
-                                                                   point_desc);
-  r_desc->reserve(num_observations);
+  auto r_desc = ReprojectionError<FP>(&camera_desc, &point_desc);
+  r_desc.reserve(num_observations);
+  graph.add_factor_descriptor(&r_desc);
 
   const auto loss = DefaultLoss<FP, 2>();
   Eigen::Matrix<FP, 2, 2> precision_matrix =
@@ -163,8 +163,8 @@ int main(void) {
     const Eigen::Matrix<FP, 2, 1> obs(x, y);
 
     // Add constraint to the graph
-    r_desc->add_factor({camera_idx, point_idx}, obs, precision_matrix.data(), 0,
-                       loss);
+    r_desc.add_factor({camera_idx, point_idx}, obs, precision_matrix.data(), 0,
+                      loss);
   }
   std::cout << "Adding constraints took "
             << std::chrono::duration<FP>(std::chrono::steady_clock::now() -
@@ -180,7 +180,7 @@ int main(void) {
       file >> camera_params[j];
     }
     cameras[i] = Camera<FP>(camera_params);
-    camera_desc->add_vertex(i, &cameras[i]);
+    camera_desc.add_vertex(i, &cameras[i]);
   }
 
   std::cout << "Adding cameras took "
@@ -197,7 +197,7 @@ int main(void) {
       file >> point_params[j];
     }
     points[i] = Point<FP>(point_params[0], point_params[1], point_params[2]);
-    point_desc->add_vertex(i, &points[i]);
+    point_desc.add_vertex(i, &points[i]);
   }
   std::cout << "Adding points took "
             << std::chrono::duration<FP>(std::chrono::steady_clock::now() -
@@ -213,7 +213,7 @@ int main(void) {
   // Optimize
   constexpr size_t iterations = 50;
   std::cout << "Graph built with " << num_cameras << " cameras, " << num_points
-            << " points, and " << r_desc->count() << " observations."
+            << " points, and " << r_desc.count() << " observations."
             << std::endl;
   std::cout << "Optimizing!" << std::endl;
 
