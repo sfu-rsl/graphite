@@ -101,10 +101,10 @@ int main(void) {
   // using FP = float;
 
   // std::string file_path = "../data/bal/problem-16-22106-pre.txt";
-  std::string file_path = "../data/bal/problem-21-11315-pre.txt";
+  // std::string file_path = "../data/bal/problem-21-11315-pre.txt";
   // std::string file_path = "../data/bal/problem-257-65132-pre.txt";
   // std::string file_path = "../data/bal/problem-356-226730-pre.txt";
-  // std::string file_path = "../data/bal/problem-1778-993923-pre.txt";
+  std::string file_path = "../data/bal/problem-1778-993923-pre.txt";
 
   initialize_cuda();
 
@@ -208,7 +208,7 @@ int main(void) {
 
   // Configure solver
   glso::BlockJacobiPreconditioner<FP> preconditioner;
-  PCGSolver<FP> solver(50, 1e-6, &preconditioner);
+  PCGSolver<FP> solver(100, 1e-1, &preconditioner);
 
   // Optimize
   constexpr size_t iterations = 50;
@@ -218,7 +218,7 @@ int main(void) {
   std::cout << "Optimizing!" << std::endl;
 
   start = std::chrono::steady_clock::now();
-  optimizer::levenberg_marquardt<FP>(&graph, &solver, iterations, 1e-6);
+  optimizer::levenberg_marquardt<FP>(&graph, &solver, iterations, 1e-4);
   auto end = std::chrono::steady_clock::now();
 
   std::chrono::duration<FP> elapsed = end - start;

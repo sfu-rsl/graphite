@@ -43,11 +43,7 @@ __global__ void clamp_kernel(size_t n, T min_val, T max_val, T *x) {
       static_cast<size_t>(blockIdx.x) * static_cast<size_t>(blockDim.x) +
       static_cast<size_t>(threadIdx.x);
   if (idx < n) {
-    if (x[idx] < min_val) {
-      x[idx] = min_val;
-    } else if (x[idx] > max_val) {
-      x[idx] = max_val;
-    }
+    x[idx] = std::clamp(x[idx], min_val, max_val);
   }
 }
 

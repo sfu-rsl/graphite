@@ -27,6 +27,7 @@ private:
   thrust::device_vector<T> r;    // residual
   thrust::device_vector<T> p;    // search direction
   thrust::device_vector<T> diag; // diagonal of Hessian
+  thrust::device_vector<T> x_backup;
 
   size_t max_iter;
   T tol;
@@ -114,9 +115,13 @@ public:
     p.resize(dim_h);
     thrust::copy(z.begin(), z.end(), p.begin()); // p = z
 
+    x_backup.resize(dim_h);
+
     // 1. First compute dot(r, z)
     T rz = thrust::inner_product(r.begin(), r.end(), z.begin(), 0.0);
-    const T rz_0 = rz;
+    // T rz_0 = rz;
+    T rz_0 = std::numeric_limits<T>::infinity();
+    constexpr T rejection_ratio = 1.0;
 
     for (size_t k = 0; k < max_iter; k++) {
 
@@ -146,6 +151,7 @@ public:
       // 4. Compute alpha = dot(r, z) / dot(p, v2)
       T alpha = rz / thrust::inner_product(p.begin(), p.end(), v2.begin(), 0.0);
       // 5. x  += alpha * p
+      thrust::copy(thrust::device, x, x + dim_h, x_backup.begin());
       axpy(dim_h, x, alpha, (const T *)p.data().get(), x);
 
       // 6. r -= alpha * v2
@@ -159,10 +165,17 @@ public:
       T rz_new = thrust::inner_product(r.begin(), r.end(), z.begin(), 0.0);
 
       // 7. Check termination criteria
-      if (sqrt(rz_new / rz_0) < tol) {
-        // std::cout << "Converged at iteration " << k << std::endl;
+      // if (sqrt(rz_new / rz_0) < tol) {
+      //   // std::cout << "Converged at iteration " << k << std::endl;
+      //   break;
+      // }
+
+
+      if (rz_new > rejection_ratio*rz_0) {
+        thrust::copy(thrust::device, x_backup.begin(), x_backup.end(), x);
         break;
       }
+      rz_0 = std::min(rz_0, rz_new);
 
       // 8. Compute beta
       T beta = rz_new / rz;
@@ -172,6 +185,10 @@ public:
       axpy(dim_h, p.data().get(), beta, (const T *)p.data().get(),
            z.data().get());
       cudaDeviceSynchronize();
+
+      if (std::abs(rz_new) < tol) {
+        break;
+      }
     }
 
     // TODO: Figure out failure cases
