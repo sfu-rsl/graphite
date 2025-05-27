@@ -14,33 +14,21 @@
 
 namespace glso {
 
-template <typename T> class Point {
-public:
-  Eigen::Matrix<T, 3, 1> p;
+template <typename T> using Point = Eigen::Matrix<T, 3, 1>;
 
-  Point() = default;
-  Point(T x, T y, T z) : p(x, y, z) {}
-};
-
-template <typename T> class Camera {
-public:
-  Eigen::Matrix<T, 9, 1> params;
-
-  Camera() = default;
-  Camera(const std::array<T, 9> &cam) : params(cam.data()) {}
-};
+template <typename T> using Camera = Eigen::Matrix<T, 9, 1>;
 
 template <typename T> struct PointTraits {
   static constexpr size_t dimension = 3;
   using Vertex = Point<T>;
 
   hd_fn static std::array<T, dimension> parameters(const Vertex &vertex) {
-    return vector_to_array<T, dimension>(vertex.p);
+    return vector_to_array<T, dimension>(vertex);
   }
 
   hd_fn static void update(Vertex &vertex, const T *delta) {
-    Eigen::Map<const Eigen::Matrix<T, 3, 1>> d(delta);
-    vertex.p += d;
+    Eigen::Map<const Eigen::Matrix<T, dimension, 1>> d(delta);
+    vertex += d;
   }
 };
 
@@ -50,12 +38,12 @@ template <typename T> struct CameraTraits {
   using Vertex = Camera<T>;
 
   hd_fn static std::array<T, dimension> parameters(const Vertex &vertex) {
-    return vector_to_array<T, dimension>(vertex.params);
+    return vector_to_array<T, dimension>(vertex);
   }
 
   hd_fn static void update(Vertex &vertex, const T *delta) {
-    Eigen::Map<const Eigen::Matrix<T, 9, 1>> d(delta);
-    vertex.params += d;
+    Eigen::Map<const Eigen::Matrix<T, dimension, 1>> d(delta);
+    vertex += d;
   }
 
   // Defining the state requires custom setters and getters
@@ -175,11 +163,11 @@ int main(void) {
   start = std::chrono::steady_clock::now();
   // Create all camera vertices
   for (size_t i = 0; i < num_cameras; ++i) {
-    std::array<FP, 9> camera_params;
+    FP camera_params[9];
     for (size_t j = 0; j < 9; ++j) {
       file >> camera_params[j];
     }
-    cameras[i] = Camera<FP>(camera_params);
+    cameras[i] = Eigen::Map<Camera<FP>>(camera_params);
     camera_desc.add_vertex(i, &cameras[i]);
   }
 
@@ -196,7 +184,7 @@ int main(void) {
     for (size_t j = 0; j < 3; ++j) {
       file >> point_params[j];
     }
-    points[i] = Point<FP>(point_params[0], point_params[1], point_params[2]);
+    points[i] = Eigen::Map<Point<FP>>(point_params);
     point_desc.add_vertex(i, &points[i]);
   }
   std::cout << "Adding points took "

@@ -170,8 +170,7 @@ public:
       //   break;
       // }
 
-
-      if (rz_new > rejection_ratio*rz_0) {
+      if (rz_new > rejection_ratio * rz_0) {
         thrust::copy(thrust::device, x_backup.begin(), x_backup.end(), x);
         break;
       }
