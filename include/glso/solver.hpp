@@ -31,12 +31,13 @@ private:
 
   size_t max_iter;
   T tol;
+  T rejection_ratio;
 
   Preconditioner<T> *preconditioner;
 
 public:
-  PCGSolver(size_t max_iter, T tol, Preconditioner<T> *preconditioner)
-      : max_iter(max_iter), tol(tol), preconditioner(preconditioner) {}
+  PCGSolver(size_t max_iter, T tol, T rejection_ratio, Preconditioner<T> *preconditioner)
+      : max_iter(max_iter), tol(tol), rejection_ratio(rejection_ratio), preconditioner(preconditioner) {}
 
   // Assumes that x is already initialized
   virtual bool solve(Graph<T> *graph, T *x, T damping_factor) override {
@@ -119,10 +120,11 @@ public:
 
     // 1. First compute dot(r, z)
     T rz = thrust::inner_product(r.begin(), r.end(), z.begin(), 0.0);
-    // T rz_0 = rz;
-    T rz_0 = std::numeric_limits<T>::infinity();
-    constexpr T rejection_ratio = 1.0;
-
+    // T rz_min = rz;
+    T rz_min = std::numeric_limits<T>::infinity();
+    const T rz_0 = rz;
+    const T relative_thresh = std::abs(rz_0 * tol);
+    // constexpr T rejection_ratio = 5.0;
     for (size_t k = 0; k < max_iter; k++) {
 
       // 2. Compute v1 = Jp
@@ -165,16 +167,16 @@ public:
       T rz_new = thrust::inner_product(r.begin(), r.end(), z.begin(), 0.0);
 
       // 7. Check termination criteria
-      // if (sqrt(rz_new / rz_0) < tol) {
+      // if (sqrt(rz_new / rz_min) < tol) {
       //   // std::cout << "Converged at iteration " << k << std::endl;
       //   break;
       // }
 
-      if (rz_new > rejection_ratio * rz_0) {
+      if (std::abs(rz_new) >= rejection_ratio * rz_min) {
         thrust::copy(thrust::device, x_backup.begin(), x_backup.end(), x);
         break;
       }
-      rz_0 = std::min(rz_0, rz_new);
+      rz_min = std::min(rz_min, std::abs(rz_new));
 
       // 8. Compute beta
       T beta = rz_new / rz;
@@ -185,7 +187,14 @@ public:
            z.data().get());
       cudaDeviceSynchronize();
 
-      if (std::abs(rz_new) < tol) {
+      // std::cout << "Termination criteria at iteration " << k
+      //           << ": rz_new = " << rz_new << ", tol = " << tol << std::endl;
+      //           std::cout << "rz_0 = " << rz_0 << std::endl;
+      // if (std::abs(rz_new) < tol) {
+      //   break;
+      // }
+      if (std::abs(rz_new) <= relative_thresh) {
+        // std::cout << "Converged at iteration " << k << std::endl;
         break;
       }
     }
