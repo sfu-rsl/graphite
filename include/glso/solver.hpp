@@ -96,8 +96,8 @@ public:
     // thrust::fill(diag.begin(), diag.end(), 1.0);
 
     // Check for negative values in diag and print an error if found
-    S min_diag = 1.0e-6;
-    S max_diag = 1.0e32;
+    S min_diag = static_cast<S>(1.0e-6);
+    S max_diag = static_cast<S>(1.0e32);
     clamp(dim_h, min_diag, max_diag, diag.data().get());
 
     damp_by_factor(dim_h, v2.data().get(), damping_factor, diag.data().get(),
@@ -122,9 +122,16 @@ public:
     x_backup.resize(dim_h);
 
     // 1. First compute dot(r, z)
-    S rz = thrust::inner_product(r.begin(), r.end(), z.begin(), 0.0);
+    S rz = thrust::inner_product(r.begin(), r.end(), z.begin(),
+                                 static_cast<S>(0.0));
     // T rz_0 = rz;
-    S rz_0 = std::numeric_limits<T>::infinity();
+    S rz_0;
+
+    if constexpr (std::is_same<S, __half>::value) {
+      rz_0 = CUDART_INF_FP16;
+    } else {
+      rz_0 = std::numeric_limits<S>::infinity();
+    }
 
     for (size_t k = 0; k < max_iter; k++) {
 
@@ -152,7 +159,8 @@ public:
       // cudaDeviceSynchronize();
 
       // 4. Compute alpha = dot(r, z) / dot(p, v2)
-      S alpha = rz / thrust::inner_product(p.begin(), p.end(), v2.begin(), 0.0);
+      S alpha = rz / thrust::inner_product(p.begin(), p.end(), v2.begin(),
+                                           static_cast<S>(0));
       // 5. x  += alpha * p
       thrust::copy(thrust::device, x, x + dim_h, x_backup.begin());
       axpy(dim_h, x, alpha, (const S *)p.data().get(), x);
@@ -165,7 +173,8 @@ public:
       // Apply preconditioner again
       thrust::fill(z.begin(), z.end(), 0);
       preconditioner->apply(visitor, z.data().get(), r.data().get());
-      S rz_new = thrust::inner_product(r.begin(), r.end(), z.begin(), 0.0);
+      S rz_new = thrust::inner_product(r.begin(), r.end(), z.begin(),
+                                       static_cast<S>(0.0));
 
       // 7. Check termination criteria
       // if (sqrt(rz_new / rz_0) < tol) {
@@ -173,8 +182,13 @@ public:
       //   break;
       // }
 
-      if (rz_new > rejection_ratio * rz_0) {
+      if (static_cast<T>(rz_new) > rejection_ratio * static_cast<T>(rz_0)) {
         thrust::copy(thrust::device, x_backup.begin(), x_backup.end(), x);
+        // std::cout << "Diverged at iteration " << k
+        //           << ", resetting to previous x." << std::endl;
+        //           std::cout << "rz_new: " << static_cast<T>(rz_new) << ",
+        //           rz_0: " << static_cast<T>(rz_0) << ", rejection_ratio: " <<
+        //           rejection_ratio << std::endl;
         break;
       }
       rz_0 = std::min(rz_0, rz_new);
@@ -188,7 +202,8 @@ public:
            z.data().get());
       cudaDeviceSynchronize();
 
-      if (std::abs(rz_new) < tol) {
+      if (std::abs(static_cast<T>(rz_new)) < tol) {
+        // std::cout << "Converged at iteration " << k << std::endl;
         break;
       }
     }

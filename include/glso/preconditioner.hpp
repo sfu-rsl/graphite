@@ -40,18 +40,22 @@ public:
 template <typename T, typename S>
 class BlockJacobiPreconditioner : public Preconditioner<T, S> {
 private:
+  using P = std::conditional_t<std::is_same<S, __half>::value, T, S>;
   size_t dimension;
   std::vector<std::pair<size_t, size_t>> block_sizes;
   std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<S>>
       block_diagonals;
+
+  std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<P>>
+      hp_diagonals; // higher precision diagonals for inversion
   std::vector<BaseVertexDescriptor<T, S> *> *vds;
   cublasHandle_t handle;
 
   // For batched inversion
   // TODO: Figure out a better way to handle the memory
-  thrust::device_vector<S> Ainv_data;
-  thrust::host_vector<S *> A_ptrs, Ainv_ptrs;
-  thrust::device_vector<S *> A_ptrs_device, Ainv_ptrs_device;
+  thrust::device_vector<P> Ainv_data;
+  thrust::host_vector<P *> A_ptrs, Ainv_ptrs;
+  thrust::device_vector<P *> A_ptrs_device, Ainv_ptrs_device;
   thrust::device_vector<int> info;
 
 public:
@@ -75,14 +79,15 @@ public:
       const size_t num_values =
           d * d * desc->count(); // this is not tightly packed since count
                                  // includes fixed vertices
-      block_diagonals[desc] = thrust::device_vector<T>(num_values, 0);
+      block_diagonals[desc] =
+          thrust::device_vector<S>(num_values, static_cast<S>(0));
       // block_diagonals.insert(desc, thrust::device_vector<T>(num_values, 0));
     }
 
     // Compute Hessian blocks on the diagonal
     for (auto &desc : vertex_descriptors) {
       thrust::fill(block_diagonals[desc].begin(), block_diagonals[desc].end(),
-                   0);
+                   static_cast<S>(0));
     }
     for (auto &desc : factor_descriptors) {
       desc->visit_block_diagonal(visitor, block_diagonals);
@@ -104,8 +109,24 @@ public:
       Ainv_data.resize(num_blocks * block_size);
       info.resize(num_blocks);
 
-      S *a_ptr = block_diagonals[desc].data().get();
-      S *a_inv_ptr = Ainv_data.data().get();
+      // P *a_ptr = block_diagonals[desc].data().get();
+
+      P *a_ptr = nullptr;
+
+      if constexpr (std::is_same<S, __half>::value) {
+        hp_diagonals[desc].resize(num_blocks * block_size);
+        // Copy to higher precision
+        thrust::transform(thrust::device, block_diagonals[desc].begin(),
+                          block_diagonals[desc].end(),
+                          hp_diagonals[desc].begin(),
+                          [] __device__(S val) { return static_cast<P>(val); });
+
+        a_ptr = hp_diagonals[desc].data().get();
+      } else {
+        a_ptr = block_diagonals[desc].data().get();
+      }
+
+      P *a_inv_ptr = Ainv_data.data().get();
       for (size_t i = 0; i < num_blocks; ++i) {
         A_ptrs[i] = a_ptr + i * block_size;
         Ainv_ptrs[i] = a_inv_ptr + i * block_size;
@@ -114,27 +135,34 @@ public:
       A_ptrs_device = A_ptrs;
       Ainv_ptrs_device = Ainv_ptrs;
 
-      if constexpr (std::is_same<S, double>::value) {
+      if constexpr (std::is_same<P, double>::value) {
 
         cublasDmatinvBatched(handle, d, A_ptrs_device.data().get(), d,
                              Ainv_ptrs_device.data().get(), d,
                              info.data().get(), num_blocks);
-      } else if constexpr (std::is_same<S, float>::value) {
+      } else if constexpr (std::is_same<P, float>::value) {
         cublasSmatinvBatched(handle, d, A_ptrs_device.data().get(), d,
                              Ainv_ptrs_device.data().get(), d,
                              info.data().get(), num_blocks);
       } else {
-        static_assert(
-            std::is_same<S, float>::value || std::is_same<S, double>::value,
-            "BlockJacobiPreconditioner only supports float or double types.");
+        static_assert(std::is_same<S, __half>::value ||
+                          std::is_same<S, float>::value ||
+                          std::is_same<S, double>::value,
+                      "BlockJacobiPreconditioner only supports half, float, or "
+                      "double types.");
       }
 
       cudaDeviceSynchronize();
 
       // Copy back
-      // block_diagonals[desc] = Ainv_data;
-      thrust::copy(thrust::device, Ainv_data.begin(), Ainv_data.end(),
-                   block_diagonals[desc].begin());
+      if constexpr (std::is_same<S, __half>::value) {
+        thrust::transform(thrust::device, Ainv_data.begin(), Ainv_data.end(),
+                          block_diagonals[desc].begin(),
+                          [] __device__(P val) { return static_cast<S>(val); });
+      } else {
+        thrust::copy(thrust::device, Ainv_data.begin(), Ainv_data.end(),
+                     block_diagonals[desc].begin());
+      }
     }
 
     cudaDeviceSynchronize();

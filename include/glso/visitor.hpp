@@ -152,7 +152,7 @@ __global__ void compute_error_kernel_autodiff(
 
   // printf("CEAD: Thread %d, Vertex %d, Factor %d\n", idx, vertex_id,
   // factor_id);
-  using G = S;
+  using G = std::conditional_t<std::is_same<S, __half>::value, T, S>;
   const M *local_obs = obs + factor_id;
   Dual<T, G> local_error[E];
   const typename F::ConstraintDataType *local_data =
@@ -352,10 +352,10 @@ compute_b_kernel(S *b, T *error, size_t *ids, const size_t *hessian_ids,
     for (int j = 0; j < E; j++) { // pmat col
       // x2[i] += pmat[precision_offset + i + j*E] * error[error_offset + j]; //
       // col major
-      x2[i] +=
-          dL * pmat[precision_offset + i * E + j] *
-          error[error_offset +
-                j]; // row major (use for faster access on symmetrical matrix)
+      x2[i] += dL * pmat[precision_offset + i * E + j] *
+               static_cast<S>(
+                   error[error_offset + j]); // row major (use for faster access
+                                             // on symmetrical matrix)
     }
   }
 

@@ -86,16 +86,17 @@ int main(void) {
 
   using namespace glso;
 
-  using FP = double;
-  // using FP = float;
+  // using FP = double;
+  using FP = float;
   // using SP = FP;
-  using SP = float;
+  // using SP = float;
+  using SP = __half;
 
   // std::string file_path = "../data/bal/problem-16-22106-pre.txt";
-  // std::string file_path = "../data/bal/problem-21-11315-pre.txt";
+  std::string file_path = "../data/bal/problem-21-11315-pre.txt";
   // std::string file_path = "../data/bal/problem-257-65132-pre.txt";
   // std::string file_path = "../data/bal/problem-356-226730-pre.txt";
-  std::string file_path = "../data/bal/problem-1778-993923-pre.txt";
+  // std::string file_path = "../data/bal/problem-1778-993923-pre.txt";
   // std::string file_path = "../data/bal/problem-13682-4456117-pre.txt";
 
   initialize_cuda();
@@ -200,6 +201,7 @@ int main(void) {
 
   // Configure solver
   glso::BlockJacobiPreconditioner<FP, SP> preconditioner;
+  // glso::IdentityPreconditioner<FP, SP> preconditioner;
   PCGSolver<FP, SP> solver(50, 1e-1, 1.0, &preconditioner);
 
   // Optimize

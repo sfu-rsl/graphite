@@ -15,10 +15,11 @@ T compute_rho(Graph<T, S> *graph, thrust::device_vector<S> &delta_x,
   //  TODO: Don't store these in the graph
   auto &b = graph->get_b();
   T num = (chi2 - new_chi2);
-  T denom = (mu * thrust::inner_product(delta_x.begin(), delta_x.end(),
-                                        delta_x.begin(), 0.0));
-  denom +=
-      thrust::inner_product(delta_x.begin(), delta_x.end(), b.begin(), 0.0);
+  T denom = mu * static_cast<T>(
+                     thrust::inner_product(delta_x.begin(), delta_x.end(),
+                                           delta_x.begin(), static_cast<S>(0)));
+  denom += static_cast<T>(thrust::inner_product(delta_x.begin(), delta_x.end(),
+                                                b.begin(), static_cast<S>(0)));
   if (step_is_good) {
     denom += std::numeric_limits<T>::epsilon();
   } else {
@@ -67,7 +68,7 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
     start = std::chrono::steady_clock::now();
     T chi2 = graph->chi2();
 
-    if (!solver->solve(graph, delta_x.data().get(), mu)) {
+    if (!solver->solve(graph, delta_x.data().get(), static_cast<S>(mu))) {
       std::cerr << "Solver failed" << std::endl;
       return false;
     }

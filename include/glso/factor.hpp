@@ -148,11 +148,14 @@ public:
   uninitialized_vector<LossType> loss;
 
   std::array<JacobianStorage<S>, N> jacobians;
+  std::array<S, Traits::dimension * Traits::dimension> default_precision_matrix;
 
   template <typename... VertexDescPtrs,
             typename = std::enable_if_t<sizeof...(VertexDescPtrs) == N>>
   FactorDescriptor(VertexDescPtrs... vertex_descriptors) {
     link_factors({vertex_descriptors...});
+
+    default_precision_matrix = get_default_precision_matrix();
   }
 
   void visit_error(GraphVisitor<T, S> &visitor) override {
@@ -300,12 +303,13 @@ public:
             precision_matrix[i];
       }
     } else {
-      constexpr auto pmat = get_default_precision_matrix();
+      // constexpr auto pmat = get_default_precision_matrix();
       precision_matrices.resize(precision_matrices.size() +
                                 precision_matrix_size);
 
       for (size_t i = 0; i < precision_matrix_size; i++) {
-        precision_matrices[local_id * precision_matrix_size + i] = pmat[i];
+        precision_matrices[local_id * precision_matrix_size + i] =
+            default_precision_matrix[i];
       }
     }
 
@@ -321,7 +325,7 @@ public:
     return []() constexpr {
       std::array<S, E *E> pmat = {};
       for (size_t i = 0; i < E; i++) {
-        pmat[i * E + i] = 1.0;
+        pmat[i * E + i] = static_cast<S>(1);
       }
       return pmat;
     }

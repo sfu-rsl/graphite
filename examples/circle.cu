@@ -14,7 +14,7 @@ namespace glso {
 template <typename T> using Point = Eigen::Matrix<T, 2, 1>;
 
 // Traits for Point
-template <typename T> struct PointTraits {
+template <typename T, typename S> struct PointTraits {
   static constexpr size_t dimension = 2;
   using Vertex = Point<T>;
 
@@ -28,13 +28,13 @@ template <typename T> struct PointTraits {
   }
 };
 
-template <typename T>
-using PointDescriptor = VertexDescriptor<T, PointTraits<T>>;
+template <typename T, typename S>
+using PointDescriptor = VertexDescriptor<T, S, PointTraits<T, S>>;
 
 // Factor traits for the circle constraint
-template <typename T> struct CircleFactorTraits {
+template <typename T, typename S> struct CircleFactorTraits {
   static constexpr size_t dimension = 1;
-  using VertexDescriptors = std::tuple<PointDescriptor<T>>;
+  using VertexDescriptors = std::tuple<PointDescriptor<T, S>>;
   using Observation = T;
   using Data = unsigned char;
   using Loss = DefaultLoss<T, dimension>;
@@ -51,8 +51,8 @@ template <typename T> struct CircleFactorTraits {
   }
 };
 
-template <typename T>
-using CircleFactor = FactorDescriptor<T, CircleFactorTraits<T>>;
+template <typename T, typename S>
+using CircleFactor = FactorDescriptor<T, S, CircleFactorTraits<T, S>>;
 
 } // namespace glso
 
@@ -63,48 +63,50 @@ int main(void) {
   initialize_cuda();
 
   // Create graph
-  Graph<double> graph;
+  using FP = float;
+  using SP = __half;
+  Graph<FP, SP> graph;
 
   const size_t num_vertices = 5;
 
   // Create vertices
-  auto point_desc = PointDescriptor<double>();
+  auto point_desc = PointDescriptor<FP, SP>();
   point_desc.reserve(num_vertices);
   graph.add_vertex_descriptor(&point_desc);
 
-  double center[2] = {0.0, 0.0};
+  FP center[2] = {0.0, 0.0};
 
   std::random_device rd;
   std::mt19937 gen(rd());
-  std::uniform_real_distribution<double> dist(0.0, 2 * M_PI);
+  std::uniform_real_distribution<FP> dist(0.0, 2 * M_PI);
 
-  const double radius = 4.0;
-  const double sigma = 0.3;
+  const FP radius = 4.0;
+  const FP sigma = 0.3;
 
-  std::normal_distribution<double> n1(0.0, sigma);
-  std::normal_distribution<double> n2(0.0, sigma);
+  std::normal_distribution<FP> n1(0.0, sigma);
+  std::normal_distribution<FP> n2(0.0, sigma);
 
-  managed_vector<Point<double>> pts(num_vertices); // addresses must not change
-  constexpr auto id_offset = 10; // user provides arbitrary ids
+  managed_vector<Point<FP>> pts(num_vertices); // addresses must not change
+  constexpr auto id_offset = 10;               // user provides arbitrary ids
 
   for (size_t vertex_id = 0; vertex_id < num_vertices; ++vertex_id) {
-    double angle = dist(gen);
-    double point[2] = {center[0] + radius * cos(angle),
-                       center[1] + radius * sin(angle)};
+    FP angle = dist(gen);
+    FP point[2] = {center[0] + radius * cos(angle),
+                   center[1] + radius * sin(angle)};
     point[0] += n1(gen);
     point[1] += n2(gen);
-    pts[vertex_id] = Point<double>(point[0], point[1]);
+    pts[vertex_id] = Point<FP>(point[0], point[1]);
     std::cout << "Adding point " << vertex_id << "=(" << point[0] << ", "
               << point[1] << ") with radius="
               << sqrt(point[0] * point[0] + point[1] * point[1]) << std::endl;
     point_desc.add_vertex(vertex_id + id_offset, &pts[vertex_id]);
   }
   // Create edges
-  auto factor_desc = CircleFactor<double>(&point_desc);
+  auto factor_desc = CircleFactor<FP, SP>(&point_desc);
   factor_desc.reserve(num_vertices);
   graph.add_factor_descriptor(&factor_desc);
 
-  const auto loss = DefaultLoss<double, 1>();
+  const auto loss = DefaultLoss<FP, 1>();
   for (size_t vertex_id = 0; vertex_id < num_vertices; ++vertex_id) {
     factor_desc.add_factor({vertex_id + id_offset}, radius, nullptr, 0, loss);
   }
@@ -113,8 +115,8 @@ int main(void) {
   point_desc.set_fixed(num_vertices - 1 + id_offset, true);
 
   // Configure solver
-  glso::IdentityPreconditioner<double> preconditioner;
-  glso::PCGSolver<double> solver(50, 1e-6, &preconditioner);
+  glso::IdentityPreconditioner<FP, SP> preconditioner;
+  glso::PCGSolver<FP, SP> solver(50, 1e-6, 1.0, &preconditioner);
 
   // Optimize
   constexpr size_t iterations = 10;
@@ -123,7 +125,7 @@ int main(void) {
   std::cout << "Optimizing!" << std::endl;
 
   auto start = std::chrono::steady_clock::now();
-  optimizer::levenberg_marquardt<double>(&graph, &solver, iterations, 1e-6);
+  optimizer::levenberg_marquardt<FP, SP>(&graph, &solver, iterations, 1e-6);
   auto end = std::chrono::steady_clock::now();
   std::chrono::duration<double> elapsed = end - start;
   std::cout << "Optimization took " << elapsed.count() << " seconds."
