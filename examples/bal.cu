@@ -54,15 +54,15 @@ template <typename T> struct CameraTraits {
   }
 };
 
-template <typename T>
-using PointDescriptor = VertexDescriptor<T, PointTraits<T>>;
+template <typename T, typename S>
+using PointDescriptor = VertexDescriptor<T, S, PointTraits<T>>;
 
-template <typename T>
-using CameraDescriptor = VertexDescriptor<T, CameraTraits<T>>;
+template <typename T, typename S>
+using CameraDescriptor = VertexDescriptor<T, S, CameraTraits<T>>;
 
-template <typename T> struct ReprojectionErrorTraits {
+template <typename T, typename S> struct ReprojectionErrorTraits {
   static constexpr size_t dimension = 2;
-  using VertexDescriptors = std::tuple<CameraDescriptor<T>, PointDescriptor<T>>;
+  using VertexDescriptors = std::tuple<CameraDescriptor<T, S>, PointDescriptor<T, S>>;
   using Observation = Eigen::Matrix<T, dimension, 1>;
   using Data = unsigned char;
   using Loss = DefaultLoss<T, dimension>;
@@ -77,7 +77,7 @@ template <typename T> struct ReprojectionErrorTraits {
 };
 
 template <typename T, typename S>
-using ReprojectionError = FactorDescriptor<T, S, ReprojectionErrorTraits<T>>;
+using ReprojectionError = FactorDescriptor<T, S, ReprojectionErrorTraits<T, S>>;
 
 } // namespace glso
 
@@ -87,18 +87,19 @@ int main(void) {
 
   using FP = double;
   // using FP = float;
-  using SP = FP;
+  // using SP = FP;
+  using SP = float;
 
   // std::string file_path = "../data/bal/problem-16-22106-pre.txt";
-  std::string file_path = "../data/bal/problem-21-11315-pre.txt";
+  // std::string file_path = "../data/bal/problem-21-11315-pre.txt";
   // std::string file_path = "../data/bal/problem-257-65132-pre.txt";
   // std::string file_path = "../data/bal/problem-356-226730-pre.txt";
-  // std::string file_path = "../data/bal/problem-1778-993923-pre.txt";
+  std::string file_path = "../data/bal/problem-1778-993923-pre.txt";
 
   initialize_cuda();
 
   // Create graph
-  Graph<FP> graph;
+  Graph<FP, SP> graph;
 
   size_t num_points = 0;
   size_t num_cameras = 0;
@@ -121,11 +122,11 @@ int main(void) {
   uninitialized_vector<Camera<FP>> cameras(num_cameras);
 
   // Create vertices
-  auto point_desc = PointDescriptor<FP>();
+  auto point_desc = PointDescriptor<FP, SP>();
   point_desc.reserve(num_points);
   graph.add_vertex_descriptor(&point_desc);
 
-  auto camera_desc = CameraDescriptor<FP>();
+  auto camera_desc = CameraDescriptor<FP, SP>();
   camera_desc.reserve(num_cameras);
   graph.add_vertex_descriptor(&camera_desc);
 
@@ -135,8 +136,8 @@ int main(void) {
   graph.add_factor_descriptor(&r_desc);
 
   const auto loss = DefaultLoss<FP, 2>();
-  Eigen::Matrix<FP, 2, 2> precision_matrix =
-      Eigen::Matrix<FP, 2, 2>::Identity();
+  Eigen::Matrix<SP, 2, 2> precision_matrix =
+      Eigen::Matrix<SP, 2, 2>::Identity();
 
   auto start = std::chrono::steady_clock::now();
 
@@ -197,7 +198,7 @@ int main(void) {
 
   // Configure solver
   glso::BlockJacobiPreconditioner<FP, SP> preconditioner;
-  PCGSolver<FP, SP> solver(50, 1e-1, 3.0, &preconditioner);
+  PCGSolver<FP, SP> solver(50, 1e-1, 1.0, &preconditioner);
 
   // Optimize
   constexpr size_t iterations = 50;

@@ -30,11 +30,11 @@ public:
   }
 };
 
-template <typename T = double, typename S = T> class Graph {
+template <typename T, typename S> class Graph {
 
 private:
-  GraphVisitor<T> visitor;
-  std::vector<BaseVertexDescriptor<T> *> vertex_descriptors;
+  GraphVisitor<T, S> visitor;
+  std::vector<BaseVertexDescriptor<T, S> *> vertex_descriptors;
   std::vector<BaseFactorDescriptor<T, S> *> factor_descriptors;
   thrust::device_vector<S> b;
   thrust::device_vector<S> jacobian_scales;
@@ -45,9 +45,9 @@ public:
 
   size_t get_hessian_dimension() { return hessian_column; }
 
-  thrust::device_vector<T> &get_b() { return b; }
+  thrust::device_vector<S> &get_b() { return b; }
 
-  std::vector<BaseVertexDescriptor<T> *> &get_vertex_descriptors() {
+  std::vector<BaseVertexDescriptor<T, S> *> &get_vertex_descriptors() {
     return vertex_descriptors;
   }
 
@@ -55,7 +55,7 @@ public:
     return factor_descriptors;
   }
 
-  void add_vertex_descriptor(BaseVertexDescriptor<T> *descriptor) {
+  void add_vertex_descriptor(BaseVertexDescriptor<T, S> *descriptor) {
     vertex_descriptors.push_back(descriptor);
   }
 
@@ -186,7 +186,7 @@ public:
     cudaDeviceSynchronize();
   }
 
-  void apply_step(const T *delta_x) {
+  void apply_step(const S *delta_x) {
     for (auto &desc : vertex_descriptors) {
       desc->visit_update(visitor, delta_x, jacobian_scales.data().get());
     }

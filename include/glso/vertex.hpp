@@ -60,17 +60,17 @@ __global__ void set_state_kernel(VertexType **vertices, const State *src,
   }
 }
 
-template <typename T> class BaseVertexDescriptor {
+template <typename T, typename S> class BaseVertexDescriptor {
 public:
   virtual ~BaseVertexDescriptor(){};
 
   // virtual void update(const T* x, const T* delta) = 0;
-  virtual void visit_update(GraphVisitor<T> &visitor, const T *delta_x,
-                            T *jacobian_scales) = 0;
-  virtual void visit_augment_block_diagonal(GraphVisitor<T> &visitor,
-                                            T *block_diagonal, T mu) = 0;
-  virtual void visit_apply_block_jacobi(GraphVisitor<T> &visitor, T *z,
-                                        const T *r, T *block_diagonal) = 0;
+  virtual void visit_update(GraphVisitor<T, S> &visitor, const S *delta_x,
+                            S *jacobian_scales) = 0;
+  virtual void visit_augment_block_diagonal(GraphVisitor<T, S> &visitor,
+                                            S *block_diagonal, S mu) = 0;
+  virtual void visit_apply_block_jacobi(GraphVisitor<T, S> &visitor, S *z,
+                                        const S *r, S *block_diagonal) = 0;
   virtual size_t dimension() const = 0;
   virtual size_t count() const = 0;
 
@@ -86,8 +86,8 @@ public:
   virtual const uint32_t *get_fixed_mask() const = 0;
 };
 
-template <typename T, typename VTraits>
-class VertexDescriptor : public BaseVertexDescriptor<T> {
+template <typename T, typename S, typename VTraits>
+class VertexDescriptor : public BaseVertexDescriptor<T, S> {
 public:
   using Traits = class VTraits;
 
@@ -112,18 +112,18 @@ public:
 public:
   virtual ~VertexDescriptor(){};
 
-  void visit_update(GraphVisitor<T> &visitor, const T *delta_x,
-                    T *jacobian_scales) override {
+  void visit_update(GraphVisitor<T, S> &visitor, const S *delta_x,
+                    S *jacobian_scales) override {
     visitor.template apply_step(this, delta_x, jacobian_scales);
   }
 
-  void visit_augment_block_diagonal(GraphVisitor<T> &visitor, T *block_diagonal,
-                                    T mu) override {
+  void visit_augment_block_diagonal(GraphVisitor<T, S> &visitor, S *block_diagonal,
+                                    S mu) override {
     visitor.template augment_block_diagonal(this, block_diagonal, mu);
   }
 
-  void visit_apply_block_jacobi(GraphVisitor<T> &visitor, T *z, const T *r,
-                                T *block_diagonal) override {
+  void visit_apply_block_jacobi(GraphVisitor<T, S> &visitor, S *z, const S *r,
+                                S *block_diagonal) override {
     visitor.template apply_block_jacobi(this, z, r, block_diagonal);
   }
 

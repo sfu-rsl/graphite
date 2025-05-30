@@ -7,8 +7,8 @@ namespace glso {
 
 namespace optimizer {
 
-template <typename T>
-T compute_rho(Graph<T> *graph, thrust::device_vector<T> &delta_x, const T chi2,
+template <typename T, typename S>
+T compute_rho(Graph<T, S> *graph, thrust::device_vector<S> &delta_x, const T chi2,
               const T new_chi2, const T mu, const bool step_is_good) {
   // Compute rho
   //  TODO: Don't store these in the graph
@@ -27,7 +27,7 @@ T compute_rho(Graph<T> *graph, thrust::device_vector<T> &delta_x, const T chi2,
 }
 
 template <typename T, typename S>
-bool levenberg_marquardt(Graph<T> *graph, Solver<T, S> *solver,
+bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
                          const size_t num_iterations, T damping_factor = 1e-2) {
 
   // Initialize something for all iterations

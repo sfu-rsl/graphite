@@ -24,16 +24,16 @@ public:
 
   // virtual void error_func(const T** vertices, const T* obs, T* error) = 0;
   virtual bool use_autodiff() = 0;
-  virtual void visit_error(GraphVisitor<T> &visitor) = 0;
-  virtual void visit_error_autodiff(GraphVisitor<T> &visitor) = 0;
-  virtual void visit_b(GraphVisitor<T> &visitor, T *b) = 0;
-  virtual void visit_Jv(GraphVisitor<T> &visitor, T *out, T *in) = 0;
-  virtual void visit_Jtv(GraphVisitor<T> &visitor, T *out, T *in) = 0;
+  virtual void visit_error(GraphVisitor<T, S> &visitor) = 0;
+  virtual void visit_error_autodiff(GraphVisitor<T, S> &visitor) = 0;
+  virtual void visit_b(GraphVisitor<T, S> &visitor, S *b) = 0;
+  virtual void visit_Jv(GraphVisitor<T, S> &visitor, S *out, S *in) = 0;
+  virtual void visit_Jtv(GraphVisitor<T, S> &visitor, S *out, S *in) = 0;
   virtual void visit_block_diagonal(
-      GraphVisitor<T> &visitor,
-      std::unordered_map<BaseVertexDescriptor<T> *, thrust::device_vector<T>>
+      GraphVisitor<T, S> &visitor,
+      std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<S>>
           &block_diagonals) = 0;
-  virtual void visit_scalar_diagonal(GraphVisitor<T> &visitor, T *diagonal) = 0;
+  virtual void visit_scalar_diagonal(GraphVisitor<T, S> &visitor, S *diagonal) = 0;
   // virtual void apply_op(Op<T>& op) = 0;
 
   virtual JacobianStorage<S> *get_jacobians() = 0;
@@ -42,12 +42,12 @@ public:
 
   virtual size_t count() const = 0;
   virtual size_t get_residual_size() const = 0;
-  virtual void scale_jacobians(GraphVisitor<T> &visitor,
-                               T *jacobian_scales) = 0;
+  virtual void scale_jacobians(GraphVisitor<T, S> &visitor,
+                               S *jacobian_scales) = 0;
 
   virtual void to_device() = 0;
 
-  virtual T chi2(GraphVisitor<T> &visitor) = 0;
+  virtual T chi2(GraphVisitor<T, S> &visitor) = 0;
 };
 
 struct DifferentiationMode {
@@ -111,7 +111,7 @@ public:
   // static constexpr size_t error_dim = E;
   static constexpr size_t error_dim = Traits::dimension;
 
-  std::array<BaseVertexDescriptor<T> *, N> vertex_descriptors;
+  std::array<BaseVertexDescriptor<T, S> *, N> vertex_descriptors;
   // using VertexTypesTuple = std::tuple<typename VDTypes::VertexType...>;
   // using VertexPointerTuple = std::tuple<typename VDTypes::VertexType*...>;
   // using VertexPointerPointerTuple = std::tuple<typename
@@ -139,7 +139,7 @@ public:
   thrust::device_vector<size_t> device_ids;
   uninitialized_vector<ObservationType> device_obs;
   thrust::device_vector<T> residuals;
-  uninitialized_vector<T> precision_matrices;
+  uninitialized_vector<S> precision_matrices;
   uninitialized_vector<ConstraintDataType> data;
 
   uninitialized_vector<T> chi2_vec;
@@ -154,32 +154,32 @@ public:
     link_factors({vertex_descriptors...});
   }
 
-  void visit_error(GraphVisitor<T> &visitor) override {
+  void visit_error(GraphVisitor<T, S> &visitor) override {
     visitor.template compute_error(this);
   }
 
-  void visit_error_autodiff(GraphVisitor<T> &visitor) override {
+  void visit_error_autodiff(GraphVisitor<T, S> &visitor) override {
     visitor.template compute_error_autodiff(this);
   }
 
-  void visit_b(GraphVisitor<T> &visitor, T *b) override {
+  void visit_b(GraphVisitor<T, S> &visitor, S *b) override {
     visitor.template compute_b(this, b);
   }
 
-  void visit_Jv(GraphVisitor<T> &visitor, T *out, T *in) override {
+  void visit_Jv(GraphVisitor<T, S> &visitor, S *out, S *in) override {
     visitor.template compute_Jv(this, out, in);
   }
 
-  void visit_Jtv(GraphVisitor<T> &visitor, T *out, T *in) override {
+  void visit_Jtv(GraphVisitor<T, S> &visitor, S *out, S *in) override {
     visitor.template compute_Jtv(this, out, in);
   }
 
   void visit_block_diagonal(
-      GraphVisitor<T> &visitor,
-      std::unordered_map<BaseVertexDescriptor<T> *, thrust::device_vector<T>>
+      GraphVisitor<T, S> &visitor,
+      std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<S>>
           &block_diagonals) override {
 
-    std::array<T *, N> diagonal_blocks;
+    std::array<S *, N> diagonal_blocks;
     for (size_t i = 0; i < N; i++) {
       diagonal_blocks[i] = block_diagonals[vertex_descriptors[i]].data().get();
       // std::cout << "BD size: " <<
@@ -189,7 +189,7 @@ public:
     visitor.template compute_block_diagonal(this, diagonal_blocks);
   }
 
-  void visit_scalar_diagonal(GraphVisitor<T> &visitor, T *diagonal) override {
+  void visit_scalar_diagonal(GraphVisitor<T, S> &visitor, S *diagonal) override {
     visitor.template compute_scalar_diagonal(this, diagonal);
   }
 
@@ -276,7 +276,7 @@ public:
   }
 
   size_t add_factor(const std::array<size_t, N> &ids,
-                    const ObservationType &obs, const T *precision_matrix,
+                    const ObservationType &obs, const S *precision_matrix,
                     const ConstraintDataType &constraint_data,
                     const LossType &loss_func) {
 
@@ -313,11 +313,11 @@ public:
   }
 
   // TODO: Make this private later
-  constexpr static std::array<T, error_dim * error_dim>
+  constexpr static std::array<S, error_dim * error_dim>
   get_default_precision_matrix() {
     constexpr size_t E = error_dim;
     return []() constexpr {
-      std::array<T, E *E> pmat = {};
+      std::array<S, E *E> pmat = {};
       for (size_t i = 0; i < E; i++) {
         pmat[i * E + i] = 1.0;
       }
@@ -373,7 +373,7 @@ public:
   }
 
   void link_factors(
-      const std::array<BaseVertexDescriptor<T> *, N> &vertex_descriptors) {
+      const std::array<BaseVertexDescriptor<T, S> *, N> &vertex_descriptors) {
     this->vertex_descriptors = vertex_descriptors;
   }
 
@@ -414,14 +414,14 @@ public:
   }
 
   // TODO: Make this consider kernels and active edges
-  virtual T chi2(GraphVisitor<T> &visitor) override {
+  virtual T chi2(GraphVisitor<T, S> &visitor) override {
     visitor.template compute_chi2(this);
     return thrust::reduce(thrust::device, chi2_vec.begin(), chi2_vec.end(), 0.0,
                           thrust::plus<T>());
   }
 
-  virtual void scale_jacobians(GraphVisitor<T> &visitor,
-                               T *jacobian_scales) override {
+  virtual void scale_jacobians(GraphVisitor<T, S> &visitor,
+                               S *jacobian_scales) override {
     visitor.template scale_jacobians(this, jacobian_scales);
   }
 

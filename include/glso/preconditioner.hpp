@@ -11,12 +11,12 @@ namespace glso {
 template <typename T, typename S> class Preconditioner {
 public:
   virtual void
-  precompute(GraphVisitor<T> &visitor,
-             std::vector<BaseVertexDescriptor<T> *> &vertex_descriptors,
+  precompute(GraphVisitor<T, S> &visitor,
+             std::vector<BaseVertexDescriptor<T, S> *> &vertex_descriptors,
              std::vector<BaseFactorDescriptor<T, S> *> &factor_descriptors,
-             size_t dimension, T mu) = 0;
+             size_t dimension, S mu) = 0;
 
-  virtual void apply(GraphVisitor<T> &visitor, T *z, const T *r) = 0;
+  virtual void apply(GraphVisitor<T, S> &visitor, S *z, const S *r) = 0;
 };
 
 template <typename T, typename S> class IdentityPreconditioner : public Preconditioner<T, S> {
@@ -24,15 +24,15 @@ private:
   size_t dimension;
 
 public:
-  void precompute(GraphVisitor<T> &visitor,
-                  std::vector<BaseVertexDescriptor<T> *> &vertex_descriptors,
+  void precompute(GraphVisitor<T, S> &visitor,
+                  std::vector<BaseVertexDescriptor<T, S> *> &vertex_descriptors,
                   std::vector<BaseFactorDescriptor<T, S> *> &factor_descriptors,
-                  size_t dimension, T mu) override {
+                  size_t dimension, S mu) override {
     this->dimension = dimension;
   }
 
-  void apply(GraphVisitor<T> &visitor, T *z, const T *r) override {
-    cudaMemcpy(z, r, dimension * sizeof(T), cudaMemcpyDeviceToDevice);
+  void apply(GraphVisitor<T, S> &visitor, S *z, const S *r) override {
+    cudaMemcpy(z, r, dimension * sizeof(S), cudaMemcpyDeviceToDevice);
   }
 };
 
@@ -41,16 +41,16 @@ class BlockJacobiPreconditioner : public Preconditioner<T, S> {
 private:
   size_t dimension;
   std::vector<std::pair<size_t, size_t>> block_sizes;
-  std::unordered_map<BaseVertexDescriptor<T> *, thrust::device_vector<T>>
+  std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<S>>
       block_diagonals;
-  std::vector<BaseVertexDescriptor<T> *> *vds;
+  std::vector<BaseVertexDescriptor<T, S> *> *vds;
   cublasHandle_t handle;
 
   // For batched inversion
   // TODO: Figure out a better way to handle the memory
-  thrust::device_vector<T> Ainv_data;
-  thrust::host_vector<T *> A_ptrs, Ainv_ptrs;
-  thrust::device_vector<T *> A_ptrs_device, Ainv_ptrs_device;
+  thrust::device_vector<S> Ainv_data;
+  thrust::host_vector<S *> A_ptrs, Ainv_ptrs;
+  thrust::device_vector<S *> A_ptrs_device, Ainv_ptrs_device;
   thrust::device_vector<int> info;
 
 public:
@@ -61,10 +61,10 @@ public:
 
   ~BlockJacobiPreconditioner() { cublasDestroy(handle); }
 
-  void precompute(GraphVisitor<T> &visitor,
-                  std::vector<BaseVertexDescriptor<T> *> &vertex_descriptors,
+  void precompute(GraphVisitor<T, S> &visitor,
+                  std::vector<BaseVertexDescriptor<T, S> *> &vertex_descriptors,
                   std::vector<BaseFactorDescriptor<T, S> *> &factor_descriptors,
-                  size_t dimension, T mu) override {
+                  size_t dimension, S mu) override {
     this->dimension = dimension;
     this->vds = &vertex_descriptors;
 
@@ -103,8 +103,8 @@ public:
       Ainv_data.resize(num_blocks * block_size);
       info.resize(num_blocks);
 
-      T *a_ptr = block_diagonals[desc].data().get();
-      T *a_inv_ptr = Ainv_data.data().get();
+      S *a_ptr = block_diagonals[desc].data().get();
+      S *a_inv_ptr = Ainv_data.data().get();
       for (size_t i = 0; i < num_blocks; ++i) {
         A_ptrs[i] = a_ptr + i * block_size;
         Ainv_ptrs[i] = a_inv_ptr + i * block_size;
@@ -113,18 +113,18 @@ public:
       A_ptrs_device = A_ptrs;
       Ainv_ptrs_device = Ainv_ptrs;
 
-      if constexpr (std::is_same<T, double>::value) {
+      if constexpr (std::is_same<S, double>::value) {
 
         cublasDmatinvBatched(handle, d, A_ptrs_device.data().get(), d,
                              Ainv_ptrs_device.data().get(), d,
                              info.data().get(), num_blocks);
-      } else if constexpr (std::is_same<T, float>::value) {
+      } else if constexpr (std::is_same<S, float>::value) {
         cublasSmatinvBatched(handle, d, A_ptrs_device.data().get(), d,
                              Ainv_ptrs_device.data().get(), d,
                              info.data().get(), num_blocks);
       } else {
         static_assert(
-            std::is_same<T, float>::value || std::is_same<T, double>::value,
+            std::is_same<S, float>::value || std::is_same<S, double>::value,
             "BlockJacobiPreconditioner only supports float or double types.");
       }
 
@@ -139,11 +139,11 @@ public:
     cudaDeviceSynchronize();
   }
 
-  void apply(GraphVisitor<T> &visitor, T *z, const T *r) override {
+  void apply(GraphVisitor<T, S> &visitor, S *z, const S *r) override {
     // Apply the preconditioner
     for (auto &desc : *vds) {
       const auto d = desc->dimension();
-      T *blocks = block_diagonals[desc].data().get();
+      S *blocks = block_diagonals[desc].data().get();
       // std::cout << "bd size: " << block_diagonals[desc].size() << std::endl;
       desc->visit_apply_block_jacobi(visitor, z, r, blocks);
     }

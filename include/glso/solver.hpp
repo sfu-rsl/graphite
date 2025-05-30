@@ -14,7 +14,7 @@ template <typename T, typename S> class Solver {
 public:
   virtual ~Solver() = default;
 
-  virtual bool solve(Graph<T> *graph, T *delta_x, T damping_factor) = 0;
+  virtual bool solve(Graph<T, S> *graph, S *delta_x, S damping_factor) = 0;
 };
 
 template <typename T, typename S> class PCGSolver : public Solver<T, S> {
@@ -22,13 +22,13 @@ private:
   thrust::device_vector<T> v;
 
   // Need vectors for residuals of each factor
-  thrust::device_vector<T> v1;   // v1 = Jv (dimension same as r)
-  thrust::device_vector<T> v2;   // v2 = J^T v1 (dimension same as x)
-  thrust::device_vector<T> r;    // residual
-  thrust::device_vector<T> p;    // search direction
-  thrust::device_vector<T> z;    // preconditioned residual
-  thrust::device_vector<T> diag; // diagonal of Hessian
-  thrust::device_vector<T> x_backup;
+  thrust::device_vector<S> v1;   // v1 = Jv (dimension same as r)
+  thrust::device_vector<S> v2;   // v2 = J^T v1 (dimension same as x)
+  thrust::device_vector<S> r;    // residual
+  thrust::device_vector<S> p;    // search direction
+  thrust::device_vector<S> z;    // preconditioned residual
+  thrust::device_vector<S> diag; // diagonal of Hessian
+  thrust::device_vector<S> x_backup;
 
   size_t max_iter;
   T tol;
@@ -41,12 +41,12 @@ public:
       : max_iter(max_iter), tol(tol), rejection_ratio(rejection_ratio), preconditioner(preconditioner) {}
 
   // Assumes that x is already initialized
-  virtual bool solve(Graph<T> *graph, T *x, T damping_factor) override {
+  virtual bool solve(Graph<T, S> *graph, S *x, S damping_factor) override {
 
     auto &vertex_descriptors = graph->get_vertex_descriptors();
     auto &factor_descriptors = graph->get_factor_descriptors();
-    auto visitor = GraphVisitor<T>();
-    T *b = graph->get_b().data().get();
+    auto visitor = GraphVisitor<T, S>();
+    S *b = graph->get_b().data().get();
     size_t dim_h = graph->get_hessian_dimension();
 
     thrust::fill(thrust::device, x, x + dim_h, 0);
@@ -68,7 +68,7 @@ public:
     thrust::fill(r.begin(), r.end(), 0);
 
     // 1. First compute Jx
-    T *v1_ptr = v1.data().get();
+    S *v1_ptr = v1.data().get();
     for (size_t i = 0; i < factor_descriptors.size(); i++) {
       factor_descriptors[i]->visit_Jv(visitor, v1_ptr, x);
       v1_ptr += factor_descriptors[i]->get_residual_size();
@@ -94,15 +94,15 @@ public:
     // thrust::fill(diag.begin(), diag.end(), 1.0);
 
     // Check for negative values in diag and print an error if found
-    T min_diag = 1.0e-6;
-    T max_diag = 1.0e32;
+    S min_diag = 1.0e-6;
+    S max_diag = 1.0e32;
     clamp(dim_h, min_diag, max_diag, diag.data().get());
 
     damp_by_factor(dim_h, v2.data().get(), damping_factor, diag.data().get(),
                    x);
 
     // 4. Finally r = b - v2
-    axpy(dim_h, r.data().get(), (T)-1.0, (const T *)v2.data().get(), b);
+    axpy(dim_h, r.data().get(), (S)-1.0, (const S *)v2.data().get(), b);
 
     cudaDeviceSynchronize();
 
@@ -120,9 +120,9 @@ public:
     x_backup.resize(dim_h);
 
     // 1. First compute dot(r, z)
-    T rz = thrust::inner_product(r.begin(), r.end(), z.begin(), 0.0);
+    S rz = thrust::inner_product(r.begin(), r.end(), z.begin(), 0.0);
     // T rz_0 = rz;
-    T rz_0 = std::numeric_limits<T>::infinity();
+    S rz_0 = std::numeric_limits<T>::infinity();
 
     for (size_t k = 0; k < max_iter; k++) {
 
@@ -150,20 +150,20 @@ public:
       // cudaDeviceSynchronize();
 
       // 4. Compute alpha = dot(r, z) / dot(p, v2)
-      T alpha = rz / thrust::inner_product(p.begin(), p.end(), v2.begin(), 0.0);
+      S alpha = rz / thrust::inner_product(p.begin(), p.end(), v2.begin(), 0.0);
       // 5. x  += alpha * p
       thrust::copy(thrust::device, x, x + dim_h, x_backup.begin());
-      axpy(dim_h, x, alpha, (const T *)p.data().get(), x);
+      axpy(dim_h, x, alpha, (const S *)p.data().get(), x);
 
       // 6. r -= alpha * v2
-      axpy(dim_h, r.data().get(), -alpha, (const T *)v2.data().get(),
+      axpy(dim_h, r.data().get(), -alpha, (const S *)v2.data().get(),
            r.data().get());
       cudaDeviceSynchronize();
 
       // Apply preconditioner again
       thrust::fill(z.begin(), z.end(), 0);
       preconditioner->apply(visitor, z.data().get(), r.data().get());
-      T rz_new = thrust::inner_product(r.begin(), r.end(), z.begin(), 0.0);
+      S rz_new = thrust::inner_product(r.begin(), r.end(), z.begin(), 0.0);
 
       // 7. Check termination criteria
       // if (sqrt(rz_new / rz_0) < tol) {
@@ -178,11 +178,11 @@ public:
       rz_0 = std::min(rz_0, rz_new);
 
       // 8. Compute beta
-      T beta = rz_new / rz;
+      S beta = rz_new / rz;
       rz = rz_new;
 
       // 9. Update p
-      axpy(dim_h, p.data().get(), beta, (const T *)p.data().get(),
+      axpy(dim_h, p.data().get(), beta, (const S *)p.data().get(),
            z.data().get());
       cudaDeviceSynchronize();
 
