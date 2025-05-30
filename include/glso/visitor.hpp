@@ -18,13 +18,13 @@ __device__ void device_copy(const VPtr v, T *dst) {
   }
 }
 
-template <typename VPtr, class VD, typename T, size_t D>
-__device__ void real_to_dual(const VPtr v, Dual<T> *dst) {
+template <typename VPtr, class VD, typename T, typename P, size_t D>
+__device__ void real_to_dual(const VPtr v, Dual<T, P> *dst) {
   // const std::array<T, D> src = v->parameters();
   const std::array<T, D> src = VD::Traits::parameters(*v);
 #pragma unroll
   for (size_t i = 0; i < D; i++) {
-    dst[i] = Dual<T>(src[i]);
+    dst[i] = Dual<T, P>(src[i]);
   }
 }
 
@@ -73,7 +73,7 @@ apply_update_kernel(V **vertices, const S *delta_x, const S *jacobian_scales,
 std::array<T, Descriptor::dim> scaled_delta;
 #pragma unroll
   for (size_t i = 0; i < Descriptor::dim; i++) {
-    scaled_delta[i] = static_cast<S>(delta[i] * scales[i]);
+    scaled_delta[i] = static_cast<T>(delta[i] * scales[i]);
   }
 
   // vertices[vertex_id]->update(scaled_delta.data());
@@ -151,9 +151,9 @@ __global__ void compute_error_kernel_autodiff(
 
   // printf("CEAD: Thread %d, Vertex %d, Factor %d\n", idx, vertex_id,
   // factor_id);
-
+  using G = S;
   const M *local_obs = obs + factor_id;
-  Dual<T> local_error[E];
+  Dual<T, G> local_error[E];
   const typename F::ConstraintDataType *local_data =
       constraint_data + factor_id;
 
@@ -162,7 +162,7 @@ __global__ void compute_error_kernel_autodiff(
     local_error[i] = error[factor_id * E + i];
   }
 
-  auto v = cuda::std::make_tuple(std::array<Dual<T>, vertex_sizes[Is]>{}...);
+  auto v = cuda::std::make_tuple(std::array<Dual<T, G>, vertex_sizes[Is]>{}...);
 
   auto vargs =
       std::make_tuple((*(std::get<Is>(args) + ids[factor_id * N + Is]))...);
@@ -170,14 +170,14 @@ __global__ void compute_error_kernel_autodiff(
   auto copy_vertices = [&v, &vertex_sizes, &vargs](auto &&...ptrs) {
     ((real_to_dual<
          decltype(std::get<Is>(vargs)),
-         std::tuple_element<Is, typename F::Traits::VertexDescriptors>::type, T,
+         std::tuple_element<Is, typename F::Traits::VertexDescriptors>::type, T, G,
          vertex_sizes[Is]>(std::get<Is>(vargs), cuda::std::get<Is>(v).data())),
      ...);
   };
 
   std::apply(copy_vertices, vargs);
 
-  cuda::std::get<I>(v)[idx % vertex_sizes[I]].dual = static_cast<T>(1);
+  cuda::std::get<I>(v)[idx % vertex_sizes[I]].dual = static_cast<G>(1);
 
   F::Traits::error(cuda::std::get<Is>(v).data()..., local_obs, local_error,
                    vargs, local_data);
@@ -197,8 +197,6 @@ __global__ void compute_error_kernel_autodiff(
 #pragma unroll
     for (size_t i = 0; i < E; ++i) {
       error[factor_id * E + i] = local_error[i].real;
-      // printf("Error[%d] = %f\n", factor_id * E + i, error[factor_id * E +
-      // i]);
     }
   }
 
@@ -210,8 +208,6 @@ __global__ void compute_error_kernel_autodiff(
 #pragma unroll
   for (size_t i = 0; i < E; ++i) {
     jacs[I][j_size * factor_id + col_offset + i] = local_error[i].dual;
-    // printf("Jacobian[%d] = %f\n", j_size*factor_id + col_offset + i,
-    // jacs[I][j_size*factor_id + col_offset + i]);
   }
 }
 // TODO: Make this more efficient and see if code can be shared with the

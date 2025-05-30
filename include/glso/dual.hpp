@@ -4,61 +4,63 @@
 
 namespace glso {
 
-template <typename T> struct Dual {
+template <typename T, typename D> struct Dual {
   T real;
-  T dual;
+  D dual;
+
+  using DT = Dual<T, D>;
 
   __host__ __device__ Dual() : real(0), dual(0) {}
-  __host__ __device__ Dual(T real, T dual) : real(real), dual(dual) {}
+  __host__ __device__ Dual(T real, D dual) : real(real), dual(dual) {}
   __host__ __device__ Dual(T real) : real(real), dual(0) {}
 
-  __host__ __device__ Dual<T> operator+(const Dual<T> &other) const {
-    return Dual<T>(real + other.real, dual + other.dual);
+  __host__ __device__ DT operator+(const DT &other) const {
+    return DT(real + other.real, dual + other.dual);
   }
 
-  __host__ __device__ Dual<T> operator-(const Dual<T> &other) const {
-    return Dual<T>(real - other.real, dual - other.dual);
+  __host__ __device__ DT operator-(const DT &other) const {
+    return DT(real - other.real, dual - other.dual);
   }
 
-  __host__ __device__ Dual<T> operator-() const {
-    return Dual<T>(-real, -dual);
+  __host__ __device__ DT operator-() const {
+    return DT(-real, -dual);
   }
 
-  __host__ __device__ Dual<T> operator*(const Dual<T> &other) const {
-    return Dual<T>(real * other.real, real * other.dual + dual * other.real);
+  __host__ __device__ DT operator*(const DT &other) const {
+    return DT(real * other.real, real * other.dual + dual * other.real);
   }
 
-  __host__ __device__ Dual<T> operator/(const Dual<T> &other) const {
+  __host__ __device__ DT operator/(const DT &other) const {
     if (other.real == 0) {
       // Handle division by zero case
-      return Dual<T>(std::numeric_limits<T>::infinity(),
+      return DT(std::numeric_limits<T>::infinity(),
                      std::numeric_limits<T>::infinity());
     }
     T denominator = other.real * other.real;
-    return Dual<T>((real * other.real) / denominator,
+    return DT((real * other.real) / denominator,
                    (dual * other.real - real * other.dual) / denominator);
   }
 
-  __host__ __device__ Dual<T> &operator+=(const Dual<T> &other) {
+  __host__ __device__ DT &operator+=(const DT &other) {
     real += other.real;
     dual += other.dual;
     return *this;
   }
 
-  __host__ __device__ Dual<T> &operator-=(const Dual<T> &other) {
+  __host__ __device__ DT &operator-=(const DT &other) {
     real -= other.real;
     dual -= other.dual;
     return *this;
   }
 
-  __host__ __device__ Dual<T> &operator*=(const Dual<T> &other) {
+  __host__ __device__ DT &operator*=(const DT &other) {
     T new_real = real * other.real;
     dual = real * other.dual + dual * other.real;
     real = new_real;
     return *this;
   }
 
-  __host__ __device__ Dual<T> &operator/=(const Dual<T> &other) {
+  __host__ __device__ DT &operator/=(const DT &other) {
     if (other.real == 0) {
       // Handle division by zero case
       real = std::numeric_limits<T>::infinity();
@@ -72,41 +74,41 @@ template <typename T> struct Dual {
     return *this;
   }
 
-  __host__ __device__ friend Dual<T> sin(const Dual<T> &x) {
-    return Dual<T>(std::sin(x.real), x.dual * std::cos(x.real));
+  __host__ __device__ friend DT sin(const DT &x) {
+    return DT(std::sin(x.real), x.dual * std::cos(x.real));
   }
 
-  __host__ __device__ friend Dual<T> cos(const Dual<T> &x) {
-    return Dual<T>(std::cos(x.real), -x.dual * std::sin(x.real));
+  __host__ __device__ friend DT cos(const DT &x) {
+    return DT(std::cos(x.real), -x.dual * std::sin(x.real));
   }
 
-  __host__ __device__ friend Dual<T> exp(const Dual<T> &x) {
+  __host__ __device__ friend DT exp(const DT &x) {
     T exp_real = std::exp(x.real);
-    return Dual<T>(exp_real, x.dual * exp_real);
+    return DT(exp_real, x.dual * exp_real);
   }
 
-  __host__ __device__ friend Dual<T> log(const Dual<T> &x) {
-    return Dual<T>(std::log(x.real), x.dual / x.real);
+  __host__ __device__ friend DT log(const DT &x) {
+    return DT(std::log(x.real), x.dual / x.real);
   }
 
-  __host__ __device__ friend Dual<T> sqrt(const Dual<T> &x) {
+  __host__ __device__ friend DT sqrt(const DT &x) {
     T sqrt_real = std::sqrt(x.real);
-    return Dual<T>(sqrt_real, x.dual / (2 * sqrt_real));
+    return DT(sqrt_real, x.dual / (2 * sqrt_real));
   }
 
-  __host__ __device__ bool operator<(const Dual<T> &other) const {
+  __host__ __device__ bool operator<(const DT &other) const {
     return real < other.real;
   }
 
-  __host__ __device__ bool operator>(const Dual<T> &other) const {
+  __host__ __device__ bool operator>(const DT &other) const {
     return real > other.real;
   }
 
-  __host__ __device__ bool operator<=(const Dual<T> &other) const {
+  __host__ __device__ bool operator<=(const DT &other) const {
     return real <= other.real;
   }
 
-  __host__ __device__ bool operator>=(const Dual<T> &other) const {
+  __host__ __device__ bool operator>=(const DT &other) const {
     return real >= other.real;
   }
 };
