@@ -11,14 +11,14 @@
 
 namespace glso {
 
-template <typename T> class JacobianStorage {
+template <typename S> class JacobianStorage {
 public:
   std::pair<size_t, size_t> dimensions;
 
-  thrust::device_vector<T> data;
+  thrust::device_vector<S> data;
 };
 
-template <typename T> class BaseFactorDescriptor {
+template <typename T, typename S> class BaseFactorDescriptor {
 public:
   virtual ~BaseFactorDescriptor(){};
 
@@ -36,7 +36,7 @@ public:
   virtual void visit_scalar_diagonal(GraphVisitor<T> &visitor, T *diagonal) = 0;
   // virtual void apply_op(Op<T>& op) = 0;
 
-  virtual JacobianStorage<T> *get_jacobians() = 0;
+  virtual JacobianStorage<S> *get_jacobians() = 0;
   virtual void initialize_jacobian_storage() = 0;
   // virtual size_t get_num_vertices() const = 0;
 
@@ -89,8 +89,8 @@ using transform_tuple_t = typename transform_tuple<Tuple, MetaFunc>::type;
 
 // template <typename T, int E, typename M, typename C, template <typename, int>
 // class L, template <typename> class Derived, typename... VDTypes>
-template <typename T, typename FTraits>
-class FactorDescriptor : public BaseFactorDescriptor<T> {
+template <typename T, typename S, typename FTraits>
+class FactorDescriptor : public BaseFactorDescriptor<T, S> {
 
 private:
   std::vector<size_t> global_ids;
@@ -143,10 +143,10 @@ public:
   uninitialized_vector<ConstraintDataType> data;
 
   uninitialized_vector<T> chi2_vec;
-  thrust::device_vector<T> chi2_derivative;
+  thrust::device_vector<S> chi2_derivative;
   uninitialized_vector<LossType> loss;
 
-  std::array<JacobianStorage<T>, N> jacobians;
+  std::array<JacobianStorage<S>, N> jacobians;
 
   template <typename... VertexDescPtrs,
             typename = std::enable_if_t<sizeof...(VertexDescPtrs) == N>>
@@ -195,7 +195,7 @@ public:
 
   static constexpr size_t get_num_vertices() { return N; }
 
-  JacobianStorage<T> *get_jacobians() override { return jacobians.data(); }
+  JacobianStorage<S> *get_jacobians() override { return jacobians.data(); }
 
   void reserve(size_t size) {
     global_ids.reserve(N * size);

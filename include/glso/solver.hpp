@@ -10,14 +10,14 @@
 
 namespace glso {
 
-template <typename T> class Solver {
+template <typename T, typename S> class Solver {
 public:
   virtual ~Solver() = default;
 
   virtual bool solve(Graph<T> *graph, T *delta_x, T damping_factor) = 0;
 };
 
-template <typename T> class PCGSolver : public Solver<T> {
+template <typename T, typename S> class PCGSolver : public Solver<T, S> {
 private:
   thrust::device_vector<T> v;
 
@@ -26,17 +26,19 @@ private:
   thrust::device_vector<T> v2;   // v2 = J^T v1 (dimension same as x)
   thrust::device_vector<T> r;    // residual
   thrust::device_vector<T> p;    // search direction
+  thrust::device_vector<T> z;    // preconditioned residual
   thrust::device_vector<T> diag; // diagonal of Hessian
   thrust::device_vector<T> x_backup;
 
   size_t max_iter;
   T tol;
+  T rejection_ratio;
 
-  Preconditioner<T> *preconditioner;
+  Preconditioner<T, S> *preconditioner;
 
 public:
-  PCGSolver(size_t max_iter, T tol, Preconditioner<T> *preconditioner)
-      : max_iter(max_iter), tol(tol), preconditioner(preconditioner) {}
+  PCGSolver(size_t max_iter, T tol, T rejection_ratio, Preconditioner<T, S> *preconditioner)
+      : max_iter(max_iter), tol(tol), rejection_ratio(rejection_ratio), preconditioner(preconditioner) {}
 
   // Assumes that x is already initialized
   virtual bool solve(Graph<T> *graph, T *x, T damping_factor) override {
@@ -107,7 +109,7 @@ public:
     // Apply preconditioner
     preconditioner->precompute(visitor, vertex_descriptors, factor_descriptors,
                                dim_h, damping_factor);
-    thrust::device_vector<T> z(dim_h);
+    z.resize(dim_h);
 
     thrust::fill(z.begin(), z.end(), 0);
     preconditioner->apply(visitor, z.data().get(), r.data().get());
@@ -121,7 +123,6 @@ public:
     T rz = thrust::inner_product(r.begin(), r.end(), z.begin(), 0.0);
     // T rz_0 = rz;
     T rz_0 = std::numeric_limits<T>::infinity();
-    constexpr T rejection_ratio = 1.0;
 
     for (size_t k = 0; k < max_iter; k++) {
 

@@ -76,8 +76,8 @@ template <typename T> struct ReprojectionErrorTraits {
   }
 };
 
-template <typename T>
-using ReprojectionError = FactorDescriptor<T, ReprojectionErrorTraits<T>>;
+template <typename T, typename S>
+using ReprojectionError = FactorDescriptor<T, S, ReprojectionErrorTraits<T>>;
 
 } // namespace glso
 
@@ -87,12 +87,13 @@ int main(void) {
 
   using FP = double;
   // using FP = float;
+  using SP = FP;
 
   // std::string file_path = "../data/bal/problem-16-22106-pre.txt";
-  // std::string file_path = "../data/bal/problem-21-11315-pre.txt";
+  std::string file_path = "../data/bal/problem-21-11315-pre.txt";
   // std::string file_path = "../data/bal/problem-257-65132-pre.txt";
   // std::string file_path = "../data/bal/problem-356-226730-pre.txt";
-  std::string file_path = "../data/bal/problem-1778-993923-pre.txt";
+  // std::string file_path = "../data/bal/problem-1778-993923-pre.txt";
 
   initialize_cuda();
 
@@ -129,7 +130,7 @@ int main(void) {
   graph.add_vertex_descriptor(&camera_desc);
 
   // Create edges
-  auto r_desc = ReprojectionError<FP>(&camera_desc, &point_desc);
+  auto r_desc = ReprojectionError<FP, SP>(&camera_desc, &point_desc);
   r_desc.reserve(num_observations);
   graph.add_factor_descriptor(&r_desc);
 
@@ -195,8 +196,8 @@ int main(void) {
   file.close();
 
   // Configure solver
-  glso::BlockJacobiPreconditioner<FP> preconditioner;
-  PCGSolver<FP> solver(100, 1e-1, &preconditioner);
+  glso::BlockJacobiPreconditioner<FP, SP> preconditioner;
+  PCGSolver<FP, SP> solver(50, 1e-1, 3.0, &preconditioner);
 
   // Optimize
   constexpr size_t iterations = 50;
@@ -206,7 +207,7 @@ int main(void) {
   std::cout << "Optimizing!" << std::endl;
 
   start = std::chrono::steady_clock::now();
-  optimizer::levenberg_marquardt<FP>(&graph, &solver, iterations, 1e-4);
+  optimizer::levenberg_marquardt<FP, SP>(&graph, &solver, iterations, 1e-4);
   auto end = std::chrono::steady_clock::now();
 
   std::chrono::duration<FP> elapsed = end - start;

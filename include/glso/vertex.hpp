@@ -92,12 +92,12 @@ public:
   using Traits = class VTraits;
 
   using VertexType = typename Traits::Vertex;
-  using S = get_State_or_t<Traits, VertexType>;
+  using State = get_State_or_t<Traits, VertexType>;
 
 private:
   thrust::device_vector<VertexType *> x_device;
   thrust::host_vector<VertexType *> x_host;
-  thrust::device_vector<S> backup_state;
+  thrust::device_vector<State> backup_state;
 
 public:
   // Mappings
@@ -145,7 +145,7 @@ public:
     const auto num_blocks = (num_threads + block_size - 1) / block_size;
     backup_state.resize(num_vertices);
 
-    backup_state_kernel<VertexType, S, Traits, T>
+    backup_state_kernel<VertexType, State, Traits, T>
         <<<num_blocks, block_size>>>(vertices, backup_state.data().get(),
                                      fixed_mask.data().get(), num_vertices);
   }
@@ -157,7 +157,7 @@ public:
     const int num_threads = num_vertices;
     const int block_size = 256;
     const auto num_blocks = (num_threads + block_size - 1) / block_size;
-    set_state_kernel<VertexType, S, Traits, T>
+    set_state_kernel<VertexType, State, Traits, T>
         <<<num_blocks, block_size>>>(vertices, backup_state.data().get(),
                                      fixed_mask.data().get(), num_vertices);
   }

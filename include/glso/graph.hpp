@@ -30,14 +30,14 @@ public:
   }
 };
 
-template <typename T = double> class Graph {
+template <typename T = double, typename S = T> class Graph {
 
 private:
   GraphVisitor<T> visitor;
   std::vector<BaseVertexDescriptor<T> *> vertex_descriptors;
-  std::vector<BaseFactorDescriptor<T> *> factor_descriptors;
-  thrust::device_vector<T> b;
-  thrust::device_vector<T> jacobian_scales;
+  std::vector<BaseFactorDescriptor<T, S> *> factor_descriptors;
+  thrust::device_vector<S> b;
+  thrust::device_vector<S> jacobian_scales;
   size_t hessian_column;
 
 public:
@@ -51,7 +51,7 @@ public:
     return vertex_descriptors;
   }
 
-  std::vector<BaseFactorDescriptor<T> *> &get_factor_descriptors() {
+  std::vector<BaseFactorDescriptor<T, S> *> &get_factor_descriptors() {
     return factor_descriptors;
   }
 
@@ -127,7 +127,7 @@ public:
   }
 
   T chi2() {
-    T chi2 = 0;
+    T chi2 = static_cast<T>(0);
     for (auto &factor : factor_descriptors) {
       chi2 += factor->chi2(visitor);
     }

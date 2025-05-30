@@ -26,8 +26,8 @@ T compute_rho(Graph<T> *graph, thrust::device_vector<T> &delta_x, const T chi2,
   return num / (denom);
 }
 
-template <typename T>
-bool levenberg_marquardt(Graph<T> *graph, Solver<T> *solver,
+template <typename T, typename S>
+bool levenberg_marquardt(Graph<T> *graph, Solver<T, S> *solver,
                          const size_t num_iterations, T damping_factor = 1e-2) {
 
   // Initialize something for all iterations
@@ -45,7 +45,7 @@ bool levenberg_marquardt(Graph<T> *graph, Solver<T> *solver,
 
   graph->linearize();
 
-  thrust::device_vector<T> delta_x(graph->get_hessian_dimension());
+  thrust::device_vector<S> delta_x(graph->get_hessian_dimension());
 
   bool run = true;
 

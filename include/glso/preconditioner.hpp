@@ -8,25 +8,25 @@
 
 namespace glso {
 
-template <typename T> class Preconditioner {
+template <typename T, typename S> class Preconditioner {
 public:
   virtual void
   precompute(GraphVisitor<T> &visitor,
              std::vector<BaseVertexDescriptor<T> *> &vertex_descriptors,
-             std::vector<BaseFactorDescriptor<T> *> &factor_descriptors,
+             std::vector<BaseFactorDescriptor<T, S> *> &factor_descriptors,
              size_t dimension, T mu) = 0;
 
   virtual void apply(GraphVisitor<T> &visitor, T *z, const T *r) = 0;
 };
 
-template <typename T> class IdentityPreconditioner : public Preconditioner<T> {
+template <typename T, typename S> class IdentityPreconditioner : public Preconditioner<T, S> {
 private:
   size_t dimension;
 
 public:
   void precompute(GraphVisitor<T> &visitor,
                   std::vector<BaseVertexDescriptor<T> *> &vertex_descriptors,
-                  std::vector<BaseFactorDescriptor<T> *> &factor_descriptors,
+                  std::vector<BaseFactorDescriptor<T, S> *> &factor_descriptors,
                   size_t dimension, T mu) override {
     this->dimension = dimension;
   }
@@ -36,8 +36,8 @@ public:
   }
 };
 
-template <typename T>
-class BlockJacobiPreconditioner : public Preconditioner<T> {
+template <typename T, typename S>
+class BlockJacobiPreconditioner : public Preconditioner<T, S> {
 private:
   size_t dimension;
   std::vector<std::pair<size_t, size_t>> block_sizes;
@@ -63,7 +63,7 @@ public:
 
   void precompute(GraphVisitor<T> &visitor,
                   std::vector<BaseVertexDescriptor<T> *> &vertex_descriptors,
-                  std::vector<BaseFactorDescriptor<T> *> &factor_descriptors,
+                  std::vector<BaseFactorDescriptor<T, S> *> &factor_descriptors,
                   size_t dimension, T mu) override {
     this->dimension = dimension;
     this->vds = &vertex_descriptors;
