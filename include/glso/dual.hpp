@@ -22,9 +22,7 @@ template <typename T, typename D> struct Dual {
     return DT(real - other.real, dual - other.dual);
   }
 
-  __host__ __device__ DT operator-() const {
-    return DT(-real, -dual);
-  }
+  __host__ __device__ DT operator-() const { return DT(-real, -dual); }
 
   __host__ __device__ DT operator*(const DT &other) const {
     return DT(real * other.real, real * other.dual + dual * other.real);
@@ -34,11 +32,11 @@ template <typename T, typename D> struct Dual {
     if (other.real == 0) {
       // Handle division by zero case
       return DT(std::numeric_limits<T>::infinity(),
-                     std::numeric_limits<T>::infinity());
+                std::numeric_limits<T>::infinity());
     }
     T denominator = other.real * other.real;
     return DT((real * other.real) / denominator,
-                   (dual * other.real - real * other.dual) / denominator);
+              (dual * other.real - real * other.dual) / denominator);
   }
 
   __host__ __device__ DT &operator+=(const DT &other) {

@@ -117,8 +117,8 @@ public:
     visitor.template apply_step(this, delta_x, jacobian_scales);
   }
 
-  void visit_augment_block_diagonal(GraphVisitor<T, S> &visitor, S *block_diagonal,
-                                    S mu) override {
+  void visit_augment_block_diagonal(GraphVisitor<T, S> &visitor,
+                                    S *block_diagonal, S mu) override {
     visitor.template augment_block_diagonal(this, block_diagonal, mu);
   }
 

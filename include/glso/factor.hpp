@@ -33,7 +33,8 @@ public:
       GraphVisitor<T, S> &visitor,
       std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<S>>
           &block_diagonals) = 0;
-  virtual void visit_scalar_diagonal(GraphVisitor<T, S> &visitor, S *diagonal) = 0;
+  virtual void visit_scalar_diagonal(GraphVisitor<T, S> &visitor,
+                                     S *diagonal) = 0;
   // virtual void apply_op(Op<T>& op) = 0;
 
   virtual JacobianStorage<S> *get_jacobians() = 0;
@@ -189,7 +190,8 @@ public:
     visitor.template compute_block_diagonal(this, diagonal_blocks);
   }
 
-  void visit_scalar_diagonal(GraphVisitor<T, S> &visitor, S *diagonal) override {
+  void visit_scalar_diagonal(GraphVisitor<T, S> &visitor,
+                             S *diagonal) override {
     visitor.template compute_scalar_diagonal(this, diagonal);
   }
 

@@ -37,8 +37,10 @@ private:
   Preconditioner<T, S> *preconditioner;
 
 public:
-  PCGSolver(size_t max_iter, T tol, T rejection_ratio, Preconditioner<T, S> *preconditioner)
-      : max_iter(max_iter), tol(tol), rejection_ratio(rejection_ratio), preconditioner(preconditioner) {}
+  PCGSolver(size_t max_iter, T tol, T rejection_ratio,
+            Preconditioner<T, S> *preconditioner)
+      : max_iter(max_iter), tol(tol), rejection_ratio(rejection_ratio),
+        preconditioner(preconditioner) {}
 
   // Assumes that x is already initialized
   virtual bool solve(Graph<T, S> *graph, S *x, S damping_factor) override {

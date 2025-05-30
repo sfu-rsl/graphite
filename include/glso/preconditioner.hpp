@@ -19,7 +19,8 @@ public:
   virtual void apply(GraphVisitor<T, S> &visitor, S *z, const S *r) = 0;
 };
 
-template <typename T, typename S> class IdentityPreconditioner : public Preconditioner<T, S> {
+template <typename T, typename S>
+class IdentityPreconditioner : public Preconditioner<T, S> {
 private:
   size_t dimension;
 

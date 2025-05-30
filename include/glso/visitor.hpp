@@ -42,8 +42,8 @@ __device__ T compute_chi2(const T *residuals, const P *pmat,
   for (int i = 0; i < E; i++) {
 #pragma unroll
     for (int j = 0; j < E; j++) {
-      r2[i] +=
-          static_cast<T>(pmat[factor_id * E * E + i * E + j]) * residuals[factor_id * E + j];
+      r2[i] += static_cast<T>(pmat[factor_id * E * E + i * E + j]) *
+               residuals[factor_id * E + j];
     }
   }
 
@@ -70,7 +70,7 @@ apply_update_kernel(V **vertices, const S *delta_x, const S *jacobian_scales,
   const S *delta = delta_x + hessian_ids[vertex_id];
   const S *scales = jacobian_scales + hessian_ids[vertex_id];
 
-std::array<T, Descriptor::dim> scaled_delta;
+  std::array<T, Descriptor::dim> scaled_delta;
 #pragma unroll
   for (size_t i = 0; i < Descriptor::dim; i++) {
     scaled_delta[i] = static_cast<T>(delta[i] * scales[i]);
@@ -81,7 +81,7 @@ std::array<T, Descriptor::dim> scaled_delta;
 }
 
 template <typename S, int D>
-__global__ void augment_hessian_diagonal_kernel(S* diagonal_blocks, const S mu,
+__global__ void augment_hessian_diagonal_kernel(S *diagonal_blocks, const S mu,
                                                 const uint32_t *fixed,
                                                 const size_t num_threads) {
   const size_t idx = get_thread_id();
@@ -100,7 +100,8 @@ __global__ void augment_hessian_diagonal_kernel(S* diagonal_blocks, const S mu,
   S *block = diagonal_blocks + vertex_id * block_size;
   for (size_t i = 0; i < D; i++) {
     block[i * D + i] +=
-        mu * static_cast<S>(std::clamp(static_cast<double>(block[i * D + i]), 1e-6, 1e32));
+        mu * static_cast<S>(
+                 std::clamp(static_cast<double>(block[i * D + i]), 1e-6, 1e32));
   }
 }
 
@@ -131,8 +132,8 @@ __global__ void apply_block_jacobi_kernel(T *z, const T *r, T *block_diagonal,
   z[hessian_offset + row] = value;
 }
 
-template <typename T, typename S, size_t I, size_t N, typename M, size_t E, typename F,
-          typename VT, std::size_t... Is>
+template <typename T, typename S, size_t I, size_t N, typename M, size_t E,
+          typename F, typename VT, std::size_t... Is>
 __global__ void compute_error_kernel_autodiff(
     const M *obs, T *error,
     const typename F::ConstraintDataType *constraint_data, size_t *ids,
@@ -170,8 +171,9 @@ __global__ void compute_error_kernel_autodiff(
   auto copy_vertices = [&v, &vertex_sizes, &vargs](auto &&...ptrs) {
     ((real_to_dual<
          decltype(std::get<Is>(vargs)),
-         std::tuple_element<Is, typename F::Traits::VertexDescriptors>::type, T, G,
-         vertex_sizes[Is]>(std::get<Is>(vargs), cuda::std::get<Is>(v).data())),
+         std::tuple_element<Is, typename F::Traits::VertexDescriptors>::type, T,
+         G, vertex_sizes[Is]>(std::get<Is>(vargs),
+                              cuda::std::get<Is>(v).data())),
      ...);
   };
 
@@ -891,8 +893,8 @@ private:
        compute_Jv_kernel<S, Is, num_vertices, F::error_dim,
                          f->get_vertex_sizes()[Is], F>
            <<<num_blocks, threads_per_block>>>(
-               out, in, f->device_ids.data().get(),
-               hessian_ids[Is], num_threads, jacs[Is],
+               out, in, f->device_ids.data().get(), hessian_ids[Is],
+               num_threads, jacs[Is],
                f->vertex_descriptors[Is]->get_fixed_mask(),
                std::make_index_sequence<num_vertices>{});
      }()),

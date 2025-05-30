@@ -8,8 +8,9 @@ namespace glso {
 namespace optimizer {
 
 template <typename T, typename S>
-T compute_rho(Graph<T, S> *graph, thrust::device_vector<S> &delta_x, const T chi2,
-              const T new_chi2, const T mu, const bool step_is_good) {
+T compute_rho(Graph<T, S> *graph, thrust::device_vector<S> &delta_x,
+              const T chi2, const T new_chi2, const T mu,
+              const bool step_is_good) {
   // Compute rho
   //  TODO: Don't store these in the graph
   auto &b = graph->get_b();

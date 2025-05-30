@@ -62,7 +62,8 @@ using CameraDescriptor = VertexDescriptor<T, S, CameraTraits<T>>;
 
 template <typename T, typename S> struct ReprojectionErrorTraits {
   static constexpr size_t dimension = 2;
-  using VertexDescriptors = std::tuple<CameraDescriptor<T, S>, PointDescriptor<T, S>>;
+  using VertexDescriptors =
+      std::tuple<CameraDescriptor<T, S>, PointDescriptor<T, S>>;
   using Observation = Eigen::Matrix<T, dimension, 1>;
   using Data = unsigned char;
   using Loss = DefaultLoss<T, dimension>;
