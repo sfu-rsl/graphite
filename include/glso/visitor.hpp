@@ -60,7 +60,7 @@ __device__ T compute_chi2(const T *residuals, const P *pmat,
 
 template <typename T, typename S, typename Descriptor, typename V>
 __global__ void
-apply_update_kernel(V **vertices, const S *delta_x, const S *jacobian_scales,
+apply_update_kernel(V **vertices, const T *delta_x, const T *jacobian_scales,
                     const size_t *hessian_ids, const uint32_t *fixed,
                     const size_t num_threads) {
   const size_t vertex_id = get_thread_id();
@@ -69,13 +69,13 @@ apply_update_kernel(V **vertices, const S *delta_x, const S *jacobian_scales,
     return;
   }
 
-  const S *delta = delta_x + hessian_ids[vertex_id];
-  const S *scales = jacobian_scales + hessian_ids[vertex_id];
+  const T *delta = delta_x + hessian_ids[vertex_id];
+  const T *scales = jacobian_scales + hessian_ids[vertex_id];
 
   std::array<T, Descriptor::dim> scaled_delta;
 #pragma unroll
   for (size_t i = 0; i < Descriptor::dim; i++) {
-    scaled_delta[i] = static_cast<T>(delta[i] * scales[i]);
+    scaled_delta[i] = delta[i] * scales[i];
   }
 
   // vertices[vertex_id]->update(scaled_delta.data());
@@ -113,8 +113,8 @@ __global__ void augment_hessian_diagonal_kernel(S *diagonal_blocks, const S mu,
   }
 }
 
-template <typename T, int D>
-__global__ void apply_block_jacobi_kernel(T *z, const T *r, T *block_diagonal,
+template <typename T, typename S, int D>
+__global__ void apply_block_jacobi_kernel(T *z, const T *r, S *block_diagonal,
                                           const size_t *hessian_ids,
                                           const uint32_t *fixed,
                                           const size_t num_threads) {
@@ -127,7 +127,7 @@ __global__ void apply_block_jacobi_kernel(T *z, const T *r, T *block_diagonal,
 
   constexpr auto block_size = D * D;
 
-  T *block = block_diagonal + local_vertex_id * block_size;
+  S *block = block_diagonal + local_vertex_id * block_size;
   const auto hessian_offset = hessian_ids[local_vertex_id];
   const auto offset = idx % D;
   const auto row = offset;
@@ -135,7 +135,7 @@ __global__ void apply_block_jacobi_kernel(T *z, const T *r, T *block_diagonal,
   T value = 0;
 #pragma unroll
   for (size_t i = 0; i < D; i++) {
-    value += block[row + i * D] * r[hessian_offset + i];
+    value += (T)block[row + i * D] * r[hessian_offset + i];
   }
   z[hessian_offset + row] = value;
 }
@@ -319,7 +319,7 @@ __global__ void compute_b_kernel_no_precision_matrix(
 template <typename T, typename S, size_t I, size_t N, size_t E, typename F,
           std::size_t... Is>
 __global__ void
-compute_b_kernel(S *b, T *error, size_t *ids, const size_t *hessian_ids,
+compute_b_kernel(T *b, T *error, size_t *ids, const size_t *hessian_ids,
                  const size_t num_threads, S *jacs, const uint32_t *fixed,
                  const S *pmat, const S *loss_derivative,
                  std::index_sequence<Is...>) {
@@ -386,11 +386,11 @@ compute_b_kernel(S *b, T *error, size_t *ids, const size_t *hessian_ids,
 // Each Jacobian block needs to be accessed just once
 // So we need E threads for each block (error dimension)
 // In total we should hae E*num_factors threads?
-template <typename T, size_t I, size_t N, size_t E, size_t D, typename F,
+template <typename T, typename S, size_t I, size_t N, size_t E, size_t D, typename F,
           std::size_t... Is>
 __global__ void
 compute_Jv_kernel(T *y, T *x, size_t *ids, const size_t *hessian_ids,
-                  const size_t num_threads, const T *jacs,
+                  const size_t num_threads, const S *jacs,
                   const uint32_t *fixed, std::index_sequence<Is...>) {
 
   const size_t idx = get_thread_id();
@@ -425,16 +425,16 @@ compute_Jv_kernel(T *y, T *x, size_t *ids, const size_t *hessian_ids,
   //     i];
   // }
 
-  const T *jrow = jacs + jacobian_offset + row_offset;
+  const S *jrow = jacs + jacobian_offset + row_offset;
   const T *x_start = x + hessian_offset;
 
 #pragma unroll
   for (int i = 0; i < D; i++) {
-    value += jrow[i * E] * x_start[i];
+    value += (T)jrow[i * E] * x_start[i];
   }
 
-  // atomicAdd(&y[residual_offset + idx], value);
-  y[idx] += value;
+  atomicAdd(&y[idx], value);
+  // y[idx] += value; // avoid unless sure that atomicAdd is not needed
 }
 
 // Compute J^T * x where x is the size of the residual vector
@@ -444,11 +444,11 @@ compute_Jv_kernel(T *y, T *x, size_t *ids, const size_t *hessian_ids,
 // So this assumes that the x vector has the same layout as the residual vector
 // for this factor (rather than a global residual vector) The aggregate output
 // will be H x len(x) where H is hessian dimension
-template <typename T, size_t I, size_t N, size_t E, typename F,
+template <typename T, typename S, size_t I, size_t N, size_t E, typename F,
           std::size_t... Is>
 __global__ void compute_Jtv_kernel(T *y, T *x, size_t *ids,
                                    const size_t *hessian_ids,
-                                   const size_t num_threads, T *jacs,
+                                   const size_t num_threads, S *jacs,
                                    std::index_sequence<Is...>) {
   const size_t idx = get_thread_id();
 
@@ -483,13 +483,13 @@ __global__ void compute_Jtv_kernel(T *y, T *x, size_t *ids,
 }
 
 // Compute J^T * P * x where P is the precision matrix
-template <typename T, size_t I, size_t N, size_t E, size_t D, typename F,
+template <typename T, typename S, size_t I, size_t N, size_t E, size_t D, typename F,
           std::size_t... Is>
 __global__ void
 compute_JtPv_kernel(T *y, const T *x, const size_t *ids,
                     const size_t *hessian_ids, const size_t num_threads,
-                    const T *jacs, const uint32_t *fixed, const T *pmat,
-                    const T *chi2_derivative, std::index_sequence<Is...>) {
+                    const S *jacs, const uint32_t *fixed, const S *pmat,
+                    const S *chi2_derivative, std::index_sequence<Is...>) {
   const size_t idx = get_thread_id();
 
   if (idx >= num_threads) {
@@ -520,9 +520,9 @@ compute_JtPv_kernel(T *y, const T *x, const size_t *ids,
   // T x2[E] = {0};
   // T value = 0;
 
-  const T *jcol = jacs + jacobian_offset + col_offset;
+  const S *jcol = jacs + jacobian_offset + col_offset;
 
-  const T *precision_matrix = pmat + precision_offset;
+  const S *precision_matrix = pmat + precision_offset;
   const T *x_start = x + error_offset;
 
   // precision matrices are column major (but should be symmetrical?)
@@ -551,14 +551,14 @@ compute_JtPv_kernel(T *y, const T *x, const size_t *ids,
       // major x2[i] += pmat[precision_offset + i*E + j] * x[error_offset + j];
       // // row major x2[i] += precision_matrix[i*E + j] * x_start[j]; // row
       // major
-      value += jcol[i] * precision_matrix[i * E + j] * x_start[j];
+      value += (T)jcol[i] * (T)precision_matrix[i * E + j] * x_start[j];
     }
     // x2[i] *= dL;
     // value += dL*jacs[jacobian_offset + col_offset + i] * x2[i];
     // value += jcol[i] * x2[i];
     // value += jcol[i] * x[i];
   }
-  value *= chi2_derivative[factor_id];
+  value *= (T)chi2_derivative[factor_id];
 
   // T value = 0;
   // #pragma unroll
@@ -687,7 +687,7 @@ __global__ void compute_hessian_diagonal_kernel(
 
 template <typename highp, typename T, size_t I, size_t N, size_t E, size_t D>
 __global__ void
-scale_jacobians_kernel(T *jacs, const T *jacobian_scales, const size_t *ids,
+scale_jacobians_kernel(T *jacs, const highp *jacobian_scales, const size_t *ids,
                        const size_t *hessian_ids, const uint32_t *fixed,
                        const size_t num_threads) {
 
@@ -727,7 +727,7 @@ scale_jacobians_kernel(T *jacs, const T *jacobian_scales, const size_t *ids,
 
 template <typename highp, typename T, size_t I, size_t N, size_t E, size_t D>
 __global__ void compute_hessian_scalar_diagonal_kernel(
-    T *diagonal, const T *jacs, const size_t *ids, const size_t *hessian_ids,
+    highp *diagonal, const T *jacs, const size_t *ids, const size_t *hessian_ids,
     const uint32_t *fixed, const T *pmat, const T *chi2_derivative,
     const size_t num_threads) {
   const size_t idx = get_thread_id();
@@ -778,9 +778,9 @@ __global__ void compute_hessian_scalar_diagonal_kernel(
 
   // T* block = diagonal_blocks+(local_id*block_size + row + col*D);
   const size_t hessian_offset = hessian_ids[local_id];
-  T *location = diagonal + hessian_offset + row;
-  T lp_value = static_cast<T>(value);
-  atomicAdd(location, lp_value);
+  highp *location = diagonal + hessian_offset + row;
+  // T lp_value = static_cast<T>(value);
+  atomicAdd(location, value);
 }
 
 template <typename T, typename S> class GraphVisitor {
@@ -824,7 +824,7 @@ private:
 
   template <typename F, std::size_t... Is>
   void launch_kernel_compute_b(
-      F *f, S *b,
+      F *f, T *b,
       std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
       std::array<S *, F::get_num_vertices()> &jacs, const size_t num_factors,
       std::index_sequence<Is...>) {
@@ -856,7 +856,7 @@ private:
 
   template <typename F, std::size_t... Is>
   void launch_kernel_compute_JtPv(
-      F *f, S *out, S *in,
+      F *f, T *out, T *in,
       std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
       std::array<S *, F::get_num_vertices()> &jacs, const size_t num_factors,
       std::index_sequence<Is...>) {
@@ -874,7 +874,7 @@ private:
        // f->residuals.data().get() << std::endl; std::cout << "Checking ids
        // ptr: " << f->device_ids.data().get() << std::endl;
 
-       compute_JtPv_kernel<S, Is, num_vertices, F::error_dim,
+       compute_JtPv_kernel<T, S, Is, num_vertices, F::error_dim,
                            f->get_vertex_sizes()[Is], F>
            <<<num_blocks, threads_per_block>>>(
                out, in, f->device_ids.data().get(), hessian_ids[Is],
@@ -889,7 +889,7 @@ private:
 
   template <typename F, std::size_t... Is>
   void launch_kernel_compute_Jv(
-      F *f, S *out, S *in,
+      F *f, T *out, T *in,
       std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
       std::array<S *, F::get_num_vertices()> &jacs, const size_t num_factors,
       std::index_sequence<Is...>) {
@@ -907,7 +907,7 @@ private:
        // f->residuals.data().get() << std::endl; std::cout << "Checking ids
        // ptr: " << f->device_ids.data().get() << std::endl;
 
-       compute_Jv_kernel<S, Is, num_vertices, F::error_dim,
+       compute_Jv_kernel<T, S, Is, num_vertices, F::error_dim,
                          f->get_vertex_sizes()[Is], F>
            <<<num_blocks, threads_per_block>>>(
                out, in, f->device_ids.data().get(), hessian_ids[Is],
@@ -965,7 +965,7 @@ private:
 
   template <typename F, std::size_t... Is>
   void launch_kernel_scalar_diagonal(
-      F *f, S *diagonal,
+      F *f, T *diagonal,
       std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
       std::array<S *, F::get_num_vertices()> &jacs, const size_t num_factors,
       std::index_sequence<Is...>) {
@@ -991,7 +991,7 @@ private:
 
   template <typename F, std::size_t... Is>
   void launch_kernel_scale_jacobians(
-      F *f, S *jacobian_scales,
+      F *f, T *jacobian_scales,
       std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
       std::array<S *, F::get_num_vertices()> &jacs, const size_t num_factors,
       std::index_sequence<Is...>) {
@@ -1106,7 +1106,7 @@ public:
     cudaDeviceSynchronize();
   }
 
-  template <typename F> void compute_b(F *f, S *b) {
+  template <typename F> void compute_b(F *f, T *b) {
     constexpr auto num_vertices = F::get_num_vertices();
     constexpr auto vertex_sizes = F::get_vertex_sizes();
 
@@ -1128,7 +1128,7 @@ public:
     cudaDeviceSynchronize();
   }
 
-  template <typename F> void compute_Jv(F *f, S *out, S *in) {
+  template <typename F> void compute_Jv(F *f, T *out, T *in) {
     constexpr auto num_vertices = F::get_num_vertices();
     constexpr auto vertex_sizes = F::get_vertex_sizes();
 
@@ -1149,7 +1149,7 @@ public:
     cudaDeviceSynchronize();
   }
 
-  template <typename F> void compute_Jtv(F *f, S *out, S *in) {
+  template <typename F> void compute_Jtv(F *f, T *out, T *in) {
     constexpr auto num_vertices = f->get_num_vertices();
     constexpr auto vertex_sizes = F::get_vertex_sizes();
 
@@ -1196,7 +1196,7 @@ public:
     cudaDeviceSynchronize();
   }
 
-  template <typename F> void compute_scalar_diagonal(F *f, S *diagonal) {
+  template <typename F> void compute_scalar_diagonal(F *f, T *diagonal) {
 
     // Then for each vertex, we need to compute the error
     constexpr auto num_vertices = F::get_num_vertices();
@@ -1219,7 +1219,7 @@ public:
     cudaDeviceSynchronize();
   }
 
-  template <typename F> void scale_jacobians(F *f, S *jacobian_scales) {
+  template <typename F> void scale_jacobians(F *f, T *jacobian_scales) {
 
     // Then for each vertex, we need to compute the error
     constexpr auto num_vertices = F::get_num_vertices();
@@ -1244,7 +1244,7 @@ public:
   }
 
   template <typename V>
-  void apply_step(V *v, const S *delta_x, S *jacobian_scales) {
+  void apply_step(V *v, const T *delta_x, T *jacobian_scales) {
     const size_t num_parameters = v->count() * v->dimension();
     const size_t num_threads = v->count();
     const auto threads_per_block = 256;
@@ -1261,7 +1261,7 @@ public:
   }
 
   template <typename V>
-  void augment_block_diagonal(V *v, InvP *block_diagonal, S mu) {
+  void augment_block_diagonal(V *v, InvP *block_diagonal, T mu) {
     const size_t num_threads = v->count();
     const auto threads_per_block = 256;
     const auto num_blocks =
@@ -1275,14 +1275,14 @@ public:
   }
 
   template <typename V>
-  void apply_block_jacobi(V *v, S *z, const S *r, S *block_diagonal) {
+  void apply_block_jacobi(V *v, T *z, const T *r, S *block_diagonal) {
     const size_t num_parameters = v->count() * v->dimension();
     const size_t num_threads = num_parameters;
     const auto threads_per_block = 256;
     const auto num_blocks =
         (num_threads + threads_per_block - 1) / threads_per_block;
 
-    apply_block_jacobi_kernel<S, V::dim><<<num_blocks, threads_per_block>>>(
+    apply_block_jacobi_kernel<T, S, V::dim><<<num_blocks, threads_per_block>>>(
         z, r, block_diagonal, v->get_hessian_ids(),
         thrust::raw_pointer_cast(v->fixed_mask.data()), num_threads);
     // cudaDeviceSynchronize();

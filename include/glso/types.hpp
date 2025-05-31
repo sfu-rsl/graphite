@@ -4,6 +4,6 @@
 
 namespace glso {
 
-    using ghalf = __nv_bfloat16;
-    // using ghalf = __half;
+    // using ghalf = __nv_bfloat16;
+    using ghalf = __half;
 }

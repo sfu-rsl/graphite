@@ -14,9 +14,9 @@ public:
   precompute(GraphVisitor<T, S> &visitor,
              std::vector<BaseVertexDescriptor<T, S> *> &vertex_descriptors,
              std::vector<BaseFactorDescriptor<T, S> *> &factor_descriptors,
-             size_t dimension, S mu) = 0;
+             size_t dimension, T mu) = 0;
 
-  virtual void apply(GraphVisitor<T, S> &visitor, S *z, const S *r) = 0;
+  virtual void apply(GraphVisitor<T, S> &visitor, T *z, const T *r) = 0;
 };
 
 template <typename T, typename S>
@@ -28,12 +28,12 @@ public:
   void precompute(GraphVisitor<T, S> &visitor,
                   std::vector<BaseVertexDescriptor<T, S> *> &vertex_descriptors,
                   std::vector<BaseFactorDescriptor<T, S> *> &factor_descriptors,
-                  size_t dimension, S mu) override {
+                  size_t dimension, T mu) override {
     this->dimension = dimension;
   }
 
-  void apply(GraphVisitor<T, S> &visitor, S *z, const S *r) override {
-    cudaMemcpy(z, r, dimension * sizeof(S), cudaMemcpyDeviceToDevice);
+  void apply(GraphVisitor<T, S> &visitor, T *z, const T *r) override {
+    cudaMemcpy(z, r, dimension * sizeof(T), cudaMemcpyDeviceToDevice);
   }
 };
 
@@ -69,7 +69,7 @@ public:
   void precompute(GraphVisitor<T, S> &visitor,
                   std::vector<BaseVertexDescriptor<T, S> *> &vertex_descriptors,
                   std::vector<BaseFactorDescriptor<T, S> *> &factor_descriptors,
-                  size_t dimension, S mu) override {
+                  size_t dimension, T mu) override {
     this->dimension = dimension;
     this->vds = &vertex_descriptors;
 
@@ -200,7 +200,7 @@ public:
     cudaDeviceSynchronize();
   }
 
-  void apply(GraphVisitor<T, S> &visitor, S *z, const S *r) override {
+  void apply(GraphVisitor<T, S> &visitor, T *z, const T *r) override {
     // Apply the preconditioner
     for (auto &desc : *vds) {
       const auto d = desc->dimension();

@@ -36,8 +36,8 @@ private:
   GraphVisitor<T, S> visitor;
   std::vector<BaseVertexDescriptor<T, S> *> vertex_descriptors;
   std::vector<BaseFactorDescriptor<T, S> *> factor_descriptors;
-  thrust::device_vector<S> b;
-  thrust::device_vector<S> jacobian_scales;
+  thrust::device_vector<T> b;
+  thrust::device_vector<T> jacobian_scales;
   size_t hessian_column;
 
 public:
@@ -45,7 +45,7 @@ public:
 
   size_t get_hessian_dimension() { return hessian_column; }
 
-  thrust::device_vector<S> &get_b() { return b; }
+  thrust::device_vector<T> &get_b() { return b; }
 
   std::vector<BaseVertexDescriptor<T, S> *> &get_vertex_descriptors() {
     return vertex_descriptors;
@@ -163,7 +163,7 @@ public:
 
       thrust::transform(
           thrust::device, jacobian_scales.begin(), jacobian_scales.end(),
-          jacobian_scales.begin(), [] __device__(S value) {
+          jacobian_scales.begin(), [] __device__(T value) {
             // return 1.0 / (1.0 + sqrt(value));
             constexpr double num = 1.0;
             const double denom = std::numeric_limits<double>::epsilon() 
@@ -171,7 +171,7 @@ public:
             // const double denom = 1.0 
             //   + sqrt(static_cast<double>(value));
             // return 1.0 / (std::numeric_limits<T>::epsilon() + sqrt(value));
-            return static_cast<S>(num / denom);
+            return static_cast<T>(num / denom);
           });
     } else {
       thrust::fill(jacobian_scales.begin(), jacobian_scales.end(), 1.0);
@@ -192,7 +192,7 @@ public:
     cudaDeviceSynchronize();
   }
 
-  void apply_step(const S *delta_x) {
+  void apply_step(const T *delta_x) {
     for (auto &desc : vertex_descriptors) {
       desc->visit_update(visitor, delta_x, jacobian_scales.data().get());
     }

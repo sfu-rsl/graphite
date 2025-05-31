@@ -54,4 +54,22 @@ template <typename T> void clamp(size_t n, T min_val, T max_val, T *x) {
   cudaDeviceSynchronize();
 }
 
+template <typename T>
+__global__ void rescale_vec_kernel(size_t n, T* out, const T scale, const T *x) {
+  const size_t idx =
+      static_cast<size_t>(blockIdx.x) * static_cast<size_t>(blockDim.x) +
+      static_cast<size_t>(threadIdx.x);
+  if (idx < n) {
+    out[idx] = scale*x[idx];
+  }
+}
+
+template <typename T>
+void rescale_vec(size_t n, T* out, const T scale, const T *x) {
+  size_t threads_per_block = 256;
+  size_t num_blocks = (n + threads_per_block - 1) / threads_per_block;
+  rescale_vec_kernel<T><<<num_blocks, threads_per_block>>>(n, out, scale, x);
+  cudaDeviceSynchronize();
+}
+
 } // namespace glso

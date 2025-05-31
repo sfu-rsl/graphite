@@ -8,7 +8,7 @@ namespace glso {
 namespace optimizer {
 
 template <typename T, typename S>
-T compute_rho(Graph<T, S> *graph, thrust::device_vector<S> &delta_x,
+T compute_rho(Graph<T, S> *graph, thrust::device_vector<T> &delta_x,
               const T chi2, const T new_chi2, const T mu,
               const bool step_is_good) {
   // Compute rho
@@ -17,9 +17,9 @@ T compute_rho(Graph<T, S> *graph, thrust::device_vector<S> &delta_x,
   T num = (chi2 - new_chi2);
   T denom = mu * static_cast<T>(
                      thrust::inner_product(delta_x.begin(), delta_x.end(),
-                                           delta_x.begin(), static_cast<S>(0)));
+                                           delta_x.begin(), 0));
   denom += static_cast<T>(thrust::inner_product(delta_x.begin(), delta_x.end(),
-                                                b.begin(), static_cast<S>(0)));
+                                                b.begin(), 0));
   if (step_is_good) {
     denom += std::numeric_limits<T>::epsilon();
   } else {
@@ -47,7 +47,7 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
 
   graph->linearize();
 
-  thrust::device_vector<S> delta_x(graph->get_hessian_dimension());
+  thrust::device_vector<T> delta_x(graph->get_hessian_dimension());
 
   bool run = true;
 
@@ -68,10 +68,18 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
     start = std::chrono::steady_clock::now();
     T chi2 = graph->chi2();
 
-    if (!solver->solve(graph, delta_x.data().get(), static_cast<S>(mu))) {
+    if (!solver->solve(graph, delta_x.data().get(), static_cast<T>(mu))) {
       std::cerr << "Solver failed" << std::endl;
       return false;
     }
+
+    // print delta x
+    // thrust::host_vector<S> hx = delta_x;
+    // std::cout << "Delta x: ";
+    // for (size_t j = 0; j < hx.size(); j++) {
+    //   std::cout << (T)hx[j] << " ";
+    // }
+    // std::cout << std::endl;
 
     graph->backup_parameters();
     graph->apply_step(delta_x.data().get());
@@ -101,6 +109,8 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
       // std::cout << "Bad step" << std::endl;
       new_chi2 = chi2;
     }
+
+    // mu = std::clamp(mu, static_cast<T>(1e-12), static_cast<T>(1e12));
 
     double iteration_time =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
