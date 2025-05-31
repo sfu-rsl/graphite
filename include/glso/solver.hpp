@@ -245,7 +245,7 @@ public:
       thrust::fill(z.begin(), z.end(), 0);
       preconditioner->apply(visitor, z.data().get(), r.data().get());
       T rz_new = thrust::inner_product(r.begin(), r.end(), z.begin(),
-                                       0);
+                                       0.0);
 
       /*
       std::cout << "printing first 10 values of r and z after iteration " << k << std::endl;
