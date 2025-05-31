@@ -62,13 +62,15 @@ __global__ void set_state_kernel(VertexType **vertices, const State *src,
 
 template <typename T, typename S> class BaseVertexDescriptor {
 public:
+  using InvP = std::conditional_t<std::is_same<S, ghalf>::value, T, S>;
+
   virtual ~BaseVertexDescriptor(){};
 
   // virtual void update(const T* x, const T* delta) = 0;
   virtual void visit_update(GraphVisitor<T, S> &visitor, const S *delta_x,
                             S *jacobian_scales) = 0;
   virtual void visit_augment_block_diagonal(GraphVisitor<T, S> &visitor,
-                                            S *block_diagonal, S mu) = 0;
+                                            InvP *block_diagonal, S mu) = 0;
   virtual void visit_apply_block_jacobi(GraphVisitor<T, S> &visitor, S *z,
                                         const S *r, S *block_diagonal) = 0;
   virtual size_t dimension() const = 0;
@@ -89,6 +91,8 @@ public:
 template <typename T, typename S, typename VTraits>
 class VertexDescriptor : public BaseVertexDescriptor<T, S> {
 public:
+  using InvP = std::conditional_t<std::is_same<S, ghalf>::value, T, S>;
+
   using Traits = class VTraits;
 
   using VertexType = typename Traits::Vertex;
@@ -118,7 +122,7 @@ public:
   }
 
   void visit_augment_block_diagonal(GraphVisitor<T, S> &visitor,
-                                    S *block_diagonal, S mu) override {
+                                    InvP *block_diagonal, S mu) override {
     visitor.template augment_block_diagonal(this, block_diagonal, mu);
   }
 

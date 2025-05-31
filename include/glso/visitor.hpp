@@ -1,6 +1,8 @@
 #pragma once
 #include <glso/common.hpp>
 #include <glso/vertex.hpp>
+#include <glso/types.hpp>
+
 namespace glso {
 
 __device__ size_t get_thread_id() {
@@ -99,9 +101,15 @@ __global__ void augment_hessian_diagonal_kernel(S *diagonal_blocks, const S mu,
 
   S *block = diagonal_blocks + vertex_id * block_size;
   for (size_t i = 0; i < D; i++) {
-    block[i * D + i] +=
-        mu * static_cast<S>(
-                 std::clamp(static_cast<double>(block[i * D + i]), 1e-6, 1e32));
+    // block[i * D + i] +=
+    //     mu * static_cast<S>(
+    //              std::clamp(static_cast<double>(block[i * D + i]), 1.0e-6, 1.0e32));
+  
+    const double diag = static_cast<double>(block[i * D + i]);
+    const double new_diag = diag + static_cast<double>(mu)*std::clamp(diag, 1.0e-6, 1.0e32);
+    block[i * D + i] = static_cast<S>(new_diag);
+
+
   }
 }
 
@@ -152,7 +160,7 @@ __global__ void compute_error_kernel_autodiff(
 
   // printf("CEAD: Thread %d, Vertex %d, Factor %d\n", idx, vertex_id,
   // factor_id);
-  using G = std::conditional_t<std::is_same<S, __half>::value, T, S>;
+  using G = std::conditional_t<std::is_same<S, ghalf>::value, T, S>;
   const M *local_obs = obs + factor_id;
   Dual<T, G> local_error[E];
   const typename F::ConstraintDataType *local_data =
@@ -578,9 +586,9 @@ compute_chi2_kernel(T *chi2, S *chi2_derivative, const T *residuals,
   chi2_derivative[idx] = loss[idx].loss_derivative(raw_chi2);
 }
 
-template <typename T, size_t I, size_t N, size_t E, size_t D>
+template <typename highp, typename InvP, typename T, size_t I, size_t N, size_t E, size_t D>
 __global__ void compute_hessian_diagonal_kernel(
-    T *diagonal_blocks, const T *jacs, const size_t *ids, const uint32_t *fixed,
+    InvP *diagonal_blocks, const T *jacs, const size_t *ids, const uint32_t *fixed,
     const T *pmat, const T *chi2_derivative, const size_t num_threads) {
   const size_t idx = get_thread_id();
 
@@ -620,15 +628,15 @@ __global__ void compute_hessian_diagonal_kernel(
 
   const T *precision_matrix = pmat + precision_offset;
 
-  T value = 0;
+  highp value = 0;
 #pragma unroll
   for (int i = 0; i < E; i++) { // pmat row
-    T pj = 0;
+    highp pj = 0;
 #pragma unroll
     for (int j = 0; j < E; j++) { // pmat col
-      pj += precision_matrix[i * E + j] * J[j];
+      pj += (highp)precision_matrix[i * E + j] * (highp)J[j];
     }
-    value += Jt[i] * pj;
+    value += (highp)Jt[i] * pj;
     // value += Jt[i]*J[i];
   }
 
@@ -641,7 +649,7 @@ __global__ void compute_hessian_diagonal_kernel(
   // else {
   //     value = 0;
   // }
-  value *= chi2_derivative[factor_id];
+  value *= (highp)chi2_derivative[factor_id];
 
   // T* block = diagonal_blocks + local_id*block_size + (idx % block_size);
   // printf("Thread %d, Hessian offset: %u\n", idx, local_id);
@@ -656,7 +664,7 @@ __global__ void compute_hessian_diagonal_kernel(
   // }
   // value = 5.0;
   // T* block = diagonal_blocks + local_id*block_size + row + col*D;
-  T *block = diagonal_blocks + (local_id * block_size + row + col * D);
+  InvP *block = diagonal_blocks + (local_id * block_size + row + col * D);
   // if (row == col) {
   //     // local_id = 5;
   //     // row = 6; col = 7;
@@ -671,12 +679,13 @@ __global__ void compute_hessian_diagonal_kernel(
   //     idx, local_id, row, col, value);
   // }
   // T* block = diagonal_blocks + row*D + col;
-  atomicAdd(block, value);
+  InvP lp_value = static_cast<InvP>(value);
+  atomicAdd(block, lp_value);
   // block[0] = value;
   // *block = value;
 }
 
-template <typename T, size_t I, size_t N, size_t E, size_t D>
+template <typename highp, typename T, size_t I, size_t N, size_t E, size_t D>
 __global__ void
 scale_jacobians_kernel(T *jacs, const T *jacobian_scales, const size_t *ids,
                        const size_t *hessian_ids, const uint32_t *fixed,
@@ -710,11 +719,13 @@ scale_jacobians_kernel(T *jacs, const T *jacobian_scales, const size_t *ids,
   T *Jcol = jacs + jacobian_offset + col * E;
 #pragma unroll
   for (size_t i = 0; i < E; i++) {
-    Jcol[i] *= scale;
+    // Jcol[i] *= scale;
+    Jcol[i] = static_cast<T>(static_cast<highp>(Jcol[i]) * static_cast<highp>(scale));
+
   }
 }
 
-template <typename T, size_t I, size_t N, size_t E, size_t D>
+template <typename highp, typename T, size_t I, size_t N, size_t E, size_t D>
 __global__ void compute_hessian_scalar_diagonal_kernel(
     T *diagonal, const T *jacs, const size_t *ids, const size_t *hessian_ids,
     const uint32_t *fixed, const T *pmat, const T *chi2_derivative,
@@ -752,27 +763,33 @@ __global__ void compute_hessian_scalar_diagonal_kernel(
 
   const T *precision_matrix = pmat + precision_offset;
 
-  T value = 0;
+  highp value = 0;
 #pragma unroll
   for (int i = 0; i < E; i++) { // pmat row
-    T pj = 0;
+    highp pj = 0;
 #pragma unroll
     for (int j = 0; j < E; j++) { // pmat col
-      pj += precision_matrix[i * E + j] * J[j];
+      pj += (highp)precision_matrix[i * E + j] * (highp)J[j];
     }
-    value += Jt[i] * pj;
+    value += (highp)Jt[i] * pj;
   }
 
-  value *= chi2_derivative[factor_id];
+  value *= (highp)chi2_derivative[factor_id];
 
   // T* block = diagonal_blocks+(local_id*block_size + row + col*D);
   const size_t hessian_offset = hessian_ids[local_id];
   T *location = diagonal + hessian_offset + row;
-  atomicAdd(location, value);
+  T lp_value = static_cast<T>(value);
+  atomicAdd(location, lp_value);
 }
 
 template <typename T, typename S> class GraphVisitor {
+  public:
+    using InvP = std::conditional_t<std::is_same<S, ghalf>::value, T, S>;
+
 private:
+
+
   template <typename F, typename VT, std::size_t... Is>
   void launch_kernel_autodiff(
       F *f, std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
@@ -903,7 +920,7 @@ private:
 
   template <typename F, std::size_t... Is>
   void launch_kernel_block_diagonal(
-      F *f, std::array<S *, F::get_num_vertices()> &diagonal_blocks,
+      F *f, std::array<InvP *, F::get_num_vertices()> &diagonal_blocks,
       std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
       std::array<S *, F::get_num_vertices()> &jacs, const size_t num_factors,
       std::index_sequence<Is...>) {
@@ -924,7 +941,7 @@ private:
        // f->residuals.data().get() << std::endl; std::cout << "Checking ids
        // ptr: " << f->device_ids.data().get() << std::endl;
 
-       compute_hessian_diagonal_kernel<S, Is, num_vertices, F::error_dim,
+       compute_hessian_diagonal_kernel<T, InvP, S, Is, num_vertices, F::error_dim,
                                        dimension>
            <<<num_blocks, threads_per_block>>>(
                diagonal_blocks[Is], jacs[Is], f->device_ids.data().get(),
@@ -961,7 +978,7 @@ private:
        size_t num_blocks =
            (num_threads + threads_per_block - 1) / threads_per_block;
 
-       compute_hessian_scalar_diagonal_kernel<S, Is, num_vertices, F::error_dim,
+       compute_hessian_scalar_diagonal_kernel<T, S, Is, num_vertices, F::error_dim,
                                               dimension>
            <<<num_blocks, threads_per_block>>>(
                diagonal, jacs[Is], f->device_ids.data().get(), hessian_ids[Is],
@@ -987,7 +1004,7 @@ private:
        size_t num_blocks =
            (num_threads + threads_per_block - 1) / threads_per_block;
 
-       scale_jacobians_kernel<S, Is, num_vertices, F::error_dim, dimension>
+       scale_jacobians_kernel<T, S, Is, num_vertices, F::error_dim, dimension>
            <<<num_blocks, threads_per_block>>>(
                jacs[Is], jacobian_scales, f->device_ids.data().get(),
                hessian_ids[Is], f->vertex_descriptors[Is]->get_fixed_mask(),
@@ -1155,7 +1172,7 @@ public:
 
   template <typename F>
   void compute_block_diagonal(
-      F *f, std::array<S *, F::get_num_vertices()> &diagonal_blocks) {
+      F *f, std::array<InvP *, F::get_num_vertices()> &diagonal_blocks) {
 
     // Then for each vertex, we need to compute the error
     constexpr auto num_vertices = F::get_num_vertices();
@@ -1244,15 +1261,15 @@ public:
   }
 
   template <typename V>
-  void augment_block_diagonal(V *v, S *block_diagonal, S mu) {
+  void augment_block_diagonal(V *v, InvP *block_diagonal, S mu) {
     const size_t num_threads = v->count();
     const auto threads_per_block = 256;
     const auto num_blocks =
         (num_threads + threads_per_block - 1) / threads_per_block;
 
-    augment_hessian_diagonal_kernel<S, V::dim>
+    augment_hessian_diagonal_kernel<InvP, V::dim>
         <<<num_blocks, threads_per_block>>>(
-            block_diagonal, mu, thrust::raw_pointer_cast(v->fixed_mask.data()),
+            block_diagonal, (InvP)mu, thrust::raw_pointer_cast(v->fixed_mask.data()),
             num_threads);
     cudaDeviceSynchronize();
   }

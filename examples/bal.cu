@@ -11,6 +11,7 @@
 #include "reprojection_error.cuh"
 #include <glso/core.hpp>
 #include <glso/solver.hpp>
+#include <glso/types.hpp>
 
 namespace glso {
 
@@ -90,7 +91,9 @@ int main(void) {
   using FP = float;
   // using SP = FP;
   // using SP = float;
-  using SP = __half;
+  // using SP = double;
+  // using SP = __half;
+  using SP = ghalf;
 
   // std::string file_path = "../data/bal/problem-16-22106-pre.txt";
   std::string file_path = "../data/bal/problem-21-11315-pre.txt";
@@ -202,7 +205,7 @@ int main(void) {
   // Configure solver
   glso::BlockJacobiPreconditioner<FP, SP> preconditioner;
   // glso::IdentityPreconditioner<FP, SP> preconditioner;
-  PCGSolver<FP, SP> solver(50, 1e-1, 1.0, &preconditioner);
+  PCGSolver<FP, SP> solver(10, 1e-1, 1.0, &preconditioner);
 
   // Optimize
   constexpr size_t iterations = 50;

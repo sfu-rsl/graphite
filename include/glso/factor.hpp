@@ -20,6 +20,8 @@ public:
 
 template <typename T, typename S> class BaseFactorDescriptor {
 public:
+  using InvP = std::conditional_t<std::is_same<S, ghalf>::value, T, S>;
+
   virtual ~BaseFactorDescriptor(){};
 
   // virtual void error_func(const T** vertices, const T* obs, T* error) = 0;
@@ -31,7 +33,7 @@ public:
   virtual void visit_Jtv(GraphVisitor<T, S> &visitor, S *out, S *in) = 0;
   virtual void visit_block_diagonal(
       GraphVisitor<T, S> &visitor,
-      std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<S>>
+      std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<InvP>>
           &block_diagonals) = 0;
   virtual void visit_scalar_diagonal(GraphVisitor<T, S> &visitor,
                                      S *diagonal) = 0;
@@ -103,6 +105,8 @@ private:
   HandleManager<size_t> hm;
 
 public:
+  using InvP = std::conditional_t<std::is_same<S, ghalf>::value, T, S>;
+
   // using Traits = FactorTraits<T, Derived>;
   using Traits = class FTraits;
 
@@ -180,10 +184,10 @@ public:
 
   void visit_block_diagonal(
       GraphVisitor<T, S> &visitor,
-      std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<S>>
+      std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<InvP>>
           &block_diagonals) override {
 
-    std::array<S *, N> diagonal_blocks;
+    std::array<InvP *, N> diagonal_blocks;
     for (size_t i = 0; i < N; i++) {
       diagonal_blocks[i] = block_diagonals[vertex_descriptors[i]].data().get();
       // std::cout << "BD size: " <<

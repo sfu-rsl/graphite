@@ -64,7 +64,7 @@ int main(void) {
 
   // Create graph
   using FP = float;
-  using SP = __half;
+  using SP = ghalf;
   Graph<FP, SP> graph;
 
   const size_t num_vertices = 5;

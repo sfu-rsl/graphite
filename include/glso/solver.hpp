@@ -122,16 +122,18 @@ public:
     x_backup.resize(dim_h);
 
     // 1. First compute dot(r, z)
-    S rz = thrust::inner_product(r.begin(), r.end(), z.begin(),
-                                 static_cast<S>(0.0));
+    T rz = (T)thrust::inner_product(r.begin(), r.end(), z.begin(),
+                                 static_cast<S>(0));
     // T rz_0 = rz;
-    S rz_0;
+    // T rz_0;
 
-    if constexpr (std::is_same<S, __half>::value) {
-      rz_0 = CUDART_INF_FP16;
-    } else {
-      rz_0 = std::numeric_limits<S>::infinity();
-    }
+    // if constexpr (std::is_same<S, ghalf>::value) {
+    //   rz_0 = CUDART_INF_FP16;
+    // } else {
+    //   rz_0 = std::numeric_limits<S>::infinity();
+    // }
+
+    T rz_0 = std::numeric_limits<T>::infinity();
 
     for (size_t k = 0; k < max_iter; k++) {
 
@@ -159,22 +161,26 @@ public:
       // cudaDeviceSynchronize();
 
       // 4. Compute alpha = dot(r, z) / dot(p, v2)
-      S alpha = rz / thrust::inner_product(p.begin(), p.end(), v2.begin(),
-                                           static_cast<S>(0));
+      T alpha = static_cast<T>(rz) / static_cast<T>(thrust::inner_product(p.begin(), p.end(), v2.begin(),
+                                           static_cast<S>(0)));
       // 5. x  += alpha * p
       thrust::copy(thrust::device, x, x + dim_h, x_backup.begin());
-      axpy(dim_h, x, alpha, (const S *)p.data().get(), x);
+      axpy(dim_h, x, (S)alpha, (const S *)p.data().get(), x);
 
       // 6. r -= alpha * v2
-      axpy(dim_h, r.data().get(), -alpha, (const S *)v2.data().get(),
+      axpy(dim_h, r.data().get(), (S)-alpha, (const S *)v2.data().get(),
            r.data().get());
       cudaDeviceSynchronize();
 
       // Apply preconditioner again
       thrust::fill(z.begin(), z.end(), 0);
       preconditioner->apply(visitor, z.data().get(), r.data().get());
-      S rz_new = thrust::inner_product(r.begin(), r.end(), z.begin(),
-                                       static_cast<S>(0.0));
+      T rz_new = (T)thrust::inner_product(r.begin(), r.end(), z.begin(),
+                                       static_cast<S>(0));
+
+      // std::cout << "Iteration " << k
+      //           << ", rz_new: " << static_cast<T>(rz_new)
+      //           << ", rz_0: " << static_cast<T>(rz_0) << std::endl;
 
       // 7. Check termination criteria
       // if (sqrt(rz_new / rz_0) < tol) {
@@ -182,28 +188,34 @@ public:
       //   break;
       // }
 
-      if (static_cast<T>(rz_new) > rejection_ratio * static_cast<T>(rz_0)) {
+      // if (rz_new > rejection_ratio * rz_0) {
+      if (std::abs(rz_new) > rejection_ratio * rz_0) {
         thrust::copy(thrust::device, x_backup.begin(), x_backup.end(), x);
         // std::cout << "Diverged at iteration " << k
         //           << ", resetting to previous x." << std::endl;
-        //           std::cout << "rz_new: " << static_cast<T>(rz_new) << ",
-        //           rz_0: " << static_cast<T>(rz_0) << ", rejection_ratio: " <<
+        //           std::cout << "rz_new: " << static_cast<T>(rz_new) << ", rz_0: " << static_cast<T>(rz_0) << ", rejection_ratio: " <<
         //           rejection_ratio << std::endl;
         break;
       }
-      rz_0 = std::min(rz_0, rz_new);
+      // rz_0 = std::min(rz_0, rz_new);
+      rz_0 = std::min(rz_0, std::abs(rz_new));
 
       // 8. Compute beta
-      S beta = rz_new / rz;
+      T beta = rz_new / rz;
+      // std::cout << "Iteration " << k << ", rz_new: " << static_cast<T>(rz_new)
+      //           << ", rz_0: " << static_cast<T>(rz_0) << ", beta: "
+      //           << static_cast<T>(beta) << std::endl;
       rz = rz_new;
 
       // 9. Update p
-      axpy(dim_h, p.data().get(), beta, (const S *)p.data().get(),
+      axpy(dim_h, p.data().get(), (S)beta, (const S *)p.data().get(),
            z.data().get());
       cudaDeviceSynchronize();
 
       if (std::abs(static_cast<T>(rz_new)) < tol) {
         // std::cout << "Converged at iteration " << k << std::endl;
+        // std::cout << "rz_new: " << static_cast<T>(rz_new) << ", tol: " << tol
+        //           << std::endl;
         break;
       }
     }

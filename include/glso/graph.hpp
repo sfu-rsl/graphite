@@ -163,9 +163,15 @@ public:
 
       thrust::transform(
           thrust::device, jacobian_scales.begin(), jacobian_scales.end(),
-          jacobian_scales.begin(), [] __device__(T value) {
+          jacobian_scales.begin(), [] __device__(S value) {
             // return 1.0 / (1.0 + sqrt(value));
-            return 1.0 / (std::numeric_limits<T>::epsilon() + sqrt(value));
+            constexpr double num = 1.0;
+            // const double denom = std::numeric_limits<double>::epsilon() 
+            //   + sqrt(static_cast<double>(value));
+            const double denom = 1.0 
+              + sqrt(static_cast<double>(value));
+            // return 1.0 / (std::numeric_limits<T>::epsilon() + sqrt(value));
+            return static_cast<S>(num / denom);
           });
     } else {
       thrust::fill(jacobian_scales.begin(), jacobian_scales.end(), 1.0);

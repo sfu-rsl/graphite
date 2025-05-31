@@ -40,7 +40,7 @@ public:
 template <typename T, typename S>
 class BlockJacobiPreconditioner : public Preconditioner<T, S> {
 private:
-  using P = std::conditional_t<std::is_same<S, __half>::value, T, S>;
+  using P = std::conditional_t<std::is_same<S, ghalf>::value, T, S>;
   size_t dimension;
   std::vector<std::pair<size_t, size_t>> block_sizes;
   std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<S>>
@@ -82,23 +82,43 @@ public:
       block_diagonals[desc] =
           thrust::device_vector<S>(num_values, static_cast<S>(0));
       // block_diagonals.insert(desc, thrust::device_vector<T>(num_values, 0));
+      if constexpr (std::is_same<S, ghalf>::value) {
+        hp_diagonals[desc].resize(num_values);
+      }
     }
 
     // Compute Hessian blocks on the diagonal
     for (auto &desc : vertex_descriptors) {
-      thrust::fill(block_diagonals[desc].begin(), block_diagonals[desc].end(),
-                   static_cast<S>(0));
+      if constexpr (std::is_same<S, ghalf>::value) {
+        thrust::fill(hp_diagonals[desc].begin(), hp_diagonals[desc].end(),
+                    static_cast<P>(0));
+      }
+      else {
+        thrust::fill(block_diagonals[desc].begin(), block_diagonals[desc].end(),
+                    static_cast<S>(0));
+      }
     }
     for (auto &desc : factor_descriptors) {
-      desc->visit_block_diagonal(visitor, block_diagonals);
+      if constexpr (std::is_same<S, ghalf>::value) {
+        desc->visit_block_diagonal(visitor, hp_diagonals);
+      }
+      else {
+        desc->visit_block_diagonal(visitor, block_diagonals);
+      }
     }
     cudaDeviceSynchronize();
 
     // Invert the blocks
 
     for (auto &desc : vertex_descriptors) {
-      desc->visit_augment_block_diagonal(
-          visitor, block_diagonals[desc].data().get(), mu);
+      if constexpr (std::is_same<S, ghalf>::value) {
+        desc->visit_augment_block_diagonal(
+            visitor, hp_diagonals[desc].data().get(), mu);
+      }
+      else {
+        desc->visit_augment_block_diagonal(
+            visitor, block_diagonals[desc].data().get(), mu);
+      }
       // Invert the block diagonal using cublas
       const auto d = desc->dimension();
       const size_t num_blocks = desc->count();
@@ -113,13 +133,13 @@ public:
 
       P *a_ptr = nullptr;
 
-      if constexpr (std::is_same<S, __half>::value) {
-        hp_diagonals[desc].resize(num_blocks * block_size);
-        // Copy to higher precision
-        thrust::transform(thrust::device, block_diagonals[desc].begin(),
-                          block_diagonals[desc].end(),
-                          hp_diagonals[desc].begin(),
-                          [] __device__(S val) { return static_cast<P>(val); });
+      if constexpr (std::is_same<S, ghalf>::value) {
+        // hp_diagonals[desc].resize(num_blocks * block_size);
+        // // Copy to higher precision
+        // thrust::transform(thrust::device, block_diagonals[desc].begin(),
+        //                   block_diagonals[desc].end(),
+        //                   hp_diagonals[desc].begin(),
+        //                   [] __device__(S val) { return static_cast<P>(val); });
 
         a_ptr = hp_diagonals[desc].data().get();
       } else {
@@ -141,21 +161,33 @@ public:
                              Ainv_ptrs_device.data().get(), d,
                              info.data().get(), num_blocks);
       } else if constexpr (std::is_same<P, float>::value) {
+        // std::cout << "Inverting block diagonal with float precision." << std::endl;
+        // thrust::fill(hp_diagonals[desc].begin(),
+        //              hp_diagonals[desc].end(), static_cast<P>(0));
         cublasSmatinvBatched(handle, d, A_ptrs_device.data().get(), d,
                              Ainv_ptrs_device.data().get(), d,
                              info.data().get(), num_blocks);
       } else {
-        static_assert(std::is_same<S, __half>::value ||
+        static_assert(std::is_same<S, ghalf>::value ||
                           std::is_same<S, float>::value ||
                           std::is_same<S, double>::value,
-                      "BlockJacobiPreconditioner only supports half, float, or "
+                      "BlockJacobiPreconditioner only supports ghalf, float, or "
                       "double types.");
       }
 
       cudaDeviceSynchronize();
 
+      // Check for errors in inversion
+      // thrust::host_vector<int> info_host = info;
+      // for (size_t i = 0; i < num_blocks; ++i) {
+      //   if (info_host[i] != 0) {
+      //     std::cerr << "Error in matrix inversion for block " << i
+      //               << ": info = " << info_host[i] << std::endl;
+      //   }
+      // }
+
       // Copy back
-      if constexpr (std::is_same<S, __half>::value) {
+      if constexpr (std::is_same<S, ghalf>::value) {
         thrust::transform(thrust::device, Ainv_data.begin(), Ainv_data.end(),
                           block_diagonals[desc].begin(),
                           [] __device__(P val) { return static_cast<S>(val); });
