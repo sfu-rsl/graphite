@@ -426,7 +426,7 @@ public:
   // TODO: Make this consider kernels and active edges
   virtual T chi2(GraphVisitor<T, S> &visitor) override {
     visitor.template compute_chi2(this);
-    return thrust::reduce(thrust::device, chi2_vec.begin(), chi2_vec.end(), 0.0,
+    return thrust::reduce(thrust::device, chi2_vec.begin(), chi2_vec.end(), static_cast<T>(0.0),
                           thrust::plus<T>());
   }
 

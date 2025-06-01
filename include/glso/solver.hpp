@@ -112,7 +112,7 @@ public:
     // Rescale r
     // y.resize(dim_h);
     // auto rnorm = thrust::inner_product(thrust::device, r.begin(), r.end(), r.begin(),
-    //                                   (T)0.0);
+    //                                   static_cast<T>(0.0));
     // // if (rnorm > 1e-16) {
     // rnorm = std::sqrt(rnorm);
     // auto scale = 1.0 / rnorm;
@@ -133,7 +133,7 @@ public:
 
     // 1. First compute dot(r, z)
     T rz = (T)thrust::inner_product(r.begin(), r.end(), z.begin(),
-                                 0.0);
+                                 static_cast<T>(0.0));
     // T rz_0 = rz;
     // T rz_0;
 
@@ -221,7 +221,7 @@ public:
 
       // 4. Compute alpha = dot(r, z) / dot(p, v2)
       T alpha = (rz) / thrust::inner_product(p.begin(), p.end(), v2.begin(),
-                                           0.0);
+                                           static_cast<T>(0.0));
       // 5. x  += alpha * p
       thrust::copy(thrust::device, x, x + dim_h, x_backup.begin());
       axpy(dim_h, x, alpha, p.data().get(), x);
@@ -232,7 +232,7 @@ public:
       cudaDeviceSynchronize();
 
       // rnorm = (T)thrust::inner_product(thrust::device, r.begin(), r.end(), r.begin(),
-      //                                   (T)0.0);
+      //                                   static_cast<T>(0.0));
       // // if (rnorm > 1e-16) {
       // rnorm = std::sqrt(rnorm);
       // scale = 1.0 / rnorm;
@@ -245,7 +245,7 @@ public:
       thrust::fill(z.begin(), z.end(), 0);
       preconditioner->apply(visitor, z.data().get(), r.data().get());
       T rz_new = thrust::inner_product(r.begin(), r.end(), z.begin(),
-                                       0.0);
+                                       static_cast<T>(0.0));
 
       /*
       std::cout << "printing first 10 values of r and z after iteration " << k << std::endl;
