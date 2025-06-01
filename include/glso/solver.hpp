@@ -29,7 +29,7 @@ private:
   thrust::device_vector<T> z;    // preconditioned residual
   thrust::device_vector<T> diag; // diagonal of Hessian
   thrust::device_vector<T> x_backup;
-  // thrust::device_vector<T> y;
+  thrust::device_vector<T> y;
 
   size_t max_iter;
   T tol;
@@ -110,21 +110,21 @@ public:
     cudaDeviceSynchronize();
 
     // Rescale r
-    // y.resize(dim_h);
-    // auto rnorm = thrust::inner_product(thrust::device, r.begin(), r.end(), r.begin(),
-    //                                   static_cast<T>(0.0));
-    // // if (rnorm > 1e-16) {
-    // rnorm = std::sqrt(rnorm);
-    // auto scale = 1.0 / rnorm;
-    // // scale = std::clamp(scale, 1.0e0, 1.0e0);
-    // rescale_vec<T>(dim_h, y.data().get(), scale, r.data().get());
+    y.resize(dim_h);
+    auto rnorm = thrust::inner_product(thrust::device, r.begin(), r.end(), r.begin(),
+                                      static_cast<T>(0.0));
+    // if (rnorm > 1e-16) {
+    rnorm = std::sqrt(rnorm);
+    auto scale = 1.0 / rnorm;
+    // scale = std::clamp(scale, 1.0e0, 1.0e0);
+    rescale_vec<T>(dim_h, y.data().get(), scale, r.data().get());
     // Apply preconditioner
     preconditioner->precompute(visitor, vertex_descriptors, factor_descriptors,
                                dim_h, damping_factor);
     z.resize(dim_h);
 
     thrust::fill(z.begin(), z.end(), 0);
-    preconditioner->apply(visitor, z.data().get(), r.data().get());
+    preconditioner->apply(visitor, z.data().get(), y.data().get());
 
     p.resize(dim_h);
     thrust::copy(z.begin(), z.end(), p.begin()); // p = z
@@ -231,19 +231,19 @@ public:
            r.data().get());
       cudaDeviceSynchronize();
 
-      // rnorm = (T)thrust::inner_product(thrust::device, r.begin(), r.end(), r.begin(),
-      //                                   static_cast<T>(0.0));
-      // // if (rnorm > 1e-16) {
-      // rnorm = std::sqrt(rnorm);
-      // scale = 1.0 / rnorm;
-      // // scale = std::clamp(scale, 1e0, 1.0e0);
-      // rescale_vec<T>(dim_h, y.data().get(), scale, r.data().get());
-      // // }
+      rnorm = (T)thrust::inner_product(thrust::device, r.begin(), r.end(), r.begin(),
+                                        static_cast<T>(0.0));
+      // if (rnorm > 1e-16) {
+      rnorm = std::sqrt(rnorm);
+      scale = 1.0 / rnorm;
+      // scale = std::clamp(scale, 1e0, 1.0e0);
+      rescale_vec<T>(dim_h, y.data().get(), scale, r.data().get());
+      // }
 
 
       // Apply preconditioner again
       thrust::fill(z.begin(), z.end(), 0);
-      preconditioner->apply(visitor, z.data().get(), r.data().get());
+      preconditioner->apply(visitor, z.data().get(), y.data().get());
       T rz_new = thrust::inner_product(r.begin(), r.end(), z.begin(),
                                        static_cast<T>(0.0));
 
