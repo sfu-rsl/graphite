@@ -215,10 +215,23 @@ __global__ void compute_error_kernel_autodiff(
   if (is_fixed(fixed, vertex_id)) {
     return;
   }
-#pragma unroll
-  for (size_t i = 0; i < E; ++i) {
-    jacs[I][j_size * factor_id + col_offset + i] = local_error[i].dual;
+
+  if constexpr(std::is_same<S, __half>::value) {
+    // Need to clamp range
+    #pragma unroll
+    for (size_t i = 0; i < E; ++i) {
+      jacs[I][j_size * factor_id + col_offset + i] = __float2half(std::clamp(local_error[i].dual,
+                                                               -65504.0f, 65504.0f));
+    }
   }
+  else {
+    #pragma unroll
+    for (size_t i = 0; i < E; ++i) {
+      jacs[I][j_size * factor_id + col_offset + i] = local_error[i].dual;
+    }
+  }
+
+
 }
 // TODO: Make this more efficient and see if code can be shared with the
 // autodiff kernel
@@ -714,13 +727,15 @@ scale_jacobians_kernel(T *jacs, const highp *jacobian_scales, const size_t *ids,
 
   const auto jacobian_offset = factor_id * jacobian_size;
   const size_t hessian_offset = hessian_ids[local_id];
-  const T scale = jacobian_scales[hessian_offset + col];
+  const highp scale = jacobian_scales[hessian_offset + col];
 
   T *Jcol = jacs + jacobian_offset + col * E;
 #pragma unroll
   for (size_t i = 0; i < E; i++) {
-    // Jcol[i] *= scale;
-    Jcol[i] = static_cast<T>(static_cast<highp>(Jcol[i]) * static_cast<highp>(scale));
+
+    const highp scaled_j =  static_cast<highp>(Jcol[i]) * scale;
+
+    Jcol[i] = static_cast<T>(scaled_j);
 
   }
 }
