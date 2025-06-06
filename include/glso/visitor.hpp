@@ -1,7 +1,7 @@
 #pragma once
 #include <glso/common.hpp>
-#include <glso/vertex.hpp>
 #include <glso/types.hpp>
+#include <glso/vertex.hpp>
 
 namespace glso {
 
@@ -103,13 +103,13 @@ __global__ void augment_hessian_diagonal_kernel(S *diagonal_blocks, const S mu,
   for (size_t i = 0; i < D; i++) {
     // block[i * D + i] +=
     //     mu * static_cast<S>(
-    //              std::clamp(static_cast<double>(block[i * D + i]), 1.0e-6, 1.0e32));
-  
+    //              std::clamp(static_cast<double>(block[i * D +
+    //              i]), 1.0e-6, 1.0e32));
+
     const double diag = static_cast<double>(block[i * D + i]);
-    const double new_diag = diag + static_cast<double>(mu)*std::clamp(diag, 1.0e-6, 1.0e32);
+    const double new_diag =
+        diag + static_cast<double>(mu) * std::clamp(diag, 1.0e-6, 1.0e32);
     block[i * D + i] = static_cast<S>(new_diag);
-
-
   }
 }
 
@@ -216,22 +216,19 @@ __global__ void compute_error_kernel_autodiff(
     return;
   }
 
-  if constexpr(std::is_same<S, __half>::value) {
-    // Need to clamp range
-    #pragma unroll
+  if constexpr (std::is_same<S, __half>::value) {
+// Need to clamp range
+#pragma unroll
     for (size_t i = 0; i < E; ++i) {
-      jacs[I][j_size * factor_id + col_offset + i] = static_cast<S>(std::clamp(local_error[i].dual,
-                                                               -65504.0f, 65504.0f));
+      jacs[I][j_size * factor_id + col_offset + i] =
+          static_cast<S>(std::clamp(local_error[i].dual, -65504.0f, 65504.0f));
     }
-  }
-  else {
-    #pragma unroll
+  } else {
+#pragma unroll
     for (size_t i = 0; i < E; ++i) {
       jacs[I][j_size * factor_id + col_offset + i] = local_error[i].dual;
     }
   }
-
-
 }
 // TODO: Make this more efficient and see if code can be shared with the
 // autodiff kernel
@@ -399,8 +396,8 @@ compute_b_kernel(T *b, T *error, size_t *ids, const size_t *hessian_ids,
 // Each Jacobian block needs to be accessed just once
 // So we need E threads for each block (error dimension)
 // In total we should hae E*num_factors threads?
-template <typename T, typename S, size_t I, size_t N, size_t E, size_t D, typename F,
-          std::size_t... Is>
+template <typename T, typename S, size_t I, size_t N, size_t E, size_t D,
+          typename F, std::size_t... Is>
 __global__ void
 compute_Jv_kernel(T *y, T *x, size_t *ids, const size_t *hessian_ids,
                   const size_t num_threads, const S *jacs,
@@ -496,8 +493,8 @@ __global__ void compute_Jtv_kernel(T *y, T *x, size_t *ids,
 }
 
 // Compute J^T * P * x where P is the precision matrix
-template <typename T, typename S, size_t I, size_t N, size_t E, size_t D, typename F,
-          std::size_t... Is>
+template <typename T, typename S, size_t I, size_t N, size_t E, size_t D,
+          typename F, std::size_t... Is>
 __global__ void
 compute_JtPv_kernel(T *y, const T *x, const size_t *ids,
                     const size_t *hessian_ids, const size_t num_threads,
@@ -599,10 +596,13 @@ compute_chi2_kernel(T *chi2, S *chi2_derivative, const T *residuals,
   chi2_derivative[idx] = loss[idx].loss_derivative(raw_chi2);
 }
 
-template <typename highp, typename InvP, typename T, size_t I, size_t N, size_t E, size_t D>
-__global__ void compute_hessian_diagonal_kernel(
-    InvP *diagonal_blocks, const T *jacs, const size_t *ids, const uint32_t *fixed,
-    const T *pmat, const T *chi2_derivative, const size_t num_threads) {
+template <typename highp, typename InvP, typename T, size_t I, size_t N,
+          size_t E, size_t D>
+__global__ void
+compute_hessian_diagonal_kernel(InvP *diagonal_blocks, const T *jacs,
+                                const size_t *ids, const uint32_t *fixed,
+                                const T *pmat, const T *chi2_derivative,
+                                const size_t num_threads) {
   const size_t idx = get_thread_id();
 
   if (idx >= num_threads) {
@@ -733,18 +733,17 @@ scale_jacobians_kernel(T *jacs, const highp *jacobian_scales, const size_t *ids,
 #pragma unroll
   for (size_t i = 0; i < E; i++) {
 
-    const highp scaled_j =  static_cast<highp>(Jcol[i]) * scale;
+    const highp scaled_j = static_cast<highp>(Jcol[i]) * scale;
 
     Jcol[i] = static_cast<T>(scaled_j);
-
   }
 }
 
 template <typename highp, typename T, size_t I, size_t N, size_t E, size_t D>
 __global__ void compute_hessian_scalar_diagonal_kernel(
-    highp *diagonal, const T *jacs, const size_t *ids, const size_t *hessian_ids,
-    const uint32_t *fixed, const T *pmat, const T *chi2_derivative,
-    const size_t num_threads) {
+    highp *diagonal, const T *jacs, const size_t *ids,
+    const size_t *hessian_ids, const uint32_t *fixed, const T *pmat,
+    const T *chi2_derivative, const size_t num_threads) {
   const size_t idx = get_thread_id();
 
   if (idx >= num_threads) {
@@ -799,12 +798,10 @@ __global__ void compute_hessian_scalar_diagonal_kernel(
 }
 
 template <typename T, typename S> class GraphVisitor {
-  public:
-    using InvP = std::conditional_t<std::is_same<S, ghalf>::value, T, S>;
+public:
+  using InvP = std::conditional_t<std::is_same<S, ghalf>::value, T, S>;
 
 private:
-
-
   template <typename F, typename VT, std::size_t... Is>
   void launch_kernel_autodiff(
       F *f, std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
@@ -956,8 +953,8 @@ private:
        // f->residuals.data().get() << std::endl; std::cout << "Checking ids
        // ptr: " << f->device_ids.data().get() << std::endl;
 
-       compute_hessian_diagonal_kernel<T, InvP, S, Is, num_vertices, F::error_dim,
-                                       dimension>
+       compute_hessian_diagonal_kernel<T, InvP, S, Is, num_vertices,
+                                       F::error_dim, dimension>
            <<<num_blocks, threads_per_block>>>(
                diagonal_blocks[Is], jacs[Is], f->device_ids.data().get(),
                f->vertex_descriptors[Is]->get_fixed_mask(),
@@ -993,8 +990,8 @@ private:
        size_t num_blocks =
            (num_threads + threads_per_block - 1) / threads_per_block;
 
-       compute_hessian_scalar_diagonal_kernel<T, S, Is, num_vertices, F::error_dim,
-                                              dimension>
+       compute_hessian_scalar_diagonal_kernel<T, S, Is, num_vertices,
+                                              F::error_dim, dimension>
            <<<num_blocks, threads_per_block>>>(
                diagonal, jacs[Is], f->device_ids.data().get(), hessian_ids[Is],
                f->vertex_descriptors[Is]->get_fixed_mask(),
@@ -1284,8 +1281,8 @@ public:
 
     augment_hessian_diagonal_kernel<InvP, V::dim>
         <<<num_blocks, threads_per_block>>>(
-            block_diagonal, (InvP)mu, thrust::raw_pointer_cast(v->fixed_mask.data()),
-            num_threads);
+            block_diagonal, (InvP)mu,
+            thrust::raw_pointer_cast(v->fixed_mask.data()), num_threads);
     cudaDeviceSynchronize();
   }
 
@@ -1297,9 +1294,10 @@ public:
     const auto num_blocks =
         (num_threads + threads_per_block - 1) / threads_per_block;
 
-    apply_block_jacobi_kernel<T, InvP, V::dim><<<num_blocks, threads_per_block>>>(
-        z, r, block_diagonal, v->get_hessian_ids(),
-        thrust::raw_pointer_cast(v->fixed_mask.data()), num_threads);
+    apply_block_jacobi_kernel<T, InvP, V::dim>
+        <<<num_blocks, threads_per_block>>>(
+            z, r, block_diagonal, v->get_hessian_ids(),
+            thrust::raw_pointer_cast(v->fixed_mask.data()), num_threads);
     // cudaDeviceSynchronize();
   }
 };

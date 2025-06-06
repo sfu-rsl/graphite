@@ -33,8 +33,8 @@ public:
   virtual void visit_Jtv(GraphVisitor<T, S> &visitor, T *out, T *in) = 0;
   virtual void visit_block_diagonal(
       GraphVisitor<T, S> &visitor,
-      std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<InvP>>
-          &block_diagonals) = 0;
+      std::unordered_map<BaseVertexDescriptor<T, S> *,
+                         thrust::device_vector<InvP>> &block_diagonals) = 0;
   virtual void visit_scalar_diagonal(GraphVisitor<T, S> &visitor,
                                      T *diagonal) = 0;
   // virtual void apply_op(Op<T>& op) = 0;
@@ -182,10 +182,10 @@ public:
     visitor.template compute_Jtv(this, out, in);
   }
 
-  void visit_block_diagonal(
-      GraphVisitor<T, S> &visitor,
-      std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<InvP>>
-          &block_diagonals) override {
+  void visit_block_diagonal(GraphVisitor<T, S> &visitor,
+                            std::unordered_map<BaseVertexDescriptor<T, S> *,
+                                               thrust::device_vector<InvP>>
+                                &block_diagonals) override {
 
     std::array<InvP *, N> diagonal_blocks;
     for (size_t i = 0; i < N; i++) {
@@ -426,8 +426,8 @@ public:
   // TODO: Make this consider kernels and active edges
   virtual T chi2(GraphVisitor<T, S> &visitor) override {
     visitor.template compute_chi2(this);
-    return thrust::reduce(thrust::device, chi2_vec.begin(), chi2_vec.end(), static_cast<T>(0.0),
-                          thrust::plus<T>());
+    return thrust::reduce(thrust::device, chi2_vec.begin(), chi2_vec.end(),
+                          static_cast<T>(0.0), thrust::plus<T>());
   }
 
   virtual void scale_jacobians(GraphVisitor<T, S> &visitor,

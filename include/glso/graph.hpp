@@ -166,9 +166,9 @@ public:
           jacobian_scales.begin(), [] __device__(T value) {
             // return 1.0 / (1.0 + sqrt(value));
             constexpr double num = 1.0;
-            const double denom = std::numeric_limits<double>::epsilon() 
-              + sqrt(static_cast<double>(value));
-            // const double denom = 1.0 
+            const double denom = std::numeric_limits<double>::epsilon() +
+                                 sqrt(static_cast<double>(value));
+            // const double denom = 1.0
             //   + sqrt(static_cast<double>(value));
             // return 1.0 / (std::numeric_limits<T>::epsilon() + sqrt(value));
             return static_cast<T>(num / denom);

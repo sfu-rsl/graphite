@@ -15,11 +15,11 @@ T compute_rho(Graph<T, S> *graph, thrust::device_vector<T> &delta_x,
   //  TODO: Don't store these in the graph
   auto &b = graph->get_b();
   T num = (chi2 - new_chi2);
-  T denom = mu * static_cast<T>(
-                     thrust::inner_product(delta_x.begin(), delta_x.end(),
-                                           delta_x.begin(), static_cast<T>(0.0)));
-  denom += static_cast<T>(thrust::inner_product(delta_x.begin(), delta_x.end(),
-                                                b.begin(), static_cast<T>(0.0)));
+  T denom = mu * static_cast<T>(thrust::inner_product(
+                     delta_x.begin(), delta_x.end(), delta_x.begin(),
+                     static_cast<T>(0.0)));
+  denom += static_cast<T>(thrust::inner_product(
+      delta_x.begin(), delta_x.end(), b.begin(), static_cast<T>(0.0)));
   if (step_is_good) {
     denom += std::numeric_limits<T>::epsilon();
   } else {

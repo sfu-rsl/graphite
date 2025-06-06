@@ -91,18 +91,16 @@ public:
     for (auto &desc : vertex_descriptors) {
       if constexpr (std::is_same<S, ghalf>::value) {
         thrust::fill(hp_diagonals[desc].begin(), hp_diagonals[desc].end(),
-                    static_cast<P>(0.0));
-      }
-      else {
+                     static_cast<P>(0.0));
+      } else {
         thrust::fill(block_diagonals[desc].begin(), block_diagonals[desc].end(),
-                    static_cast<S>(0.0));
+                     static_cast<S>(0.0));
       }
     }
     for (auto &desc : factor_descriptors) {
       if constexpr (std::is_same<S, ghalf>::value) {
         desc->visit_block_diagonal(visitor, hp_diagonals);
-      }
-      else {
+      } else {
         desc->visit_block_diagonal(visitor, block_diagonals);
       }
     }
@@ -112,10 +110,9 @@ public:
 
     for (auto &desc : vertex_descriptors) {
       if constexpr (std::is_same<S, ghalf>::value) {
-        desc->visit_augment_block_diagonal(
-            visitor, hp_diagonals[desc].data().get(), mu);
-      }
-      else {
+        desc->visit_augment_block_diagonal(visitor,
+                                           hp_diagonals[desc].data().get(), mu);
+      } else {
         desc->visit_augment_block_diagonal(
             visitor, block_diagonals[desc].data().get(), mu);
       }
@@ -139,7 +136,8 @@ public:
         // thrust::transform(thrust::device, block_diagonals[desc].begin(),
         //                   block_diagonals[desc].end(),
         //                   hp_diagonals[desc].begin(),
-        //                   [] __device__(S val) { return static_cast<P>(val); });
+        //                   [] __device__(S val) { return static_cast<P>(val);
+        //                   });
 
         a_ptr = hp_diagonals[desc].data().get();
       } else {
@@ -161,18 +159,18 @@ public:
                              Ainv_ptrs_device.data().get(), d,
                              info.data().get(), num_blocks);
       } else if constexpr (std::is_same<P, float>::value) {
-        // std::cout << "Inverting block diagonal with float precision." << std::endl;
-        // thrust::fill(hp_diagonals[desc].begin(),
+        // std::cout << "Inverting block diagonal with float precision." <<
+        // std::endl; thrust::fill(hp_diagonals[desc].begin(),
         //              hp_diagonals[desc].end(), static_cast<P>(0));
         cublasSmatinvBatched(handle, d, A_ptrs_device.data().get(), d,
                              Ainv_ptrs_device.data().get(), d,
                              info.data().get(), num_blocks);
       } else {
-        static_assert(std::is_same<S, ghalf>::value ||
-                          std::is_same<S, float>::value ||
-                          std::is_same<S, double>::value,
-                      "BlockJacobiPreconditioner only supports ghalf, float, or "
-                      "double types.");
+        static_assert(
+            std::is_same<S, ghalf>::value || std::is_same<S, float>::value ||
+                std::is_same<S, double>::value,
+            "BlockJacobiPreconditioner only supports ghalf, float, or "
+            "double types.");
       }
 
       cudaDeviceSynchronize();
@@ -188,7 +186,7 @@ public:
 
       // Copy back
       if constexpr (std::is_same<S, ghalf>::value) {
-        // TODO: Get rid of the lower precision blocks 
+        // TODO: Get rid of the lower precision blocks
         thrust::transform(thrust::device, Ainv_data.begin(), Ainv_data.end(),
                           block_diagonals[desc].begin(),
                           [] __device__(P val) { return static_cast<S>(val); });
@@ -214,12 +212,12 @@ public:
         P *blocks = hp_diagonals[desc].data().get();
         desc->visit_apply_block_jacobi(visitor, z, r, blocks);
       }
-    }
-    else {
+    } else {
       for (auto &desc : *vds) {
         const auto d = desc->dimension();
         S *blocks = block_diagonals[desc].data().get();
-        // std::cout << "bd size: " << block_diagonals[desc].size() << std::endl;
+        // std::cout << "bd size: " << block_diagonals[desc].size() <<
+        // std::endl;
         desc->visit_apply_block_jacobi(visitor, z, r, blocks);
       }
     }

@@ -111,8 +111,8 @@ public:
 
     // Rescale r
     y.resize(dim_h);
-    auto rnorm = thrust::inner_product(thrust::device, r.begin(), r.end(), r.begin(),
-                                      static_cast<T>(0.0));
+    auto rnorm = thrust::inner_product(thrust::device, r.begin(), r.end(),
+                                       r.begin(), static_cast<T>(0.0));
     // if (rnorm > 1e-16) {
     rnorm = std::sqrt(rnorm);
     auto scale = 1.0 / rnorm;
@@ -133,7 +133,7 @@ public:
 
     // 1. First compute dot(r, z)
     T rz = (T)thrust::inner_product(r.begin(), r.end(), z.begin(),
-                                 static_cast<T>(0.0));
+                                    static_cast<T>(0.0));
     // T rz_0 = rz;
     // T rz_0;
 
@@ -181,18 +181,19 @@ public:
       return false;
       }
       if (std::isnan((T)z_host[i]) || std::isinf((T)z_host[i])) {
-      std::cerr << "NaN or Inf detected in initial preconditioned residual z at index " << i
+      std::cerr << "NaN or Inf detected in initial preconditioned residual z at
+    index " << i
             << ": value = " << (T)z_host[i] << std::endl;
       return false;
       }
       if (std::isnan((T)p_host[i]) || std::isinf((T)p_host[i])) {
-      std::cerr << "NaN or Inf detected in initial search direction p at index " << i
+      std::cerr << "NaN or Inf detected in initial search direction p at index "
+    << i
             << ": value = " << (T)p_host[i] << std::endl;
       return false;
       }
     }
     */
-
 
     for (size_t k = 0; k < max_iter; k++) {
 
@@ -221,25 +222,23 @@ public:
 
       // 4. Compute alpha = dot(r, z) / dot(p, v2)
       T alpha = (rz) / thrust::inner_product(p.begin(), p.end(), v2.begin(),
-                                           static_cast<T>(0.0));
+                                             static_cast<T>(0.0));
       // 5. x  += alpha * p
       thrust::copy(thrust::device, x, x + dim_h, x_backup.begin());
       axpy(dim_h, x, alpha, p.data().get(), x);
 
       // 6. r -= alpha * v2
-      axpy(dim_h, r.data().get(), -alpha, v2.data().get(),
-           r.data().get());
+      axpy(dim_h, r.data().get(), -alpha, v2.data().get(), r.data().get());
       cudaDeviceSynchronize();
 
-      rnorm = (T)thrust::inner_product(thrust::device, r.begin(), r.end(), r.begin(),
-                                        static_cast<T>(0.0));
+      rnorm = (T)thrust::inner_product(thrust::device, r.begin(), r.end(),
+                                       r.begin(), static_cast<T>(0.0));
       // if (rnorm > 1e-16) {
       rnorm = std::sqrt(rnorm);
       scale = 1.0 / rnorm;
       // scale = std::clamp(scale, 1e0, 1.0e0);
       rescale_vec<T>(dim_h, y.data().get(), scale, r.data().get());
       // }
-
 
       // Apply preconditioner again
       thrust::fill(z.begin(), z.end(), 0);
@@ -248,7 +247,8 @@ public:
                                        static_cast<T>(0.0));
 
       /*
-      std::cout << "printing first 10 values of r and z after iteration " << k << std::endl;
+      std::cout << "printing first 10 values of r and z after iteration " << k
+      << std::endl;
       // print r
       thrust::copy(r.begin(), r.end(), r_host.begin());
       std::cout << "Residual r (first 10): ";
@@ -277,7 +277,7 @@ public:
         std::cout << (T)r_host[i] << " ";
       }
       std::cout << std::endl;
-      
+
       std::cout << "alpha: " << static_cast<T>(alpha) << std::endl;
 
 
@@ -300,7 +300,8 @@ public:
         thrust::copy(thrust::device, x_backup.begin(), x_backup.end(), x);
         // std::cout << "Diverged at iteration " << k
         //           << ", resetting to previous x." << std::endl;
-        //           std::cout << "rz_new: " << static_cast<T>(rz_new) << ", rz_0: " << static_cast<T>(rz_0) << ", rejection_ratio: " <<
+        //           std::cout << "rz_new: " << static_cast<T>(rz_new) << ",
+        //           rz_0: " << static_cast<T>(rz_0) << ", rejection_ratio: " <<
         //           rejection_ratio << std::endl;
         break;
       }
@@ -309,14 +310,14 @@ public:
 
       // 8. Compute beta
       T beta = rz_new / rz;
-      // std::cout << "Iteration " << k << ", rz_new: " << static_cast<T>(rz_new)
+      // std::cout << "Iteration " << k << ", rz_new: " <<
+      // static_cast<T>(rz_new)
       //           << ", rz_0: " << static_cast<T>(rz_0) << ", beta: "
       //           << static_cast<T>(beta) << std::endl;
       rz = rz_new;
 
       // 9. Update p
-      axpy(dim_h, p.data().get(), beta, p.data().get(),
-           z.data().get());
+      axpy(dim_h, p.data().get(), beta, p.data().get(), z.data().get());
       cudaDeviceSynchronize();
 
       if (std::abs(static_cast<T>(rz_new)) < tol) {
