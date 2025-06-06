@@ -220,7 +220,7 @@ __global__ void compute_error_kernel_autodiff(
     // Need to clamp range
     #pragma unroll
     for (size_t i = 0; i < E; ++i) {
-      jacs[I][j_size * factor_id + col_offset + i] = __float2half(std::clamp(local_error[i].dual,
+      jacs[I][j_size * factor_id + col_offset + i] = static_cast<S>(std::clamp(local_error[i].dual,
                                                                -65504.0f, 65504.0f));
     }
   }
@@ -360,12 +360,12 @@ compute_b_kernel(T *b, T *error, size_t *ids, const size_t *hessian_ids,
   const auto col_offset = (idx % vertex_sizes[I]) * E; // for untransposed J
 
   // Use loss kernel
-  const auto dL = loss_derivative[factor_id];
+  const T dL = loss_derivative[factor_id];
 
-  S value = 0;
+  T value = 0.0;
   constexpr auto precision_matrix_size = E * E;
   const auto precision_offset = factor_id * precision_matrix_size;
-  S x2[E] = {0};
+  T x2[E] = {0.0};
 
 #pragma unroll
   for (int i = 0; i < E; i++) { // pmat row
@@ -373,8 +373,8 @@ compute_b_kernel(T *b, T *error, size_t *ids, const size_t *hessian_ids,
     for (int j = 0; j < E; j++) { // pmat col
       // x2[i] += pmat[precision_offset + i + j*E] * error[error_offset + j]; //
       // col major
-      x2[i] += dL * pmat[precision_offset + i * E + j] *
-               static_cast<S>(
+      x2[i] += dL * (T)pmat[precision_offset + i * E + j] *
+               static_cast<T>(
                    error[error_offset + j]); // row major (use for faster access
                                              // on symmetrical matrix)
     }
@@ -382,7 +382,7 @@ compute_b_kernel(T *b, T *error, size_t *ids, const size_t *hessian_ids,
 
 #pragma unroll
   for (int i = 0; i < E; i++) {
-    value -= jacs[jacobian_offset + col_offset + i] * x2[i];
+    value -= (T)jacs[jacobian_offset + col_offset + i] * x2[i];
   }
 
   const auto hessian_offset =
@@ -1290,14 +1290,14 @@ public:
   }
 
   template <typename V>
-  void apply_block_jacobi(V *v, T *z, const T *r, S *block_diagonal) {
+  void apply_block_jacobi(V *v, T *z, const T *r, InvP *block_diagonal) {
     const size_t num_parameters = v->count() * v->dimension();
     const size_t num_threads = num_parameters;
     const auto threads_per_block = 256;
     const auto num_blocks =
         (num_threads + threads_per_block - 1) / threads_per_block;
 
-    apply_block_jacobi_kernel<T, S, V::dim><<<num_blocks, threads_per_block>>>(
+    apply_block_jacobi_kernel<T, InvP, V::dim><<<num_blocks, threads_per_block>>>(
         z, r, block_diagonal, v->get_hessian_ids(),
         thrust::raw_pointer_cast(v->fixed_mask.data()), num_threads);
     // cudaDeviceSynchronize();

@@ -72,7 +72,7 @@ public:
   virtual void visit_augment_block_diagonal(GraphVisitor<T, S> &visitor,
                                             InvP *block_diagonal, T mu) = 0;
   virtual void visit_apply_block_jacobi(GraphVisitor<T, S> &visitor, T *z,
-                                        const T *r, S *block_diagonal) = 0;
+                                        const T *r, InvP *block_diagonal) = 0;
   virtual size_t dimension() const = 0;
   virtual size_t count() const = 0;
 
@@ -127,7 +127,7 @@ public:
   }
 
   void visit_apply_block_jacobi(GraphVisitor<T, S> &visitor, T *z, const T *r,
-                                S *block_diagonal) override {
+                                InvP *block_diagonal) override {
     visitor.template apply_block_jacobi(this, z, r, block_diagonal);
   }
 

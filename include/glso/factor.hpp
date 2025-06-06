@@ -329,7 +329,7 @@ public:
     return []() constexpr {
       std::array<S, E *E> pmat = {};
       for (size_t i = 0; i < E; i++) {
-        pmat[i * E + i] = static_cast<S>(1);
+        pmat[i * E + i] = static_cast<S>(1.0);
       }
       return pmat;
     }

@@ -80,7 +80,7 @@ public:
           d * d * desc->count(); // this is not tightly packed since count
                                  // includes fixed vertices
       block_diagonals[desc] =
-          thrust::device_vector<S>(num_values, static_cast<S>(0));
+          thrust::device_vector<S>(num_values, static_cast<S>(0.0));
       // block_diagonals.insert(desc, thrust::device_vector<T>(num_values, 0));
       if constexpr (std::is_same<S, ghalf>::value) {
         hp_diagonals[desc].resize(num_values);
@@ -91,11 +91,11 @@ public:
     for (auto &desc : vertex_descriptors) {
       if constexpr (std::is_same<S, ghalf>::value) {
         thrust::fill(hp_diagonals[desc].begin(), hp_diagonals[desc].end(),
-                    static_cast<P>(0));
+                    static_cast<P>(0.0));
       }
       else {
         thrust::fill(block_diagonals[desc].begin(), block_diagonals[desc].end(),
-                    static_cast<S>(0));
+                    static_cast<S>(0.0));
       }
     }
     for (auto &desc : factor_descriptors) {
@@ -188,9 +188,14 @@ public:
 
       // Copy back
       if constexpr (std::is_same<S, ghalf>::value) {
+        // TODO: Get rid of the lower precision blocks 
         thrust::transform(thrust::device, Ainv_data.begin(), Ainv_data.end(),
                           block_diagonals[desc].begin(),
                           [] __device__(P val) { return static_cast<S>(val); });
+
+        // also copy to higher precision
+        thrust::copy(thrust::device, Ainv_data.begin(), Ainv_data.end(),
+                     hp_diagonals[desc].begin());
       } else {
         thrust::copy(thrust::device, Ainv_data.begin(), Ainv_data.end(),
                      block_diagonals[desc].begin());
@@ -202,11 +207,21 @@ public:
 
   void apply(GraphVisitor<T, S> &visitor, T *z, const T *r) override {
     // Apply the preconditioner
-    for (auto &desc : *vds) {
-      const auto d = desc->dimension();
-      S *blocks = block_diagonals[desc].data().get();
-      // std::cout << "bd size: " << block_diagonals[desc].size() << std::endl;
-      desc->visit_apply_block_jacobi(visitor, z, r, blocks);
+    if constexpr (std::is_same<S, ghalf>::value) {
+      // Apply the P version of the block jacobi
+      for (auto &desc : *vds) {
+        const auto d = desc->dimension();
+        P *blocks = hp_diagonals[desc].data().get();
+        desc->visit_apply_block_jacobi(visitor, z, r, blocks);
+      }
+    }
+    else {
+      for (auto &desc : *vds) {
+        const auto d = desc->dimension();
+        S *blocks = block_diagonals[desc].data().get();
+        // std::cout << "bd size: " << block_diagonals[desc].size() << std::endl;
+        desc->visit_apply_block_jacobi(visitor, z, r, blocks);
+      }
     }
     cudaDeviceSynchronize();
   }
