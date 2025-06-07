@@ -277,6 +277,52 @@ compute_error_kernel(const M *obs, T *error,
   }
 }
 
+template <typename T, typename S, size_t I, size_t N, typename M, size_t E,
+          typename F, typename VT, std::size_t... Is>
+__global__ void
+compute_jacobian_kernel(const M *obs, T *error, S *jacs,
+                        const typename F::ConstraintDataType *constraint_data,
+                        size_t *ids, const size_t num_threads, VT args,
+                        const uint32_t *fixed, std::index_sequence<Is...>) {
+  const size_t idx = get_thread_id();
+
+  if (idx >= num_threads) {
+    return;
+  }
+
+  constexpr auto vertex_sizes = F::get_vertex_sizes();
+  const auto factor_id = idx;
+  const size_t vertex_id = ids[factor_id * N + I];
+  if (is_fixed(fixed, vertex_id)) {
+    return;
+  }
+
+  const M *local_obs = obs + factor_id;
+  // T *local_error = error + factor_id * E;
+  const typename F::ConstraintDataType *local_data =
+      constraint_data + factor_id;
+
+  auto vargs = cuda::std::make_tuple(
+      (*(std::get<Is>(args) + ids[factor_id * N + Is]))...);
+
+  constexpr size_t jacobian_size = E * vertex_sizes[I];
+
+  S *j = jacs + factor_id * jacobian_size;
+  if constexpr (std::is_same<S, ghalf>::value) {
+    T jacobian[jacobian_size];
+    F::Traits::template jacobian<T, I>(cuda::std::get<Is>(vargs)..., local_obs,
+                                       jacobian, local_data);
+
+#pragma unroll
+    for (size_t i = 0; i < jacobian_size; ++i) {
+      j[i] = jacobian[i];
+    }
+  } else {
+    F::Traits::template jacobian<T, I>(cuda::std::get<Is>(vargs)..., local_obs,
+                                       j, local_data);
+  }
+}
+
 // The output will be part of b with length of the vertex (where b = -J^T * r)
 // Note the negative sign - different papers use different conventions
 // TODO: Replace with generic J^T x r kernel?
@@ -834,6 +880,30 @@ private:
      ...);
   }
 
+  template <typename F, typename VT, std::size_t... Is>
+  void launch_kernel_jacobians(
+      F *f, std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
+      VT &verts, std::array<S *, F::get_num_vertices()> &jacs,
+      const size_t num_factors, std::index_sequence<Is...>) {
+    (([&] {
+       constexpr auto num_vertices = F::get_num_vertices();
+       const auto num_threads = num_factors;
+       size_t threads_per_block = 256;
+       size_t num_blocks =
+           (num_threads + threads_per_block - 1) / threads_per_block;
+
+       compute_jacobian_kernel<T, S, Is, num_vertices,
+                               typename F::ObservationType, F::error_dim, F,
+                               typename F::VertexPointerPointerTuple>
+           <<<num_blocks, threads_per_block>>>(
+               f->device_obs.data().get(), f->residuals.data().get(), jacs[Is],
+               f->data.data().get(), f->device_ids.data().get(), num_threads,
+               verts, f->vertex_descriptors[Is]->get_fixed_mask(),
+               std::make_index_sequence<num_vertices>{});
+     }()),
+     ...);
+  }
+
   template <typename F, std::size_t... Is>
   void launch_kernel_compute_b(
       F *f, T *b,
@@ -1053,6 +1123,32 @@ public:
 
     launch_kernel_autodiff(f, hessian_ids, verts, jacs, num_factors,
                            std::make_index_sequence<num_vertices>{});
+    cudaDeviceSynchronize();
+  }
+
+  template <typename F> void compute_jacobians(F *f) {
+    // Then for each vertex, we need to compute the error
+    constexpr auto num_vertices = F::get_num_vertices();
+    constexpr auto vertex_sizes = F::get_vertex_sizes();
+
+    // At this point all necessary data should be on the GPU
+    // std::array<T*, num_vertices> verts;
+    auto verts = f->get_vertices();
+    std::array<S *, num_vertices> jacs;
+    std::array<const size_t *, num_vertices> hessian_ids;
+    for (int i = 0; i < num_vertices; i++) {
+      // verts[i] = f->vertex_descriptors[i]->vertices();
+      jacs[i] = f->jacobians[i].data.data().get();
+      hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
+
+      // Important: Must clear Jacobian storage
+      thrust::fill(f->jacobians[i].data.begin(), f->jacobians[i].data.end(), 0);
+    }
+
+    const auto num_factors = f->count();
+
+    launch_kernel_jacobians(f, hessian_ids, verts, jacs, num_factors,
+                            std::make_index_sequence<num_vertices>{});
     cudaDeviceSynchronize();
   }
 

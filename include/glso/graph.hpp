@@ -142,8 +142,7 @@ public:
         factor->visit_error_autodiff(visitor);
       } else {
         factor->visit_error(visitor);
-        // manually compute Jacobians
-        throw std::runtime_error("Manual Jacobian computation not implemented");
+        factor->visit_jacobians(visitor);
       }
     }
 

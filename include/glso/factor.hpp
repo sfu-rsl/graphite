@@ -31,6 +31,7 @@ public:
   virtual void visit_b(GraphVisitor<T, S> &visitor, T *b) = 0;
   virtual void visit_Jv(GraphVisitor<T, S> &visitor, T *out, T *in) = 0;
   virtual void visit_Jtv(GraphVisitor<T, S> &visitor, T *out, T *in) = 0;
+  virtual void visit_jacobians(GraphVisitor<T, S> &visitor) = 0;
   virtual void visit_block_diagonal(
       GraphVisitor<T, S> &visitor,
       std::unordered_map<BaseVertexDescriptor<T, S> *,
@@ -180,6 +181,13 @@ public:
 
   void visit_Jtv(GraphVisitor<T, S> &visitor, T *out, T *in) override {
     visitor.template compute_Jtv(this, out, in);
+  }
+
+  void visit_jacobians(GraphVisitor<T, S> &visitor) override {
+    if constexpr (std::is_same_v<typename Traits::Differentiation,
+                                 DifferentiationMode::Manual>) {
+      visitor.template compute_jacobians(this);
+    }
   }
 
   void visit_block_diagonal(GraphVisitor<T, S> &visitor,

@@ -68,8 +68,8 @@ public:
 
     // Compute residual
     r.resize(dim_h); // dim h because dim(r) = dim(Ax) = dim(b)
-    thrust::copy(thrust::device, graph->get_b().begin(),
-                 graph->get_b().end(), r.begin());
+    thrust::copy(thrust::device, graph->get_b().begin(), graph->get_b().end(),
+                 r.begin());
 
     // 3. Add damping factor
     // v2 += damping_factor*diag(H)*x
