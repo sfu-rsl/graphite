@@ -40,7 +40,7 @@ public:
 template <typename T, typename S>
 class BlockJacobiPreconditioner : public Preconditioner<T, S> {
 private:
-  using P = std::conditional_t<std::is_same<S, ghalf>::value, T, S>;
+  using P = std::conditional_t<is_low_precision<S>::value, T, S>;
   size_t dimension;
   std::vector<std::pair<size_t, size_t>> block_sizes;
   std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<S>>
@@ -82,14 +82,14 @@ public:
       block_diagonals[desc] =
           thrust::device_vector<S>(num_values, static_cast<S>(0.0));
       // block_diagonals.insert(desc, thrust::device_vector<T>(num_values, 0));
-      if constexpr (std::is_same<S, ghalf>::value) {
+      if constexpr (is_low_precision<S>::value) {
         hp_diagonals[desc].resize(num_values);
       }
     }
 
     // Compute Hessian blocks on the diagonal
     for (auto &desc : vertex_descriptors) {
-      if constexpr (std::is_same<S, ghalf>::value) {
+      if constexpr (is_low_precision<S>::value) {
         thrust::fill(hp_diagonals[desc].begin(), hp_diagonals[desc].end(),
                      static_cast<P>(0.0));
       } else {
@@ -98,7 +98,7 @@ public:
       }
     }
     for (auto &desc : factor_descriptors) {
-      if constexpr (std::is_same<S, ghalf>::value) {
+      if constexpr (is_low_precision<S>::value) {
         desc->visit_block_diagonal(visitor, hp_diagonals);
       } else {
         desc->visit_block_diagonal(visitor, block_diagonals);
@@ -109,7 +109,7 @@ public:
     // Invert the blocks
 
     for (auto &desc : vertex_descriptors) {
-      if constexpr (std::is_same<S, ghalf>::value) {
+      if constexpr (is_low_precision<S>::value) {
         desc->visit_augment_block_diagonal(visitor,
                                            hp_diagonals[desc].data().get(), mu);
       } else {
@@ -130,7 +130,7 @@ public:
 
       P *a_ptr = nullptr;
 
-      if constexpr (std::is_same<S, ghalf>::value) {
+      if constexpr (is_low_precision<S>::value) {
         // hp_diagonals[desc].resize(num_blocks * block_size);
         // // Copy to higher precision
         // thrust::transform(thrust::device, block_diagonals[desc].begin(),
@@ -167,7 +167,7 @@ public:
                              info.data().get(), num_blocks);
       } else {
         static_assert(
-            std::is_same<S, ghalf>::value || std::is_same<S, float>::value ||
+            is_low_precision<S>::value || std::is_same<S, float>::value ||
                 std::is_same<S, double>::value,
             "BlockJacobiPreconditioner only supports ghalf, float, or "
             "double types.");
@@ -185,7 +185,7 @@ public:
       // }
 
       // Copy back
-      if constexpr (std::is_same<S, ghalf>::value) {
+      if constexpr (is_low_precision<S>::value) {
         // TODO: Get rid of the lower precision blocks
         thrust::transform(thrust::device, Ainv_data.begin(), Ainv_data.end(),
                           block_diagonals[desc].begin(),
@@ -205,7 +205,7 @@ public:
 
   void apply(GraphVisitor<T, S> &visitor, T *z, const T *r) override {
     // Apply the preconditioner
-    if constexpr (std::is_same<S, ghalf>::value) {
+    if constexpr (is_low_precision<S>::value) {
       // Apply the P version of the block jacobi
       for (auto &desc : *vds) {
         const auto d = desc->dimension();

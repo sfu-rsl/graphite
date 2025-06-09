@@ -160,7 +160,7 @@ __global__ void compute_error_kernel_autodiff(
 
   // printf("CEAD: Thread %d, Vertex %d, Factor %d\n", idx, vertex_id,
   // factor_id);
-  using G = std::conditional_t<std::is_same<S, ghalf>::value, T, S>;
+  using G = std::conditional_t<is_low_precision<S>::value, T, S>;
   const M *local_obs = obs + factor_id;
   Dual<T, G> local_error[E];
   const typename F::ConstraintDataType *local_data =
@@ -308,7 +308,7 @@ compute_jacobian_kernel(const M *obs, T *error, S *jacs,
   constexpr size_t jacobian_size = E * vertex_sizes[I];
 
   S *j = jacs + factor_id * jacobian_size;
-  if constexpr (std::is_same<S, ghalf>::value) {
+  if constexpr (is_low_precision<S>::value) {
     T jacobian[jacobian_size];
     F::Traits::template jacobian<T, I>(cuda::std::get<Is>(vargs)..., local_obs,
                                        jacobian, local_data);
@@ -486,7 +486,7 @@ compute_Jv_kernel(T *y, T *x, size_t *ids, const size_t *hessian_ids,
 
 #pragma unroll
   for (int i = 0; i < D; i++) {
-    value += (T)jrow[i * E] * x_start[i];
+    value += (T)(jrow[i * E] * (S)x_start[i]);
   }
 
   atomicAdd(&y[idx], value);
@@ -601,14 +601,30 @@ compute_JtPv_kernel(T *y, const T *x, const size_t *ids,
   T value = 0;
 #pragma unroll
   for (int i = 0; i < E; i++) { // pmat row
-#pragma unroll
-    for (int j = 0; j < E; j++) { // pmat col
-      // x2[i] += pmat[precision_offset + i + j*E] * x[error_offset + j]; // col
-      // major x2[i] += pmat[precision_offset + i*E + j] * x[error_offset + j];
-      // // row major x2[i] += precision_matrix[i*E + j] * x_start[j]; // row
-      // major
-      value += (T)jcol[i] * (T)precision_matrix[i * E + j] * x_start[j];
-    }
+  const auto p_row = precision_matrix + i*E;
+  S x2 = 0;
+  if constexpr (E == 2 && is_low_precision<S>::value) {
+    using hp2 = typename vec2_type<T>::type;
+    using vec2 = typename vec2_type<S>::type;
+    const vec2 xs2 = convert_to_low_precision<hp2, vec2>(reinterpret_cast<const hp2 *>(x_start)[0]);
+    const vec2 p2 = reinterpret_cast<const vec2 *>(p_row)[0];
+    const auto sum = __hmul2(p2, xs2);
+    x2 += sum.x + sum.y;
+  }
+  else {
+    #pragma unroll
+      for (int j = 0; j < E; j++) { // pmat col
+        // x2[i] += pmat[precision_offset + i + j*E] * x[error_offset + j]; // col
+        // major x2[i] += pmat[precision_offset + i*E + j] * x[error_offset + j];
+        // // row major x2[i] += precision_matrix[i*E + j] * x_start[j]; // row
+        // major
+        // x2 += precision_matrix[i * E + j] * (S)x_start[j];
+          x2 += p_row[j] * (S)x_start[j];
+
+        // value += (T)((S)jcol[i] * (S)precision_matrix[i * E + j] * (S)x_start[j]);
+      }
+  }
+    value += (T)(jcol[i] * x2);
     // x2[i] *= dL;
     // value += dL*jacs[jacobian_offset + col_offset + i] * x2[i];
     // value += jcol[i] * x2[i];
@@ -845,7 +861,7 @@ __global__ void compute_hessian_scalar_diagonal_kernel(
 
 template <typename T, typename S> class GraphVisitor {
 public:
-  using InvP = std::conditional_t<std::is_same<S, ghalf>::value, T, S>;
+  using InvP = std::conditional_t<is_low_precision<S>::value, T, S>;
 
 private:
   template <typename F, typename VT, std::size_t... Is>

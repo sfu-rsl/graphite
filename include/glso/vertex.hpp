@@ -62,7 +62,7 @@ __global__ void set_state_kernel(VertexType **vertices, const State *src,
 
 template <typename T, typename S> class BaseVertexDescriptor {
 public:
-  using InvP = std::conditional_t<std::is_same<S, ghalf>::value, T, S>;
+  using InvP = std::conditional_t<is_low_precision<S>::value, T, S>;
 
   virtual ~BaseVertexDescriptor(){};
 
@@ -91,7 +91,7 @@ public:
 template <typename T, typename S, typename VTraits>
 class VertexDescriptor : public BaseVertexDescriptor<T, S> {
 public:
-  using InvP = std::conditional_t<std::is_same<S, ghalf>::value, T, S>;
+  using InvP = std::conditional_t<is_low_precision<S>::value, T, S>;
 
   using Traits = class VTraits;
 

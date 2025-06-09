@@ -20,7 +20,7 @@ public:
 
 template <typename T, typename S> class BaseFactorDescriptor {
 public:
-  using InvP = std::conditional_t<std::is_same<S, ghalf>::value, T, S>;
+  using InvP = std::conditional_t<is_low_precision<S>::value, T, S>;
 
   virtual ~BaseFactorDescriptor(){};
 
@@ -106,7 +106,7 @@ private:
   HandleManager<size_t> hm;
 
 public:
-  using InvP = std::conditional_t<std::is_same<S, ghalf>::value, T, S>;
+  using InvP = std::conditional_t<is_low_precision<S>::value, T, S>;
 
   // using Traits = FactorTraits<T, Derived>;
   using Traits = class FTraits;
