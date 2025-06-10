@@ -582,61 +582,59 @@ compute_JtPv_kernel(T *y, const T *x, const size_t *ids,
   const T *x_start = x + error_offset;
 
   // precision matrices are column major (but should be symmetrical?)
-  // #pragma unroll
-  // for (int i = 0; i < E; i++) { // pmat row
-  //     #pragma unroll
-  //     for (int j = 0; j < E; j++) { // pmat col
-  //         // x2[i] += pmat[precision_offset + i + j*E] * x[error_offset + j];
-  //         // col major
-  //         // x2[i] += pmat[precision_offset + i*E + j] * x[error_offset + j];
-  //         // row major x2[i] += precision_matrix[i*E + j] * x_start[j]; //
-  //         row major
-  //     }
-  //     // x2[i] *= dL;
-  //     // value += dL*jacs[jacobian_offset + col_offset + i] * x2[i];
-  //     value += jcol[i] * x2[i];
-  // }
-  // value *= dL;
+  /*
+    T value = 0;
+  #pragma unroll
+    for (int i = 0; i < E; i++) { // pmat row
+    const auto p_row = precision_matrix + i*E;
+    S x2 = 0;
+    if constexpr (E == 2 && is_low_precision<S>::value) {
+      using hp2 = typename vec2_type<T>::type;
+      using vec2 = typename vec2_type<S>::type;
+      const vec2 xs2 = convert_to_low_precision<hp2,
+  vec2>(reinterpret_cast<const hp2 *>(x_start)[0]); const vec2 p2 =
+  reinterpret_cast<const vec2 *>(p_row)[0]; const auto sum = __hmul2(p2, xs2);
+      x2 += sum.x + sum.y;
+    }
+    else {
+      #pragma unroll
+        for (int j = 0; j < E; j++) { // pmat col
+          // x2[i] += pmat[precision_offset + i + j*E] * x[error_offset + j]; //
+  col
+          // major x2[i] += pmat[precision_offset + i*E + j] * x[error_offset +
+  j];
+          // // row major x2[i] += precision_matrix[i*E + j] * x_start[j]; //
+  row
+          // major
+          // x2 += precision_matrix[i * E + j] * (S)x_start[j];
+            x2 += p_row[j] * (S)x_start[j];
+
+          // value += (T)((S)jcol[i] * (S)precision_matrix[i * E + j] *
+  (S)x_start[j]);
+        }
+    }
+      value += (T)(jcol[i] * x2);
+      // x2[i] *= dL;
+      // value += dL*jacs[jacobian_offset + col_offset + i] * x2[i];
+      // value += jcol[i] * x2[i];
+      // value += jcol[i] * x[i];
+    }
+    value *= (T)chi2_derivative[factor_id];
+    */
 
   T value = 0;
 #pragma unroll
   for (int i = 0; i < E; i++) { // pmat row
-  const auto p_row = precision_matrix + i*E;
-  S x2 = 0;
-  if constexpr (E == 2 && is_low_precision<S>::value) {
-    using hp2 = typename vec2_type<T>::type;
-    using vec2 = typename vec2_type<S>::type;
-    const vec2 xs2 = convert_to_low_precision<hp2, vec2>(reinterpret_cast<const hp2 *>(x_start)[0]);
-    const vec2 p2 = reinterpret_cast<const vec2 *>(p_row)[0];
-    const auto sum = __hmul2(p2, xs2);
-    x2 += sum.x + sum.y;
-  }
-  else {
-    #pragma unroll
-      for (int j = 0; j < E; j++) { // pmat col
-        // x2[i] += pmat[precision_offset + i + j*E] * x[error_offset + j]; // col
-        // major x2[i] += pmat[precision_offset + i*E + j] * x[error_offset + j];
-        // // row major x2[i] += precision_matrix[i*E + j] * x_start[j]; // row
-        // major
-        // x2 += precision_matrix[i * E + j] * (S)x_start[j];
-          x2 += p_row[j] * (S)x_start[j];
-
-        // value += (T)((S)jcol[i] * (S)precision_matrix[i * E + j] * (S)x_start[j]);
-      }
-  }
+    const auto p_row = precision_matrix + i * E;
+    S x2 = 0;
+#pragma unroll
+    for (int j = 0; j < E; j++) { // pmat col
+      x2 += p_row[j] * (S)x_start[j];
+    }
     value += (T)(jcol[i] * x2);
-    // x2[i] *= dL;
-    // value += dL*jacs[jacobian_offset + col_offset + i] * x2[i];
-    // value += jcol[i] * x2[i];
-    // value += jcol[i] * x[i];
   }
-  value *= (T)chi2_derivative[factor_id];
 
-  // T value = 0;
-  // #pragma unroll
-  // for (int i = 0; i < E; i++) {
-  //     value += jacs[jacobian_offset + col_offset + i] * x2[i];
-  // }
+  value *= (T)chi2_derivative[factor_id];
 
   const auto hessian_offset =
       hessian_ids[local_id]; // each vertex has a hessian_ids array
