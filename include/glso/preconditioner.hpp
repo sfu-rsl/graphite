@@ -79,11 +79,12 @@ public:
       const size_t num_values =
           d * d * desc->count(); // this is not tightly packed since count
                                  // includes fixed vertices
-      block_diagonals[desc] =
-          thrust::device_vector<S>(num_values, static_cast<S>(0.0));
-      // block_diagonals.insert(desc, thrust::device_vector<T>(num_values, 0));
+
       if constexpr (is_low_precision<S>::value) {
         hp_diagonals[desc].resize(num_values);
+      }
+      else {
+        block_diagonals[desc].resize(num_values);
       }
     }
 
@@ -159,9 +160,6 @@ public:
                              Ainv_ptrs_device.data().get(), d,
                              info.data().get(), num_blocks);
       } else if constexpr (std::is_same<P, float>::value) {
-        // std::cout << "Inverting block diagonal with float precision." <<
-        // std::endl; thrust::fill(hp_diagonals[desc].begin(),
-        //              hp_diagonals[desc].end(), static_cast<P>(0));
         cublasSmatinvBatched(handle, d, A_ptrs_device.data().get(), d,
                              Ainv_ptrs_device.data().get(), d,
                              info.data().get(), num_blocks);
@@ -186,12 +184,7 @@ public:
 
       // Copy back
       if constexpr (is_low_precision<S>::value) {
-        // TODO: Get rid of the lower precision blocks
-        thrust::transform(thrust::device, Ainv_data.begin(), Ainv_data.end(),
-                          block_diagonals[desc].begin(),
-                          [] __device__(P val) { return static_cast<S>(val); });
-
-        // also copy to higher precision
+        // copy to higher precision buffer
         thrust::copy(thrust::device, Ainv_data.begin(), Ainv_data.end(),
                      hp_diagonals[desc].begin());
       } else {
