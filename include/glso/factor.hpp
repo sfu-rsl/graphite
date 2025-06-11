@@ -52,6 +52,10 @@ public:
   virtual void to_device() = 0;
 
   virtual T chi2(GraphVisitor<T, S> &visitor) = 0;
+
+
+  virtual void set_jacobian_storage(const bool store) = 0;
+  virtual bool store_jacobians() = 0;
 };
 
 struct DifferentiationMode {
@@ -105,6 +109,8 @@ private:
 
   HandleManager<size_t> hm;
 
+  bool _store_jacobians;
+
 public:
   using InvP = std::conditional_t<is_low_precision<S>::value, T, S>;
 
@@ -157,7 +163,7 @@ public:
 
   template <typename... VertexDescPtrs,
             typename = std::enable_if_t<sizeof...(VertexDescPtrs) == N>>
-  FactorDescriptor(VertexDescPtrs... vertex_descriptors) {
+  FactorDescriptor(VertexDescPtrs... vertex_descriptors): _store_jacobians(true) {
     link_factors({vertex_descriptors...});
 
     default_precision_matrix = get_default_precision_matrix();
@@ -445,6 +451,14 @@ public:
 
   virtual bool use_autodiff() override {
     return use_autodiff_impl<typename Traits::Differentiation>();
+  }
+
+  virtual void set_jacobian_storage(const bool store) {
+    _store_jacobians = store;
+  }
+
+  virtual bool store_jacobians() override {
+    return _store_jacobians;
   }
 };
 

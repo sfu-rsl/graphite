@@ -1,5 +1,4 @@
 #pragma once
-#include <Eigen/Dense>
 #include <cublas_v2.h>
 #include <glso/factor.hpp>
 #include <glso/op.hpp>

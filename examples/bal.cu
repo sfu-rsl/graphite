@@ -74,7 +74,8 @@ template <typename T, typename S> struct ReprojectionErrorTraits {
   hd_fn static void
   error(const D *camera, const D *point, const M *obs, D *error,
         const std::tuple<Camera<T> *, Point<T> *> &vertices, const Data *data) {
-    bal_reprojection_error<D, M, T>(camera, point, obs, error);
+    // bal_reprojection_error<D, M, T>(camera, point, obs, error);
+    bal_reprojection_error_simple<D, M, T>(camera, point, obs, error);
   }
 };
 
@@ -91,13 +92,12 @@ int main(void) {
   // using SP = double;
   // using SP = FP;
   using FP = float;
-  // using SP = float;
+  using SP = float;
   // using SP = __nv_bfloat16;
-  using SP = __half;
-  // using SP = ghalf;
+  // using SP = half;
 
-  // std::string file_path = "../data/bal/problem-16-22106-pre.txt";
-  std::string file_path = "../data/bal/problem-21-11315-pre.txt";
+  std::string file_path = "../data/bal/problem-16-22106-pre.txt";
+  // std::string file_path = "../data/bal/problem-21-11315-pre.txt";
   // std::string file_path = "../data/bal/problem-257-65132-pre.txt";
   // std::string file_path = "../data/bal/problem-356-226730-pre.txt";
   // std::string file_path = "../data/bal/problem-1778-993923-pre.txt";
