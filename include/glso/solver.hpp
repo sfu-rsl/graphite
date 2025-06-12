@@ -120,9 +120,15 @@ public:
       thrust::fill(v1.begin(), v1.end(), 0.0);
       auto v1_ptr = v1.data().get(); // reset
       for (size_t i = 0; i < factor_descriptors.size(); i++) {
-        factor_descriptors[i]->visit_Jv(visitor, v1_ptr, p.data().get());
+        factor_descriptors[i]->visit_Jv(visitor, v1_ptr, p.data().get(), graph->get_jacobian_scales().data().get());
         v1_ptr += factor_descriptors[i]->get_residual_size();
       }
+
+      // thrust::host_vector<T> h_v1 = v1;
+      // for (size_t i = 0; i < h_v1.size(); i++) {
+      //   std::cout << h_v1[i] << " ";
+      // }
+      // std::cout << std::endl;
       // cudaDeviceSynchronize();
 
       // 3. Compute v2 = J^T v1

@@ -29,7 +29,7 @@ public:
   virtual void visit_error(GraphVisitor<T, S> &visitor) = 0;
   virtual void visit_error_autodiff(GraphVisitor<T, S> &visitor) = 0;
   virtual void visit_b(GraphVisitor<T, S> &visitor, T *b) = 0;
-  virtual void visit_Jv(GraphVisitor<T, S> &visitor, T *out, T *in) = 0;
+  virtual void visit_Jv(GraphVisitor<T, S> &visitor, T *out, T *in, const T* jacobian_scales) = 0;
   virtual void visit_Jtv(GraphVisitor<T, S> &visitor, T *out, T *in) = 0;
   virtual void visit_jacobians(GraphVisitor<T, S> &visitor) = 0;
   virtual void visit_block_diagonal(
@@ -181,8 +181,8 @@ public:
     visitor.template compute_b(this, b);
   }
 
-  void visit_Jv(GraphVisitor<T, S> &visitor, T *out, T *in) override {
-    visitor.template compute_Jv(this, out, in);
+  void visit_Jv(GraphVisitor<T, S> &visitor, T *out, T *in, const T* jacobian_scales) override {
+    visitor.template compute_Jv(this, out, in, jacobian_scales);
   }
 
   void visit_Jtv(GraphVisitor<T, S> &visitor, T *out, T *in) override {

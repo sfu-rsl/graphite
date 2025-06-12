@@ -55,6 +55,10 @@ public:
     return factor_descriptors;
   }
 
+  thrust::device_vector<T> &get_jacobian_scales() {
+    return jacobian_scales;
+  }
+
   void add_vertex_descriptor(BaseVertexDescriptor<T, S> *descriptor) {
     vertex_descriptors.push_back(descriptor);
   }
