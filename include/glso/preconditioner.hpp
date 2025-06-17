@@ -81,8 +81,7 @@ public:
 
       if constexpr (is_low_precision<S>::value) {
         hp_diagonals[desc].resize(num_values);
-      }
-      else {
+      } else {
         block_diagonals[desc].resize(num_values);
       }
     }

@@ -5,6 +5,11 @@ if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
   set(CMAKE_CUDA_ARCHITECTURES 80)
 endif()
 
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+  # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -O3")
+  # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -O3 --use_fast_math") # Use at your own peril
+endif()
+
 # External dependencies
 find_package(Boost 1.74 REQUIRED)
 

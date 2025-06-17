@@ -31,3 +31,6 @@ RUN apt-get -y install cuda-toolkit-12-6 cuda-gdb-12-6
 
 # Install gdb
 # RUN apt update && apt-get -y install gdb
+
+# Install Python
+RUN apt-get -y install python3 python3-pip && pip3 install wrenfold

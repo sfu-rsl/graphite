@@ -29,7 +29,8 @@ public:
   virtual void visit_error(GraphVisitor<T, S> &visitor) = 0;
   virtual void visit_error_autodiff(GraphVisitor<T, S> &visitor) = 0;
   virtual void visit_b(GraphVisitor<T, S> &visitor, T *b) = 0;
-  virtual void visit_Jv(GraphVisitor<T, S> &visitor, T *out, T *in, const T* jacobian_scales) = 0;
+  virtual void visit_Jv(GraphVisitor<T, S> &visitor, T *out, T *in,
+                        const T *jacobian_scales) = 0;
   virtual void visit_Jtv(GraphVisitor<T, S> &visitor, T *out, T *in) = 0;
   virtual void visit_jacobians(GraphVisitor<T, S> &visitor) = 0;
   virtual void visit_block_diagonal(
@@ -52,7 +53,6 @@ public:
   virtual void to_device() = 0;
 
   virtual T chi2(GraphVisitor<T, S> &visitor) = 0;
-
 
   virtual void set_jacobian_storage(const bool store) = 0;
   virtual bool store_jacobians() = 0;
@@ -163,7 +163,8 @@ public:
 
   template <typename... VertexDescPtrs,
             typename = std::enable_if_t<sizeof...(VertexDescPtrs) == N>>
-  FactorDescriptor(VertexDescPtrs... vertex_descriptors): _store_jacobians(true) {
+  FactorDescriptor(VertexDescPtrs... vertex_descriptors)
+      : _store_jacobians(true) {
     link_factors({vertex_descriptors...});
 
     default_precision_matrix = get_default_precision_matrix();
@@ -181,7 +182,8 @@ public:
     visitor.template compute_b(this, b);
   }
 
-  void visit_Jv(GraphVisitor<T, S> &visitor, T *out, T *in, const T* jacobian_scales) override {
+  void visit_Jv(GraphVisitor<T, S> &visitor, T *out, T *in,
+                const T *jacobian_scales) override {
     visitor.template compute_Jv(this, out, in, jacobian_scales);
   }
 
@@ -457,9 +459,7 @@ public:
     _store_jacobians = store;
   }
 
-  virtual bool store_jacobians() override {
-    return _store_jacobians;
-  }
+  virtual bool store_jacobians() override { return _store_jacobians; }
 };
 
 } // namespace glso

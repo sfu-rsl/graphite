@@ -145,9 +145,8 @@ template <typename T, typename S, size_t I, size_t N, typename M, size_t E,
 __global__ void compute_error_kernel_autodiff(
     const M *obs, T *error,
     const typename F::ConstraintDataType *constraint_data, size_t *ids,
-    const size_t *hessian_ids, const size_t num_threads, VT args,
-    S * jacs, const uint32_t *fixed,
-    std::index_sequence<Is...>) {
+    const size_t *hessian_ids, const size_t num_threads, VT args, S *jacs,
+    const uint32_t *fixed, std::index_sequence<Is...>) {
   const size_t idx = get_thread_id();
 
   if (idx >= num_threads) {
@@ -491,110 +490,101 @@ compute_Jv_dynamic_kernel(T *y, T *x, size_t *ids, const size_t *hessian_ids,
 
 template <typename T, typename G, size_t I, size_t N, typename M, size_t E,
           typename F, typename VT, std::size_t... Is>
-__device__ void compute_Jrow_ad(
-    Dual<T, G>* error, 
-    const size_t col,
-    const size_t factor_id,
-    const size_t vertex_id,
-    const M *obs,
-    const typename F::ConstraintDataType *constraint_data, size_t *ids,
-    const size_t *hessian_ids, VT args,
-    std::index_sequence<Is...>) {
+__device__ void
+compute_Jrow_ad(Dual<T, G> *error, const size_t col, const size_t factor_id,
+                const size_t vertex_id, const M *obs,
+                const typename F::ConstraintDataType *constraint_data,
+                size_t *ids, const size_t *hessian_ids, VT args,
+                std::index_sequence<Is...>) {
 
+  constexpr auto vertex_sizes = F::get_vertex_sizes();
 
+  const M *local_obs = obs + factor_id;
+  // Dual<T, G> local_error[E];
+  const typename F::ConstraintDataType *local_data =
+      constraint_data + factor_id;
 
-    constexpr auto vertex_sizes = F::get_vertex_sizes();
+  auto v = cuda::std::make_tuple(std::array<Dual<T, G>, vertex_sizes[Is]>{}...);
 
-    const M *local_obs = obs + factor_id;
-    // Dual<T, G> local_error[E];
-    const typename F::ConstraintDataType *local_data =
-        constraint_data + factor_id;
+  auto vargs =
+      std::make_tuple((*(std::get<Is>(args) + ids[factor_id * N + Is]))...);
 
-    auto v = cuda::std::make_tuple(std::array<Dual<T, G>, vertex_sizes[Is]>{}...);
+  auto copy_vertices = [&v, &vertex_sizes, &vargs](auto &&...ptrs) {
+    ((real_to_dual<
+         decltype(std::get<Is>(vargs)),
+         std::tuple_element<Is, typename F::Traits::VertexDescriptors>::type, T,
+         G, vertex_sizes[Is]>(std::get<Is>(vargs),
+                              cuda::std::get<Is>(v).data())),
+     ...);
+  };
 
-    auto vargs =
-        std::make_tuple((*(std::get<Is>(args) + ids[factor_id * N + Is]))...);
+  std::apply(copy_vertices, vargs);
 
-    auto copy_vertices = [&v, &vertex_sizes, &vargs](auto &&...ptrs) {
-      ((real_to_dual<
-          decltype(std::get<Is>(vargs)),
-          std::tuple_element<Is, typename F::Traits::VertexDescriptors>::type, T,
-          G, vertex_sizes[Is]>(std::get<Is>(vargs),
-                                cuda::std::get<Is>(v).data())),
-      ...);
-    };
+  cuda::std::get<I>(v)[col].dual = static_cast<G>(1);
 
-    std::apply(copy_vertices, vargs);
-
-    cuda::std::get<I>(v)[col].dual = static_cast<G>(1);
-
-    F::Traits::error(cuda::std::get<Is>(v).data()..., local_obs, error,
-                    vargs, local_data);
+  F::Traits::error(cuda::std::get<Is>(v).data()..., local_obs, error, vargs,
+                   local_data);
 }
 
 template <typename T, typename S, size_t I, size_t N, typename M, size_t E,
           typename F, typename VT, size_t rows_per_tb, std::size_t... Is>
 __global__ void compute_Jv_dynamic_autodiff(
-    T *y, T *x,
-    const M *obs,
-    const T* jacobian_scales,
+    T *y, T *x, const M *obs, const T *jacobian_scales,
     const typename F::ConstraintDataType *constraint_data, size_t *ids,
     const size_t *hessian_ids, const size_t num_factors, VT args,
-    const uint32_t *fixed,
-    std::index_sequence<Is...>) {
+    const uint32_t *fixed, std::index_sequence<Is...>) {
   const size_t idx = get_thread_id();
   constexpr size_t D = F::get_vertex_sizes()[I];
-    // const size_t rows_per_tb =
-    //     blockDim.x / D;
-    constexpr size_t rows_per_jacobian = E;
+  // const size_t rows_per_tb =
+  //     blockDim.x / D;
+  constexpr size_t rows_per_jacobian = E;
 
-    // const size_t thread_block_idx = blockIdx.x;
+  // const size_t thread_block_idx = blockIdx.x;
 
-    // Assume that number of threads in a block is a multiple of D (row length)
-    const size_t row_idx = idx / D;
-    const size_t factor_id = row_idx / rows_per_jacobian;
-    const size_t column = idx % D;
-    const size_t row_in_jacobian = row_idx % rows_per_jacobian;
-    const size_t row_in_tb = row_idx % rows_per_tb;
-    
-    __shared__ T product_rows[rows_per_tb][D];
+  // Assume that number of threads in a block is a multiple of D (row length)
+  const size_t row_idx = idx / D;
+  const size_t factor_id = row_idx / rows_per_jacobian;
+  const size_t column = idx % D;
+  const size_t row_in_jacobian = row_idx % rows_per_jacobian;
+  const size_t row_in_tb = row_idx % rows_per_tb;
 
-    // T product = 0.0;
-    if (threadIdx.x < rows_per_tb*D) {
-      product_rows[row_in_tb][column] = 0.0;
-    }
+  __shared__ T product_rows[rows_per_tb][D];
 
-    if (factor_id < num_factors) {
-
-      const auto vertex_id = ids[factor_id * N + I];
-
-      const auto hess_col = hessian_ids[vertex_id];
-      const T *x_start = x + hess_col;
-
-      const T scale = jacobian_scales[hess_col + column];
-      // T product = 0.0;
-      // Each thread block stores a complete Jacobian row in shared memory
-      if (!is_fixed(fixed, vertex_id)) {
-        using G = std::conditional_t<is_low_precision<S>::value, T, S>;
-        Dual<T, G> error[E];
-        compute_Jrow_ad<T, G, I, N, M, E, F, VT>(error, column, factor_id, vertex_id, obs,
-          constraint_data, ids, hessian_ids, args, std::make_index_sequence<N>{});
-        const T scaled_j = static_cast<T>(error[row_in_jacobian].dual)*scale;;
-        const T product = static_cast<T>((S)scaled_j*(S)x_start[column]);
-        product_rows[row_in_tb][column] = product;
-          // product_rows[row_idx % rows_per_tb][column] = error[row_in_jacobian].dual;
-      }
-      // product_rows[row_in_tb][column] = product;
-
-
+  // T product = 0.0;
+  if (threadIdx.x < rows_per_tb * D) {
+    product_rows[row_in_tb][column] = 0.0;
   }
 
+  if (factor_id < num_factors) {
+
+    const auto vertex_id = ids[factor_id * N + I];
+
+    const auto hess_col = hessian_ids[vertex_id];
+    const T *x_start = x + hess_col;
+
+    const T scale = jacobian_scales[hess_col + column];
+    // T product = 0.0;
+    // Each thread block stores a complete Jacobian row in shared memory
+    if (!is_fixed(fixed, vertex_id)) {
+      using G = std::conditional_t<is_low_precision<S>::value, T, S>;
+      Dual<T, G> error[E];
+      compute_Jrow_ad<T, G, I, N, M, E, F, VT>(
+          error, column, factor_id, vertex_id, obs, constraint_data, ids,
+          hessian_ids, args, std::make_index_sequence<N>{});
+      const T scaled_j = static_cast<T>(error[row_in_jacobian].dual) * scale;
+      ;
+      const T product = static_cast<T>((S)scaled_j * (S)x_start[column]);
+      product_rows[row_in_tb][column] = product;
+      // product_rows[row_idx % rows_per_tb][column] =
+      // error[row_in_jacobian].dual;
+    }
+    // product_rows[row_in_tb][column] = product;
+  }
 
   // The Jacobian is stored as E x vertex_size in col major
   // constexpr auto jacobian_size = E * D;
-  
-  __syncthreads();
 
+  __syncthreads();
 
   if (factor_id < num_factors) {
 
@@ -605,23 +595,21 @@ __global__ void compute_Jv_dynamic_autodiff(
 
       // const T scale = jacobian_scales[hess_col + column];
       // const T* scales = jacobian_scales + hess_col;
-        T sum = 0.0;
-        // TODO: do a warp reduction
-        #pragma unroll
-        for (size_t i = 0; i < D; i++) {
-          sum += product_rows[row_in_tb][i];
-        }
-      
-        if (column == 0) {
-          // printf("Thread %llu, Factor %llu, Row %llu, Column %llu, Sum: %f\n", idx, factor_id, row_in_jacobian, column, sum);
-          atomicAdd(&y[factor_id*E + row_in_jacobian], sum);
-        }
+      T sum = 0.0;
+// TODO: do a warp reduction
+#pragma unroll
+      for (size_t i = 0; i < D; i++) {
+        sum += product_rows[row_in_tb][i];
+      }
+
+      if (column == 0) {
+        // printf("Thread %llu, Factor %llu, Row %llu, Column %llu, Sum: %f\n",
+        // idx, factor_id, row_in_jacobian, column, sum);
+        atomicAdd(&y[factor_id * E + row_in_jacobian], sum);
+      }
     }
   }
-
 }
-
-
 
 // Compute J^T * x where x is the size of the residual vector
 // Each Jacobian block needs to be accessed just once
@@ -1079,45 +1067,46 @@ private:
   void launch_kernel_compute_Jv(
       F *f, T *out, T *in,
       std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
-      std::array<S *, F::get_num_vertices()> &jacs, const T* jacobian_scales, const size_t num_factors,
-      std::index_sequence<Is...>) {
+      std::array<S *, F::get_num_vertices()> &jacs, const T *jacobian_scales,
+      const size_t num_factors, std::index_sequence<Is...>) {
     (([&] {
-      constexpr auto num_vertices = F::get_num_vertices();
-      constexpr auto vertex_sizes = F::get_vertex_sizes();
-      if (false && f->store_jacobians()) {
-       const auto num_threads = num_factors * F::error_dim;
+       constexpr auto num_vertices = F::get_num_vertices();
+       constexpr auto vertex_sizes = F::get_vertex_sizes();
+       if (true && f->store_jacobians()) {
+         const auto num_threads = num_factors * F::error_dim;
 
-       size_t threads_per_block = 256;
-       size_t num_blocks =
-           (num_threads + threads_per_block - 1) / threads_per_block;
+         size_t threads_per_block = 256;
+         size_t num_blocks =
+             (num_threads + threads_per_block - 1) / threads_per_block;
 
-       compute_Jv_kernel<T, S, Is, num_vertices, F::error_dim,
-                         f->get_vertex_sizes()[Is], F>
-           <<<num_blocks, threads_per_block>>>(
-               out, in, f->device_ids.data().get(), hessian_ids[Is],
-               num_threads, jacs[Is],
-               f->vertex_descriptors[Is]->get_fixed_mask(),
-               std::make_index_sequence<num_vertices>{});
-        }
-        else {
-          constexpr size_t warp_size = 32;
-          constexpr size_t rows_per_block = warp_size / vertex_sizes[Is];
-          constexpr size_t threads_per_block = rows_per_block * vertex_sizes[Is];
-          constexpr size_t E = F::error_dim;
+         compute_Jv_kernel<T, S, Is, num_vertices, F::error_dim,
+                           f->get_vertex_sizes()[Is], F>
+             <<<num_blocks, threads_per_block>>>(
+                 out, in, f->device_ids.data().get(), hessian_ids[Is],
+                 num_threads, jacs[Is],
+                 f->vertex_descriptors[Is]->get_fixed_mask(),
+                 std::make_index_sequence<num_vertices>{});
+       } else {
+         constexpr size_t warp_size = 32;
+         constexpr size_t rows_per_block = warp_size / vertex_sizes[Is];
+         constexpr size_t threads_per_block = rows_per_block * vertex_sizes[Is];
+         constexpr size_t E = F::error_dim;
 
-          const size_t num_jacobian_rows = num_factors * E;
-          const size_t num_threads = num_jacobian_rows * vertex_sizes[Is];
+         const size_t num_jacobian_rows = num_factors * E;
+         const size_t num_threads = num_jacobian_rows * vertex_sizes[Is];
 
-          const size_t num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
-          compute_Jv_dynamic_autodiff<T, S, Is, num_vertices, typename F::ObservationType, E,
-                                      F, typename F::VertexPointerPointerTuple, rows_per_block>
-              <<<num_blocks, threads_per_block>>>(
-                  out, in, f->device_obs.data().get(), jacobian_scales,
-                  f->data.data().get(), f->device_ids.data().get(),
-                  hessian_ids[Is], num_factors, f->get_vertices(),
-                  f->vertex_descriptors[Is]->get_fixed_mask(),
-                  std::make_index_sequence<num_vertices>{});
-        }
+         const size_t num_blocks =
+             (num_threads + threads_per_block - 1) / threads_per_block;
+         compute_Jv_dynamic_autodiff<
+             T, S, Is, num_vertices, typename F::ObservationType, E, F,
+             typename F::VertexPointerPointerTuple, rows_per_block>
+             <<<num_blocks, threads_per_block>>>(
+                 out, in, f->device_obs.data().get(), jacobian_scales,
+                 f->data.data().get(), f->device_ids.data().get(),
+                 hessian_ids[Is], num_factors, f->get_vertices(),
+                 f->vertex_descriptors[Is]->get_fixed_mask(),
+                 std::make_index_sequence<num_vertices>{});
+       }
      }()),
      ...);
   }
@@ -1361,7 +1350,8 @@ public:
     cudaDeviceSynchronize();
   }
 
-  template <typename F> void compute_Jv(F *f, T *out, T *in, const T* jacobian_scales) {
+  template <typename F>
+  void compute_Jv(F *f, T *out, T *in, const T *jacobian_scales) {
     constexpr auto num_vertices = F::get_num_vertices();
     constexpr auto vertex_sizes = F::get_vertex_sizes();
 
@@ -1377,7 +1367,8 @@ public:
 
     const auto num_factors = f->count();
 
-    launch_kernel_compute_Jv(f, out, in, hessian_ids, jacs, jacobian_scales, num_factors,
+    launch_kernel_compute_Jv(f, out, in, hessian_ids, jacs, jacobian_scales,
+                             num_factors,
                              std::make_index_sequence<num_vertices>{});
     cudaDeviceSynchronize();
   }

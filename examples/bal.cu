@@ -68,122 +68,24 @@ template <typename T, typename S> struct ReprojectionErrorTraits {
   using Observation = Eigen::Matrix<T, dimension, 1>;
   using Data = unsigned char;
   using Loss = DefaultLoss<T, dimension>;
-  using Differentiation = DifferentiationMode::Auto;
-  // using Differentiation = DifferentiationMode::Manual;
+  // using Differentiation = DifferentiationMode::Auto;
+  using Differentiation = DifferentiationMode::Manual;
 
   template <typename D, typename M>
   hd_fn static void
   error(const D *camera, const D *point, const M *obs, D *error,
         const std::tuple<Camera<T> *, Point<T> *> &vertices, const Data *data) {
-    bal_reprojection_error<D, M, T>(camera, point, obs, error);
-    // bal_reprojection_error_simple<D, M, T>(camera, point, obs, error);
+    // bal_reprojection_error<D, M, T>(camera, point, obs, error);
+    bal_reprojection_error_simple<D, M, T>(camera, point, obs, error);
   }
 
-  /*
   template <typename D, size_t I>
-  hd_fn static void jacobian(const Camera<T>* camera, const Point<T> *point, const Observation *obs, D *jacobian,
+  hd_fn static void jacobian(const Camera<T> *camera, const Point<T> *point,
+                             const Observation *obs, D *jacobian,
                              const Data *data) {
-    
-          // Camera Jacobian
-      auto &cam = *camera;
-      auto &X = *point;
-
-      Eigen::Map<Eigen::Matrix<T, 2, 9>> Jcam(jacobian);
-
-
-      // error calc
-      // Eigen::Map<const Eigen::Matrix<D, 3, 1>> X(point);
-      // Eigen::Map<const Eigen::Matrix<D, 9, 1>> cam(camera);
-      Eigen::Map<const Eigen::Matrix<T, 2, 1>> observation(obs->data());
-
-      // Extract rotation vector and build rotation matrix using Eigen's AngleAxis
-      Eigen::Matrix<D, 3, 1> rvec = cam.template head<3>();
-      D theta = rvec.norm();
-      Eigen::Matrix<D, 3, 3> R = Eigen::Matrix<D, 3, 3>::Identity();
-
-      // if (theta > D(0)) {
-      Eigen::AngleAxis<D> angle_axis(theta, rvec / theta);
-      R = angle_axis.toRotationMatrix();
-      // }
-
-      // Apply rotation and translation
-      Eigen::Matrix<D, 3, 1> t = cam.template segment<3>(3);
-      Eigen::Matrix<D, 3, 1> P = R * X + t;
-
-      // Perspective division
-      Eigen::Matrix<D, 2, 1> p = -P.template head<2>() / P(2);
-
-      // Radial distortion
-      D f = cam(6);
-      D k1 = cam(7);
-      D k2 = cam(8);
-      D r2 = p.squaredNorm();
-      D radial_distortion = D(1.0) + k1 * r2 + k2 * r2 * r2;
-      // Project to pixel coordinates and compute reprojection error
-      Eigen::Matrix<D, 2, 1> reprojection_error =
-          f * radial_distortion * p - observation.template cast<D>();
-    
-    
-    
-    if constexpr (I == 0) {
-            // Camera Jacobian
-
-      // Jacobian calculation
-      Jcam.setZero();
-
-      // wrt f
-      const auto dres_df = (radial_distortion*p).transpose();
-      Jcam.block<2, 1>(6, 0) = dres_df;
-
-      // wrt radial distortion
-      const auto dres_drad = f*p;
-
-      // wrt k1
-      const auto drad_dk1 = r2;
-      const auto dres_dk1 = dres_drad * drad_dk1;
-      Jcam.block<2, 1>(7, 0) = dres_dk1;
-
-      // wrt k2
-      const auto drad_dk2 = r2 * r2;
-      const auto dres_dk2 = dres_drad * drad_dk2;
-      Jcam.block<2, 1>(8, 0) = dres_dk2;
-
-      // wrt translation (paramters 3-5)
-      const auto drad_dr2 = k1 + 2*k2*r2;
-      const auto dr2_dp = 2 * p;
-
-      Eigen::Matrix<D, 2, 3> dp_dP = 
-          Eigen::Matrix<D, 2, 3>::Zero();
-      dp_dP(0, 0) = -1 / P(2);
-      dp_dP(0, 2) = p(0) / (P(2) * P(2));
-      dp_dP(1, 1) = -1 / P(2);
-      dp_dP(1, 2) = p(1) / (P(2) * P(2));
-
-
-      const auto dP_dt = Eigen::Matrix<D, 3, 3>::Identity();
-
-
-    }
-    else if constexpr (I == 1) {
-      // Point Jacobian
-      // auto &p = *point;
-      // auto &cam = *camera;
-
-      Eigen::Map<Eigen::Matrix<T, 2, 3>> Jpoint(jacobian);
-      Jpoint.setZero();
-      
-
-      // auto x = P(0);
-      // auto y = P(1);
-      // auto z = P(2);
-
-      // Jpoint <<
-      //     -f * radial_distortion / z, 0, f * radial_distortion * x / (z * z),
-      //     0, -f * radial_distortion / z, f * radial_distortion * y / (z * z);
-    }
+    bal_jacobian_simple<T, D, I>(camera->data(), point->data(), obs, jacobian,
+                                 data);
   }
-  */
-
 };
 
 template <typename T, typename S>
@@ -199,8 +101,8 @@ int main(void) {
   // using SP = double;
   // using SP = FP;
   using FP = float;
-  using SP = float;
-  // using SP = __nv_bfloat16;
+  // using SP = float;
+  using SP = __nv_bfloat16;
   // using SP = half;
 
   // std::string file_path = "../data/bal/problem-16-22106-pre.txt";
