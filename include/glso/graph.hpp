@@ -187,7 +187,7 @@ public:
     // Calculate b=J^T * r
     thrust::fill(b.begin(), b.end(), 0);
     for (auto &fd : factor_descriptors) {
-      fd->visit_b(visitor, b.data().get());
+      fd->visit_b(visitor, b.data().get(), jacobian_scales.data().get());
     }
 
     cudaDeviceSynchronize();

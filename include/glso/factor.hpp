@@ -28,7 +28,7 @@ public:
   virtual bool use_autodiff() = 0;
   virtual void visit_error(GraphVisitor<T, S> &visitor) = 0;
   virtual void visit_error_autodiff(GraphVisitor<T, S> &visitor) = 0;
-  virtual void visit_b(GraphVisitor<T, S> &visitor, T *b) = 0;
+  virtual void visit_b(GraphVisitor<T, S> &visitor, T *b, const T* jacobian_scales) = 0;
   virtual void visit_Jv(GraphVisitor<T, S> &visitor, T *out, T *in,
                         const T *jacobian_scales) = 0;
   virtual void visit_Jtv(GraphVisitor<T, S> &visitor, T *out, T *in) = 0;
@@ -178,8 +178,8 @@ public:
     visitor.template compute_error_autodiff(this);
   }
 
-  void visit_b(GraphVisitor<T, S> &visitor, T *b) override {
-    visitor.template compute_b(this, b);
+  void visit_b(GraphVisitor<T, S> &visitor, T *b, const T* jacobian_scales) override {
+    visitor.template compute_b(this, b, jacobian_scales);
   }
 
   void visit_Jv(GraphVisitor<T, S> &visitor, T *out, T *in,

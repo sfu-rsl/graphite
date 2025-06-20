@@ -116,13 +116,20 @@ public:
 
     for (size_t k = 0; k < max_iter; k++) {
 
+      // auto t_jv_start = std::chrono::steady_clock::now();
       // 2. Compute v1 = Jp
       thrust::fill(v1.begin(), v1.end(), 0.0);
       auto v1_ptr = v1.data().get(); // reset
       for (size_t i = 0; i < factor_descriptors.size(); i++) {
-        factor_descriptors[i]->visit_Jv(visitor, v1_ptr, p.data().get(), graph->get_jacobian_scales().data().get());
+        factor_descriptors[i]->visit_Jv(
+            visitor, v1_ptr, p.data().get(),
+            graph->get_jacobian_scales().data().get());
         v1_ptr += factor_descriptors[i]->get_residual_size();
       }
+      // auto t_jv_end = std::chrono::steady_clock::now();
+      // std::cout << "Time for Jv: "
+      //           << std::chrono::duration<double>(t_jv_end - t_jv_start).count()
+      //           << " seconds" << std::endl;
 
       // thrust::host_vector<T> h_v1 = v1;
       // for (size_t i = 0; i < h_v1.size(); i++) {
