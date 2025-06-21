@@ -151,6 +151,7 @@ int main(void) {
   auto r_desc = ReprojectionError<FP, SP>(&camera_desc, &point_desc);
   r_desc.reserve(num_observations);
   graph.add_factor_descriptor(&r_desc);
+  r_desc.set_jacobian_storage(false);
 
   const auto loss = DefaultLoss<FP, 2>();
   Eigen::Matrix<SP, 2, 2> precision_matrix =

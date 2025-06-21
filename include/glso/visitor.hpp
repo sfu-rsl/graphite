@@ -1476,7 +1476,7 @@ private:
        // f->residuals.data().get() << std::endl; std::cout << "Checking ids
        // ptr: " << f->device_ids.data().get() << std::endl;
 
-       if (false && f->store_jacobians()) {
+       if (f->store_jacobians()) {
 
          compute_b_kernel<T, S, Is, num_vertices, F::error_dim, F>
              <<<num_blocks, threads_per_block>>>(
@@ -1525,7 +1525,7 @@ private:
        // std::endl; std::cout << "Checking residual ptr: " <<
        // f->residuals.data().get() << std::endl; std::cout << "Checking ids
        // ptr: " << f->device_ids.data().get() << std::endl;
-       if (false && f->store_jacobians()) {
+       if (f->store_jacobians()) {
          compute_JtPv_kernel<T, S, Is, num_vertices, F::error_dim,
                              f->get_vertex_sizes()[Is], F>
              <<<num_blocks, threads_per_block>>>(
@@ -1562,7 +1562,7 @@ private:
     (([&] {
        constexpr auto num_vertices = F::get_num_vertices();
        constexpr auto vertex_sizes = F::get_vertex_sizes();
-       if (false && f->store_jacobians()) {
+       if (f->store_jacobians()) {
          const auto num_threads = num_factors * F::error_dim;
 
          size_t threads_per_block = 256;
@@ -1576,7 +1576,9 @@ private:
                  num_threads, jacs[Is],
                  f->vertex_descriptors[Is]->get_fixed_mask(),
                  std::make_index_sequence<num_vertices>{});
-       } else if (f->use_autodiff()) {
+       }
+       /*
+       else if (f->use_autodiff()) {
          // TODO: Remove
          constexpr size_t warp_size =
              256; // should be 32 but we don't use warp ops
@@ -1598,7 +1600,8 @@ private:
                  hessian_ids[Is], num_factors, f->get_vertices(),
                  f->vertex_descriptors[Is]->get_fixed_mask(),
                  std::make_index_sequence<num_vertices>{});
-       } else {
+       } */
+       else {
          // using manual jacobians
          /*
               constexpr size_t warp_size = 256;
@@ -1669,7 +1672,7 @@ private:
        // f->residuals.data().get() << std::endl; std::cout << "Checking ids
        // ptr: " << f->device_ids.data().get() << std::endl;
 
-       if (false && f->store_jacobians()) {
+       if (f->store_jacobians()) {
          compute_hessian_diagonal_kernel<T, InvP, S, Is, num_vertices,
                                          F::error_dim, dimension>
              <<<num_blocks, threads_per_block>>>(
@@ -1719,7 +1722,7 @@ private:
        size_t num_blocks =
            (num_threads + threads_per_block - 1) / threads_per_block;
 
-       if (false && f->store_jacobians()) {
+       if (f->store_jacobians()) {
          compute_hessian_scalar_diagonal_kernel<T, S, Is, num_vertices,
                                                 F::error_dim, dimension>
              <<<num_blocks, threads_per_block>>>(

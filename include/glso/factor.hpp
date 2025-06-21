@@ -436,9 +436,12 @@ public:
 
   void initialize_jacobian_storage() override {
     for (size_t i = 0; i < N; i++) {
-      jacobians[i].dimensions = {error_dim, vertex_descriptors[i]->dimension()};
-      jacobians[i].data.resize(error_dim * vertex_descriptors[i]->dimension() *
-                               count());
+      if (store_jacobians()) {
+        jacobians[i].dimensions = {error_dim,
+                                   vertex_descriptors[i]->dimension()};
+        jacobians[i].data.resize(error_dim *
+                                 vertex_descriptors[i]->dimension() * count());
+      }
     }
   }
 
