@@ -158,7 +158,8 @@ public:
     if (scale_jacobians) {
       thrust::fill(jacobian_scales.begin(), jacobian_scales.end(), 0);
       for (auto &factor : factor_descriptors) {
-        factor->visit_scalar_diagonal(visitor, jacobian_scales.data().get());
+        factor->visit_scalar_diagonal(visitor, jacobian_scales.data().get(),
+                                      nullptr);
       }
       cudaDeviceSynchronize();
 

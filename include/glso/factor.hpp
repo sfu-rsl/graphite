@@ -38,9 +38,10 @@ public:
   virtual void visit_block_diagonal(
       GraphVisitor<T, S> &visitor,
       std::unordered_map<BaseVertexDescriptor<T, S> *,
-                         thrust::device_vector<InvP>> &block_diagonals) = 0;
-  virtual void visit_scalar_diagonal(GraphVisitor<T, S> &visitor,
-                                     T *diagonal) = 0;
+                         thrust::device_vector<InvP>> &block_diagonals,
+      const T *jacobian_scales) = 0;
+  virtual void visit_scalar_diagonal(GraphVisitor<T, S> &visitor, T *diagonal,
+                                     const T *jacobian_scales) = 0;
   // virtual void apply_op(Op<T>& op) = 0;
 
   virtual JacobianStorage<S> *get_jacobians() = 0;
@@ -202,10 +203,11 @@ public:
     }
   }
 
-  void visit_block_diagonal(GraphVisitor<T, S> &visitor,
-                            std::unordered_map<BaseVertexDescriptor<T, S> *,
-                                               thrust::device_vector<InvP>>
-                                &block_diagonals) override {
+  void visit_block_diagonal(
+      GraphVisitor<T, S> &visitor,
+      std::unordered_map<BaseVertexDescriptor<T, S> *,
+                         thrust::device_vector<InvP>> &block_diagonals,
+      const T *jacobian_scales) override {
 
     std::array<InvP *, N> diagonal_blocks;
     for (size_t i = 0; i < N; i++) {
@@ -214,12 +216,13 @@ public:
       // block_diagonals[vertex_descriptors[i]].size() << std::endl;
     }
 
-    visitor.template compute_block_diagonal(this, diagonal_blocks);
+    visitor.template compute_block_diagonal(this, diagonal_blocks,
+                                            jacobian_scales);
   }
 
-  void visit_scalar_diagonal(GraphVisitor<T, S> &visitor,
-                             T *diagonal) override {
-    visitor.template compute_scalar_diagonal(this, diagonal);
+  void visit_scalar_diagonal(GraphVisitor<T, S> &visitor, T *diagonal,
+                             const T *jacobian_scales) override {
+    visitor.template compute_scalar_diagonal(this, diagonal, jacobian_scales);
   }
 
   static constexpr size_t get_num_vertices() { return N; }

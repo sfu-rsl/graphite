@@ -1141,6 +1141,81 @@ compute_hessian_diagonal_kernel(InvP *diagonal_blocks, const T *jacs,
   // *block = value;
 }
 
+template <typename highp, typename InvP, typename T, size_t I, size_t N,
+          size_t E, size_t D, typename VT, typename F>
+__global__ void compute_hessian_diagonal_dynamic_kernel(
+    InvP *diagonal_blocks, const size_t *ids, const size_t *hessian_ids,
+    const VT args, const typename F::ObservationType *obs,
+    const highp *jacobian_scales,
+    const typename F::ConstraintDataType *constraint_data,
+    const uint32_t *fixed, const T *pmat, const T *chi2_derivative,
+    const size_t num_threads) {
+  const size_t idx = get_thread_id();
+
+  if (idx >= num_threads) {
+    return;
+  }
+
+  constexpr size_t jacobian_size = D * E;
+  constexpr size_t block_size = D * D;
+
+  // Stored as E x d col major, but we need to transpose it to d x E, where d is
+  // the vertex size
+  const size_t factor_id = idx / block_size;
+  const size_t local_id =
+      ids[factor_id * N +
+          I]; // N is the number of vertices involved in the factor
+  if (is_fixed(fixed, local_id)) {
+    return;
+  }
+  const auto jacobian_offset = factor_id * jacobian_size;
+
+  constexpr auto precision_matrix_size = E * E;
+  const auto precision_offset = factor_id * precision_matrix_size;
+
+  // Identify H block row and column (column major)
+  // const size_t row = idx % D;
+  // const size_t col = idx / D;
+
+  const size_t offset = idx % block_size;
+  const size_t row = offset % D;
+  const size_t col = offset / D;
+
+  using G = std::conditional_t<is_low_precision<T>::value, highp, T>;
+  G jacobian[jacobian_size];
+
+  compute_Jblock<highp, G, I, N, typename F::ObservationType, E, F, VT>(
+      jacobian, factor_id, local_id, obs, constraint_data, ids, hessian_ids,
+      args, std::make_index_sequence<N>{});
+
+  const auto hessian_offset = hessian_ids[local_id];
+
+  const highp *Jt = jacobian + row * E;
+  const highp *J = jacobian + col * E;
+
+  const T *precision_matrix = pmat + precision_offset;
+
+  const highp *jscale = jacobian_scales + hessian_offset;
+
+  highp value = 0;
+#pragma unroll
+  for (int i = 0; i < E; i++) { // pmat row
+    highp pj = 0;
+#pragma unroll
+    for (int j = 0; j < E; j++) { // pmat col
+      pj += (highp)precision_matrix[i * E + j] * (highp)J[j] * jscale[col];
+    }
+    value += (highp)Jt[i] * jscale[row] * pj;
+  }
+
+  value *= (highp)chi2_derivative[factor_id];
+
+  InvP *block = diagonal_blocks + (local_id * block_size + row + col * D);
+
+  InvP lp_value = static_cast<InvP>(value);
+  atomicAdd(block, lp_value);
+}
+
 template <typename highp, typename T, size_t I, size_t N, size_t E, size_t D>
 __global__ void
 scale_jacobians_kernel(T *jacs, const highp *jacobian_scales, const size_t *ids,
@@ -1495,8 +1570,8 @@ private:
   void launch_kernel_block_diagonal(
       F *f, std::array<InvP *, F::get_num_vertices()> &diagonal_blocks,
       std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
-      std::array<S *, F::get_num_vertices()> &jacs, const size_t num_factors,
-      std::index_sequence<Is...>) {
+      std::array<S *, F::get_num_vertices()> &jacs, const T *jacobian_scales,
+      const size_t num_factors, std::index_sequence<Is...>) {
     (([&] {
        constexpr size_t num_vertices = F::get_num_vertices();
        constexpr size_t dimension = F::get_vertex_sizes()[Is];
@@ -1514,24 +1589,37 @@ private:
        // f->residuals.data().get() << std::endl; std::cout << "Checking ids
        // ptr: " << f->device_ids.data().get() << std::endl;
 
-       compute_hessian_diagonal_kernel<T, InvP, S, Is, num_vertices,
-                                       F::error_dim, dimension>
-           <<<num_blocks, threads_per_block>>>(
-               diagonal_blocks[Is], jacs[Is], f->device_ids.data().get(),
-               f->vertex_descriptors[Is]->get_fixed_mask(),
-               f->precision_matrices.data().get(),
-               f->chi2_derivative.data().get(), num_threads);
-
-       cudaError_t err = cudaGetLastError();
-       if (err != cudaSuccess) {
-         std::cerr << "CUDA error: " << cudaGetErrorString(err) << std::endl;
+       if (false && f->store_jacobians()) {
+         compute_hessian_diagonal_kernel<T, InvP, S, Is, num_vertices,
+                                         F::error_dim, dimension>
+             <<<num_blocks, threads_per_block>>>(
+                 diagonal_blocks[Is], jacs[Is], f->device_ids.data().get(),
+                 f->vertex_descriptors[Is]->get_fixed_mask(),
+                 f->precision_matrices.data().get(),
+                 f->chi2_derivative.data().get(), num_threads);
+       } else {
+         compute_hessian_diagonal_dynamic_kernel<
+             T, InvP, S, Is, num_vertices, F::error_dim, dimension,
+             typename F::VertexPointerPointerTuple, F>
+             <<<num_blocks, threads_per_block>>>(
+                 diagonal_blocks[Is], f->device_ids.data().get(),
+                 hessian_ids[Is], f->get_vertices(), f->device_obs.data().get(),
+                 jacobian_scales, f->data.data().get(),
+                 f->vertex_descriptors[Is]->get_fixed_mask(),
+                 f->precision_matrices.data().get(),
+                 f->chi2_derivative.data().get(), num_threads);
        }
+       //  cudaError_t err = cudaGetLastError();
+       //  if (err != cudaSuccess) {
+       //    std::cerr << "CUDA error: " << cudaGetErrorString(err) <<
+       //    std::endl;
+       //  }
 
-       err = cudaDeviceSynchronize();
-       if (err != cudaSuccess) {
-         std::cerr << "CUDA error after kernel execution: "
-                   << cudaGetErrorString(err) << std::endl;
-       }
+       //  err = cudaDeviceSynchronize();
+       //  if (err != cudaSuccess) {
+       //    std::cerr << "CUDA error after kernel execution: "
+       //              << cudaGetErrorString(err) << std::endl;
+       //  }
      }()),
      ...);
   }
@@ -1540,8 +1628,8 @@ private:
   void launch_kernel_scalar_diagonal(
       F *f, T *diagonal,
       std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
-      std::array<S *, F::get_num_vertices()> &jacs, const size_t num_factors,
-      std::index_sequence<Is...>) {
+      std::array<S *, F::get_num_vertices()> &jacs, const T *jacobian_scales,
+      const size_t num_factors, std::index_sequence<Is...>) {
     (([&] {
        constexpr size_t num_vertices = F::get_num_vertices();
        constexpr size_t dimension = F::get_vertex_sizes()[Is];
@@ -1778,7 +1866,8 @@ public:
 
   template <typename F>
   void compute_block_diagonal(
-      F *f, std::array<InvP *, F::get_num_vertices()> &diagonal_blocks) {
+      F *f, std::array<InvP *, F::get_num_vertices()> &diagonal_blocks,
+      const T *jacobian_scales) {
 
     // Then for each vertex, we need to compute the error
     constexpr auto num_vertices = F::get_num_vertices();
@@ -1797,12 +1886,13 @@ public:
     const auto num_factors = f->count();
 
     launch_kernel_block_diagonal(f, diagonal_blocks, hessian_ids, jacs,
-                                 num_factors,
+                                 jacobian_scales, num_factors,
                                  std::make_index_sequence<num_vertices>{});
     cudaDeviceSynchronize();
   }
 
-  template <typename F> void compute_scalar_diagonal(F *f, T *diagonal) {
+  template <typename F>
+  void compute_scalar_diagonal(F *f, T *diagonal, const T *jacobian_scales) {
 
     // Then for each vertex, we need to compute the error
     constexpr auto num_vertices = F::get_num_vertices();
@@ -1820,7 +1910,8 @@ public:
 
     const auto num_factors = f->count();
 
-    launch_kernel_scalar_diagonal(f, diagonal, hessian_ids, jacs, num_factors,
+    launch_kernel_scalar_diagonal(f, diagonal, hessian_ids, jacs,
+                                  jacobian_scales, num_factors,
                                   std::make_index_sequence<num_vertices>{});
     cudaDeviceSynchronize();
   }

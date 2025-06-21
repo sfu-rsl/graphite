@@ -13,6 +13,8 @@ public:
   precompute(GraphVisitor<T, S> &visitor,
              std::vector<BaseVertexDescriptor<T, S> *> &vertex_descriptors,
              std::vector<BaseFactorDescriptor<T, S> *> &factor_descriptors,
+             const T *jacobian_scales,
+
              size_t dimension, T mu) = 0;
 
   virtual void apply(GraphVisitor<T, S> &visitor, T *z, const T *r) = 0;
@@ -27,6 +29,8 @@ public:
   void precompute(GraphVisitor<T, S> &visitor,
                   std::vector<BaseVertexDescriptor<T, S> *> &vertex_descriptors,
                   std::vector<BaseFactorDescriptor<T, S> *> &factor_descriptors,
+                  const T *jacobian_scales,
+
                   size_t dimension, T mu) override {
     this->dimension = dimension;
   }
@@ -68,7 +72,7 @@ public:
   void precompute(GraphVisitor<T, S> &visitor,
                   std::vector<BaseVertexDescriptor<T, S> *> &vertex_descriptors,
                   std::vector<BaseFactorDescriptor<T, S> *> &factor_descriptors,
-                  size_t dimension, T mu) override {
+                  const T *jacobian_scales, size_t dimension, T mu) override {
     this->dimension = dimension;
     this->vds = &vertex_descriptors;
 
@@ -98,9 +102,9 @@ public:
     }
     for (auto &desc : factor_descriptors) {
       if constexpr (is_low_precision<S>::value) {
-        desc->visit_block_diagonal(visitor, hp_diagonals);
+        desc->visit_block_diagonal(visitor, hp_diagonals, jacobian_scales);
       } else {
-        desc->visit_block_diagonal(visitor, block_diagonals);
+        desc->visit_block_diagonal(visitor, block_diagonals, jacobian_scales);
       }
     }
     cudaDeviceSynchronize();

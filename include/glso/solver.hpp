@@ -76,7 +76,9 @@ public:
     diag.resize(dim_h);
     thrust::fill(diag.begin(), diag.end(), 0);
     for (size_t i = 0; i < factor_descriptors.size(); i++) {
-      factor_descriptors[i]->visit_scalar_diagonal(visitor, diag.data().get());
+      factor_descriptors[i]->visit_scalar_diagonal(
+          visitor, diag.data().get(),
+          graph->get_jacobian_scales().data().get());
     }
     cudaDeviceSynchronize();
     // thrust::fill(diag.begin(), diag.end(), 1.0);
@@ -97,7 +99,8 @@ public:
     rescale_vec<T>(dim_h, y.data().get(), scale, r.data().get());
     // Apply preconditioner
     preconditioner->precompute(visitor, vertex_descriptors, factor_descriptors,
-                               dim_h, damping_factor);
+                               graph->get_jacobian_scales().data().get(), dim_h,
+                               damping_factor);
     z.resize(dim_h);
 
     thrust::fill(z.begin(), z.end(), 0);
