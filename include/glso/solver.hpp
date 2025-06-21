@@ -128,7 +128,8 @@ public:
       }
       // auto t_jv_end = std::chrono::steady_clock::now();
       // std::cout << "Time for Jv: "
-      //           << std::chrono::duration<double>(t_jv_end - t_jv_start).count()
+      //           << std::chrono::duration<double>(t_jv_end -
+      //           t_jv_start).count()
       //           << " seconds" << std::endl;
 
       // thrust::host_vector<T> h_v1 = v1;
@@ -142,7 +143,9 @@ public:
       thrust::fill(v2.begin(), v2.end(), 0.0);
       v1_ptr = v1.data().get(); // reset
       for (size_t i = 0; i < factor_descriptors.size(); i++) {
-        factor_descriptors[i]->visit_Jtv(visitor, v2.data().get(), v1_ptr);
+        factor_descriptors[i]->visit_Jtv(
+            visitor, v2.data().get(), v1_ptr,
+            graph->get_jacobian_scales().data().get());
         v1_ptr += factor_descriptors[i]->get_residual_size();
       }
       cudaDeviceSynchronize();
