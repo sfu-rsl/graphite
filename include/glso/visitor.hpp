@@ -1315,6 +1315,86 @@ __global__ void compute_hessian_scalar_diagonal_kernel(
   atomicAdd(location, value);
 }
 
+template <typename highp, typename T, size_t I, size_t N, size_t E, size_t D,
+          typename VT, typename F, bool use_scales>
+__global__ void compute_hessian_scalar_diagonal_dynamic_kernel(
+    highp *diagonal, const T *jacs, const size_t *ids,
+    const size_t *hessian_ids, const VT args,
+    const typename F::ObservationType *obs, const highp *jacobian_scales,
+    const typename F::ConstraintDataType *constraint_data,
+    const uint32_t *fixed, const T *pmat, const T *chi2_derivative,
+    const size_t num_threads) {
+  const size_t idx = get_thread_id();
+
+  if (idx >= num_threads) {
+    return;
+  }
+
+  constexpr size_t jacobian_size = D * E;
+
+  // Stored as E x d col major, but we need to transpose it to d x E, where d is
+  // the vertex size
+  const size_t factor_id = idx / D;
+  const size_t local_id =
+      ids[factor_id * N +
+          I]; // N is the number of vertices involved in the factor
+  if (is_fixed(fixed, local_id)) {
+    return;
+  }
+  const auto jacobian_offset = factor_id * jacobian_size;
+
+  constexpr auto precision_matrix_size = E * E;
+  const auto precision_offset = factor_id * precision_matrix_size;
+
+  // Identify H block row and column (column major)
+  const size_t row = idx % D;
+  const size_t col = row;
+
+  using G = std::conditional_t<is_low_precision<T>::value, highp, T>;
+  G jacobian[jacobian_size];
+
+  compute_Jblock<highp, G, I, N, typename F::ObservationType, E, F, VT>(
+      jacobian, factor_id, local_id, obs, constraint_data, ids, hessian_ids,
+      args, std::make_index_sequence<N>{});
+  const auto hessian_offset = hessian_ids[local_id];
+  const highp *Jt = jacobian + row * E;
+  const highp *J = jacobian + col * E;
+
+  const T *precision_matrix = pmat + precision_offset;
+  highp value = 0;
+  if constexpr (use_scales) {
+    const highp *jscale = jacobian_scales + hessian_offset;
+
+#pragma unroll
+    for (int i = 0; i < E; i++) { // pmat row
+      highp pj = 0;
+#pragma unroll
+      for (int j = 0; j < E; j++) { // pmat col
+        pj += (highp)precision_matrix[i * E + j] * (highp)J[j] * jscale[col];
+      }
+      value += (highp)Jt[i] * jscale[row] * pj;
+    }
+  } else {
+
+#pragma unroll
+    for (int i = 0; i < E; i++) { // pmat row
+      highp pj = 0;
+#pragma unroll
+      for (int j = 0; j < E; j++) { // pmat col
+        pj += (highp)precision_matrix[i * E + j] * (highp)J[j];
+      }
+      value += (highp)Jt[i] * pj;
+    }
+  }
+
+  value *= (highp)chi2_derivative[factor_id];
+
+  // T* block = diagonal_blocks+(local_id*block_size + row + col*D);
+  highp *location = diagonal + hessian_offset + row;
+  // T lp_value = static_cast<T>(value);
+  atomicAdd(location, value);
+}
+
 template <typename T, typename S> class GraphVisitor {
 public:
   using InvP = std::conditional_t<is_low_precision<S>::value, T, S>;
@@ -1639,13 +1719,40 @@ private:
        size_t num_blocks =
            (num_threads + threads_per_block - 1) / threads_per_block;
 
-       compute_hessian_scalar_diagonal_kernel<T, S, Is, num_vertices,
-                                              F::error_dim, dimension>
-           <<<num_blocks, threads_per_block>>>(
-               diagonal, jacs[Is], f->device_ids.data().get(), hessian_ids[Is],
-               f->vertex_descriptors[Is]->get_fixed_mask(),
-               f->precision_matrices.data().get(),
-               f->chi2_derivative.data().get(), num_threads);
+       if (false && f->store_jacobians()) {
+         compute_hessian_scalar_diagonal_kernel<T, S, Is, num_vertices,
+                                                F::error_dim, dimension>
+             <<<num_blocks, threads_per_block>>>(
+                 diagonal, jacs[Is], f->device_ids.data().get(),
+                 hessian_ids[Is], f->vertex_descriptors[Is]->get_fixed_mask(),
+                 f->precision_matrices.data().get(),
+                 f->chi2_derivative.data().get(), num_threads);
+       } else {
+         if (jacobian_scales == nullptr) {
+           compute_hessian_scalar_diagonal_dynamic_kernel<
+               T, S, Is, num_vertices, F::error_dim, dimension,
+               typename F::VertexPointerPointerTuple, F, false>
+               <<<num_blocks, threads_per_block>>>(
+                   diagonal, jacs[Is], f->device_ids.data().get(),
+                   hessian_ids[Is], f->get_vertices(),
+                   f->device_obs.data().get(), nullptr, f->data.data().get(),
+                   f->vertex_descriptors[Is]->get_fixed_mask(),
+                   f->precision_matrices.data().get(),
+                   f->chi2_derivative.data().get(), num_threads);
+         } else {
+           compute_hessian_scalar_diagonal_dynamic_kernel<
+               T, S, Is, num_vertices, F::error_dim, dimension,
+               typename F::VertexPointerPointerTuple, F, true>
+               <<<num_blocks, threads_per_block>>>(
+                   diagonal, jacs[Is], f->device_ids.data().get(),
+                   hessian_ids[Is], f->get_vertices(),
+                   f->device_obs.data().get(), jacobian_scales,
+                   f->data.data().get(),
+                   f->vertex_descriptors[Is]->get_fixed_mask(),
+                   f->precision_matrices.data().get(),
+                   f->chi2_derivative.data().get(), num_threads);
+         }
+       }
      }()),
      ...);
   }
