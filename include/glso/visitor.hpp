@@ -1,5 +1,6 @@
 #pragma once
 #include <glso/common.hpp>
+#include <glso/differentiation.hpp>
 #include <glso/types.hpp>
 #include <glso/vertex.hpp>
 
@@ -1476,7 +1477,7 @@ private:
        // f->residuals.data().get() << std::endl; std::cout << "Checking ids
        // ptr: " << f->device_ids.data().get() << std::endl;
 
-       if (f->store_jacobians()) {
+       if (f->store_jacobians() || !is_analytical<F>()) {
 
          compute_b_kernel<T, S, Is, num_vertices, F::error_dim, F>
              <<<num_blocks, threads_per_block>>>(
@@ -1489,18 +1490,20 @@ private:
 
        } else {
          // std::cout << "Launching compute b dynamic kernel" << std::endl;
-         compute_b_dynamic_kernel<T, S, Is, num_vertices,
-                                  typename F::ObservationType, F::error_dim, F,
-                                  typename F::VertexPointerPointerTuple>
-             <<<num_blocks, threads_per_block>>>(
-                 b, f->residuals.data().get(), f->device_ids.data().get(),
-                 hessian_ids[Is], num_threads, f->get_vertices(),
-                 f->device_obs.data().get(), jacobian_scales,
-                 f->data.data().get(),
-                 f->vertex_descriptors[Is]->get_fixed_mask(),
-                 f->precision_matrices.data().get(),
-                 f->chi2_derivative.data().get(),
-                 std::make_index_sequence<num_vertices>{});
+         if constexpr (is_analytical<F>()) {
+           compute_b_dynamic_kernel<T, S, Is, num_vertices,
+                                    typename F::ObservationType, F::error_dim,
+                                    F, typename F::VertexPointerPointerTuple>
+               <<<num_blocks, threads_per_block>>>(
+                   b, f->residuals.data().get(), f->device_ids.data().get(),
+                   hessian_ids[Is], num_threads, f->get_vertices(),
+                   f->device_obs.data().get(), jacobian_scales,
+                   f->data.data().get(),
+                   f->vertex_descriptors[Is]->get_fixed_mask(),
+                   f->precision_matrices.data().get(),
+                   f->chi2_derivative.data().get(),
+                   std::make_index_sequence<num_vertices>{});
+         }
        }
      }()),
      ...);
@@ -1525,7 +1528,7 @@ private:
        // std::endl; std::cout << "Checking residual ptr: " <<
        // f->residuals.data().get() << std::endl; std::cout << "Checking ids
        // ptr: " << f->device_ids.data().get() << std::endl;
-       if (f->store_jacobians()) {
+       if (f->store_jacobians() || !is_analytical<F>()) {
          compute_JtPv_kernel<T, S, Is, num_vertices, F::error_dim,
                              f->get_vertex_sizes()[Is], F>
              <<<num_blocks, threads_per_block>>>(
@@ -1536,18 +1539,20 @@ private:
                  f->chi2_derivative.data().get(),
                  std::make_index_sequence<num_vertices>{});
        } else {
-         compute_JtPv_dynamic_kernel<T, S, Is, num_vertices,
-                                     typename F::ObservationType, F::error_dim,
-                                     f->get_vertex_sizes()[Is], F,
-                                     typename F::VertexPointerPointerTuple>
-             <<<num_blocks, threads_per_block>>>(
-                 out, in, f->device_ids.data().get(), hessian_ids[Is],
-                 num_threads, f->get_vertices(), f->device_obs.data().get(),
-                 jacobian_scales, f->data.data().get(),
-                 f->vertex_descriptors[Is]->get_fixed_mask(),
-                 f->precision_matrices.data().get(),
-                 f->chi2_derivative.data().get(),
-                 std::make_index_sequence<num_vertices>{});
+         if constexpr (is_analytical<F>()) {
+           compute_JtPv_dynamic_kernel<T, S, Is, num_vertices,
+                                       typename F::ObservationType,
+                                       F::error_dim, f->get_vertex_sizes()[Is],
+                                       F, typename F::VertexPointerPointerTuple>
+               <<<num_blocks, threads_per_block>>>(
+                   out, in, f->device_ids.data().get(), hessian_ids[Is],
+                   num_threads, f->get_vertices(), f->device_obs.data().get(),
+                   jacobian_scales, f->data.data().get(),
+                   f->vertex_descriptors[Is]->get_fixed_mask(),
+                   f->precision_matrices.data().get(),
+                   f->chi2_derivative.data().get(),
+                   std::make_index_sequence<num_vertices>{});
+         }
        }
      }()),
      ...);
@@ -1562,13 +1567,12 @@ private:
     (([&] {
        constexpr auto num_vertices = F::get_num_vertices();
        constexpr auto vertex_sizes = F::get_vertex_sizes();
-       if (f->store_jacobians()) {
+       if (f->store_jacobians() || !is_analytical<F>()) {
          const auto num_threads = num_factors * F::error_dim;
 
          size_t threads_per_block = 256;
          size_t num_blocks =
              (num_threads + threads_per_block - 1) / threads_per_block;
-
          compute_Jv_kernel<T, S, Is, num_vertices, F::error_dim,
                            f->get_vertex_sizes()[Is], F>
              <<<num_blocks, threads_per_block>>>(
@@ -1635,15 +1639,18 @@ private:
              (num_threads + threads_per_block - 1) / threads_per_block;
          constexpr size_t E = F::error_dim;
 
-         compute_Jv_dynamic_manual2<T, S, Is, num_vertices,
-                                    typename F::ObservationType, E, F,
-                                    typename F::VertexPointerPointerTuple>
-             <<<num_blocks, threads_per_block>>>(
-                 out, in, f->device_obs.data().get(), jacobian_scales,
-                 f->data.data().get(), f->device_ids.data().get(),
-                 hessian_ids[Is], num_factors, f->get_vertices(),
-                 f->vertex_descriptors[Is]->get_fixed_mask(),
-                 std::make_index_sequence<num_vertices>{});
+         if constexpr (is_analytical<F>()) {
+
+           compute_Jv_dynamic_manual2<T, S, Is, num_vertices,
+                                      typename F::ObservationType, E, F,
+                                      typename F::VertexPointerPointerTuple>
+               <<<num_blocks, threads_per_block>>>(
+                   out, in, f->device_obs.data().get(), jacobian_scales,
+                   f->data.data().get(), f->device_ids.data().get(),
+                   hessian_ids[Is], num_factors, f->get_vertices(),
+                   f->vertex_descriptors[Is]->get_fixed_mask(),
+                   std::make_index_sequence<num_vertices>{});
+         }
        }
      }()),
      ...);
@@ -1672,7 +1679,7 @@ private:
        // f->residuals.data().get() << std::endl; std::cout << "Checking ids
        // ptr: " << f->device_ids.data().get() << std::endl;
 
-       if (f->store_jacobians()) {
+       if (f->store_jacobians() || !is_analytical<F>()) {
          compute_hessian_diagonal_kernel<T, InvP, S, Is, num_vertices,
                                          F::error_dim, dimension>
              <<<num_blocks, threads_per_block>>>(
@@ -1681,16 +1688,19 @@ private:
                  f->precision_matrices.data().get(),
                  f->chi2_derivative.data().get(), num_threads);
        } else {
-         compute_hessian_diagonal_dynamic_kernel<
-             T, InvP, S, Is, num_vertices, F::error_dim, dimension,
-             typename F::VertexPointerPointerTuple, F>
-             <<<num_blocks, threads_per_block>>>(
-                 diagonal_blocks[Is], f->device_ids.data().get(),
-                 hessian_ids[Is], f->get_vertices(), f->device_obs.data().get(),
-                 jacobian_scales, f->data.data().get(),
-                 f->vertex_descriptors[Is]->get_fixed_mask(),
-                 f->precision_matrices.data().get(),
-                 f->chi2_derivative.data().get(), num_threads);
+         if constexpr (is_analytical<F>()) {
+           compute_hessian_diagonal_dynamic_kernel<
+               T, InvP, S, Is, num_vertices, F::error_dim, dimension,
+               typename F::VertexPointerPointerTuple, F>
+               <<<num_blocks, threads_per_block>>>(
+                   diagonal_blocks[Is], f->device_ids.data().get(),
+                   hessian_ids[Is], f->get_vertices(),
+                   f->device_obs.data().get(), jacobian_scales,
+                   f->data.data().get(),
+                   f->vertex_descriptors[Is]->get_fixed_mask(),
+                   f->precision_matrices.data().get(),
+                   f->chi2_derivative.data().get(), num_threads);
+         }
        }
        //  cudaError_t err = cudaGetLastError();
        //  if (err != cudaSuccess) {
@@ -1722,7 +1732,7 @@ private:
        size_t num_blocks =
            (num_threads + threads_per_block - 1) / threads_per_block;
 
-       if (f->store_jacobians()) {
+       if (f->store_jacobians() || !is_analytical<F>()) {
          compute_hessian_scalar_diagonal_kernel<T, S, Is, num_vertices,
                                                 F::error_dim, dimension>
              <<<num_blocks, threads_per_block>>>(
@@ -1731,29 +1741,31 @@ private:
                  f->precision_matrices.data().get(),
                  f->chi2_derivative.data().get(), num_threads);
        } else {
-         if (jacobian_scales == nullptr) {
-           compute_hessian_scalar_diagonal_dynamic_kernel<
-               T, S, Is, num_vertices, F::error_dim, dimension,
-               typename F::VertexPointerPointerTuple, F, false>
-               <<<num_blocks, threads_per_block>>>(
-                   diagonal, jacs[Is], f->device_ids.data().get(),
-                   hessian_ids[Is], f->get_vertices(),
-                   f->device_obs.data().get(), nullptr, f->data.data().get(),
-                   f->vertex_descriptors[Is]->get_fixed_mask(),
-                   f->precision_matrices.data().get(),
-                   f->chi2_derivative.data().get(), num_threads);
-         } else {
-           compute_hessian_scalar_diagonal_dynamic_kernel<
-               T, S, Is, num_vertices, F::error_dim, dimension,
-               typename F::VertexPointerPointerTuple, F, true>
-               <<<num_blocks, threads_per_block>>>(
-                   diagonal, jacs[Is], f->device_ids.data().get(),
-                   hessian_ids[Is], f->get_vertices(),
-                   f->device_obs.data().get(), jacobian_scales,
-                   f->data.data().get(),
-                   f->vertex_descriptors[Is]->get_fixed_mask(),
-                   f->precision_matrices.data().get(),
-                   f->chi2_derivative.data().get(), num_threads);
+         if constexpr (is_analytical<F>()) {
+           if (jacobian_scales == nullptr) {
+             compute_hessian_scalar_diagonal_dynamic_kernel<
+                 T, S, Is, num_vertices, F::error_dim, dimension,
+                 typename F::VertexPointerPointerTuple, F, false>
+                 <<<num_blocks, threads_per_block>>>(
+                     diagonal, jacs[Is], f->device_ids.data().get(),
+                     hessian_ids[Is], f->get_vertices(),
+                     f->device_obs.data().get(), nullptr, f->data.data().get(),
+                     f->vertex_descriptors[Is]->get_fixed_mask(),
+                     f->precision_matrices.data().get(),
+                     f->chi2_derivative.data().get(), num_threads);
+           } else {
+             compute_hessian_scalar_diagonal_dynamic_kernel<
+                 T, S, Is, num_vertices, F::error_dim, dimension,
+                 typename F::VertexPointerPointerTuple, F, true>
+                 <<<num_blocks, threads_per_block>>>(
+                     diagonal, jacs[Is], f->device_ids.data().get(),
+                     hessian_ids[Is], f->get_vertices(),
+                     f->device_obs.data().get(), jacobian_scales,
+                     f->data.data().get(),
+                     f->vertex_descriptors[Is]->get_fixed_mask(),
+                     f->precision_matrices.data().get(),
+                     f->chi2_derivative.data().get(), num_threads);
+           }
          }
        }
      }()),
@@ -1816,7 +1828,7 @@ public:
   }
 
   template <typename F> void compute_jacobians(F *f) {
-    if (!f->store_jacobians()) {
+    if (!(f->store_jacobians() || !is_analytical<F>())) {
       return;
     }
     // Then for each vertex, we need to compute the error
@@ -2028,7 +2040,7 @@ public:
 
   template <typename F> void scale_jacobians(F *f, T *jacobian_scales) {
 
-    if (!f->store_jacobians()) {
+    if (!(f->store_jacobians() || !is_analytical<F>())) {
       return;
     }
     // Then for each vertex, we need to compute the error

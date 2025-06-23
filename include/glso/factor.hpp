@@ -1,5 +1,6 @@
 #pragma once
 #include <glso/common.hpp>
+#include <glso/differentiation.hpp>
 #include <glso/loss.hpp>
 #include <glso/op.hpp>
 #include <glso/utils.hpp>
@@ -59,20 +60,8 @@ public:
 
   virtual void set_jacobian_storage(const bool store) = 0;
   virtual bool store_jacobians() = 0;
+  virtual bool supports_dynamic_jacobians() = 0;
 };
-
-struct DifferentiationMode {
-  struct Auto {};
-  struct Manual {};
-};
-
-template <typename DiffMode> constexpr bool use_autodiff_impl() {
-  return false;
-}
-
-template <> constexpr bool use_autodiff_impl<DifferentiationMode::Auto>() {
-  return true;
-}
 
 template <typename T> struct get_vertex_type {
   using type = typename T::VertexType;
@@ -436,7 +425,8 @@ public:
 
   void initialize_jacobian_storage() override {
     for (size_t i = 0; i < N; i++) {
-      if (store_jacobians()) {
+      if (store_jacobians() || !std::is_same_v<typename Traits::Differentiation,
+                                               DifferentiationMode::Manual>) {
         jacobians[i].dimensions = {error_dim,
                                    vertex_descriptors[i]->dimension()};
         jacobians[i].data.resize(error_dim *
@@ -470,6 +460,11 @@ public:
   }
 
   virtual bool store_jacobians() override { return _store_jacobians; }
+
+  virtual bool supports_dynamic_jacobians() override {
+    return std::is_same_v<typename Traits::Differentiation,
+                          DifferentiationMode::Manual>;
+  }
 };
 
 } // namespace glso

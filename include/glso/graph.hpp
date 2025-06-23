@@ -140,7 +140,8 @@ public:
 
     for (auto &factor : factor_descriptors) {
       // compute error
-      if (factor->use_autodiff() && factor->store_jacobians()) {
+      if (factor->use_autodiff() && (factor->store_jacobians() ||
+                                     !factor->supports_dynamic_jacobians())) {
         factor->visit_error_autodiff(visitor);
       } else {
         factor->visit_error(visitor);
