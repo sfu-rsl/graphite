@@ -46,9 +46,12 @@ public:
   // Assumes that x is already initialized
   virtual bool solve(Graph<T, S> *graph, T *x, T damping_factor) override {
 
-    std::array<cudaStream_t, 2> streams;
-    cudaStreamCreate(&streams[0]);
-    cudaStreamCreate(&streams[1]);
+
+    constexpr size_t num_streams = 2;
+    std::array<cudaStream_t, num_streams> streams;
+    for (size_t i = 0; i < streams.size(); i++) {
+      cudaStreamCreate(&streams[i]);
+    }
 
     auto &vertex_descriptors = graph->get_vertex_descriptors();
     auto &factor_descriptors = graph->get_factor_descriptors();
@@ -108,7 +111,7 @@ public:
     z.resize(dim_h);
 
     thrust::fill(z.begin(), z.end(), 0);
-    preconditioner->apply(visitor, z.data().get(), y.data().get());
+    preconditioner->apply(visitor, z.data().get(), y.data().get(), streams.data(), streams.size());
 
     p.resize(dim_h);
     thrust::copy(z.begin(), z.end(), p.begin()); // p = z
@@ -180,7 +183,7 @@ public:
 
       // Apply preconditioner again
       thrust::fill(z.begin(), z.end(), 0);
-      preconditioner->apply(visitor, z.data().get(), y.data().get());
+      preconditioner->apply(visitor, z.data().get(), y.data().get(), streams.data(), streams.size());
       T rz_new = thrust::inner_product(r.begin(), r.end(), z.begin(),
                                        static_cast<T>(0.0));
 
@@ -205,8 +208,9 @@ public:
     }
 
     // TODO: Figure out failure cases
-    cudaStreamDestroy(streams[0]);
-    cudaStreamDestroy(streams[1]);
+    for (size_t i = 0; i < streams.size(); i++) {
+      cudaStreamDestroy(streams[i]);
+    }
     return true;
   }
 };

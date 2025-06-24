@@ -2099,7 +2099,7 @@ public:
   }
 
   template <typename V>
-  void apply_block_jacobi(V *v, T *z, const T *r, InvP *block_diagonal) {
+  void apply_block_jacobi(V *v, T *z, const T *r, InvP *block_diagonal, cudaStream_t stream) {
     const size_t num_parameters = v->count() * v->dimension();
     const size_t num_threads = num_parameters;
     const auto threads_per_block = 256;
@@ -2107,7 +2107,7 @@ public:
         (num_threads + threads_per_block - 1) / threads_per_block;
 
     apply_block_jacobi_kernel<T, InvP, V::dim>
-        <<<num_blocks, threads_per_block>>>(
+        <<<num_blocks, threads_per_block, 0, stream>>>(
             z, r, block_diagonal, v->get_hessian_ids(),
             thrust::raw_pointer_cast(v->fixed_mask.data()), num_threads);
     // cudaDeviceSynchronize();
