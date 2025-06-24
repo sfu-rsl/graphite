@@ -1514,7 +1514,7 @@ private:
       F *f, T *out, T *in,
       std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
       std::array<S *, F::get_num_vertices()> &jacs, const T *jacobian_scales,
-      const size_t num_factors, std::index_sequence<Is...>) {
+      const size_t num_factors, cudaStream_t* streams, const size_t num_streams, std::index_sequence<Is...>) {
     (([&] {
        constexpr auto num_vertices = F::get_num_vertices();
        const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
@@ -1531,7 +1531,7 @@ private:
        if (f->store_jacobians() || !is_analytical<F>()) {
          compute_JtPv_kernel<T, S, Is, num_vertices, F::error_dim,
                              f->get_vertex_sizes()[Is], F>
-             <<<num_blocks, threads_per_block>>>(
+             <<<num_blocks, threads_per_block, 0, streams[Is % num_streams]>>>(
                  out, in, f->device_ids.data().get(), hessian_ids[Is],
                  num_threads, jacs[Is],
                  f->vertex_descriptors[Is]->get_fixed_mask(),
@@ -1544,7 +1544,7 @@ private:
                                        typename F::ObservationType,
                                        F::error_dim, f->get_vertex_sizes()[Is],
                                        F, typename F::VertexPointerPointerTuple>
-               <<<num_blocks, threads_per_block>>>(
+               <<<num_blocks, threads_per_block, 0, streams[Is % num_streams]>>>(
                    out, in, f->device_ids.data().get(), hessian_ids[Is],
                    num_threads, f->get_vertices(), f->device_obs.data().get(),
                    jacobian_scales, f->data.data().get(),
@@ -1563,7 +1563,9 @@ private:
       F *f, T *out, T *in,
       std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
       std::array<S *, F::get_num_vertices()> &jacs, const T *jacobian_scales,
-      const size_t num_factors, std::index_sequence<Is...>) {
+      const size_t num_factors, 
+      cudaStream_t* streams, size_t num_streams,
+      std::index_sequence<Is...>) {
     (([&] {
        constexpr auto num_vertices = F::get_num_vertices();
        constexpr auto vertex_sizes = F::get_vertex_sizes();
@@ -1575,7 +1577,7 @@ private:
              (num_threads + threads_per_block - 1) / threads_per_block;
          compute_Jv_kernel<T, S, Is, num_vertices, F::error_dim,
                            f->get_vertex_sizes()[Is], F>
-             <<<num_blocks, threads_per_block>>>(
+             <<<num_blocks, threads_per_block, 0, streams[Is % num_streams]>>>(
                  out, in, f->device_ids.data().get(), hessian_ids[Is],
                  num_threads, jacs[Is],
                  f->vertex_descriptors[Is]->get_fixed_mask(),
@@ -1644,7 +1646,7 @@ private:
            compute_Jv_dynamic_manual2<T, S, Is, num_vertices,
                                       typename F::ObservationType, E, F,
                                       typename F::VertexPointerPointerTuple>
-               <<<num_blocks, threads_per_block>>>(
+               <<<num_blocks, threads_per_block, 0, streams[Is % num_streams]>>>(
                    out, in, f->device_obs.data().get(), jacobian_scales,
                    f->data.data().get(), f->device_ids.data().get(),
                    hessian_ids[Is], num_factors, f->get_vertices(),
@@ -1941,7 +1943,7 @@ public:
   }
 
   template <typename F>
-  void compute_Jv(F *f, T *out, T *in, const T *jacobian_scales) {
+  void compute_Jv(F *f, T *out, T *in, const T *jacobian_scales, cudaStream_t* streams, size_t num_streams) {
     constexpr auto num_vertices = F::get_num_vertices();
     constexpr auto vertex_sizes = F::get_vertex_sizes();
 
@@ -1958,13 +1960,13 @@ public:
     const auto num_factors = f->count();
 
     launch_kernel_compute_Jv(f, out, in, hessian_ids, jacs, jacobian_scales,
-                             num_factors,
+                             num_factors, streams, num_streams,
                              std::make_index_sequence<num_vertices>{});
     cudaDeviceSynchronize();
   }
 
   template <typename F>
-  void compute_Jtv(F *f, T *out, T *in, const T *jacobian_scales) {
+  void compute_Jtv(F *f, T *out, T *in, const T *jacobian_scales, cudaStream_t* streams, size_t num_streams) {
     constexpr auto num_vertices = f->get_num_vertices();
     constexpr auto vertex_sizes = F::get_vertex_sizes();
 
@@ -1981,7 +1983,7 @@ public:
     const auto num_factors = f->count();
 
     launch_kernel_compute_JtPv(f, out, in, hessian_ids, jacs, jacobian_scales,
-                               num_factors,
+                               num_factors, streams, num_streams,
                                std::make_index_sequence<num_vertices>{});
     cudaDeviceSynchronize();
   }

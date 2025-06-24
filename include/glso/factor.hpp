@@ -32,9 +32,9 @@ public:
   virtual void visit_b(GraphVisitor<T, S> &visitor, T *b,
                        const T *jacobian_scales) = 0;
   virtual void visit_Jv(GraphVisitor<T, S> &visitor, T *out, T *in,
-                        const T *jacobian_scales) = 0;
+                        const T *jacobian_scales, cudaStream_t* streams, size_t num_streams) = 0;
   virtual void visit_Jtv(GraphVisitor<T, S> &visitor, T *out, T *in,
-                         const T *jacobian_scales) = 0;
+                         const T *jacobian_scales, cudaStream_t* streams, size_t num_streams) = 0;
   virtual void visit_jacobians(GraphVisitor<T, S> &visitor) = 0;
   virtual void visit_block_diagonal(
       GraphVisitor<T, S> &visitor,
@@ -176,13 +176,13 @@ public:
   }
 
   void visit_Jv(GraphVisitor<T, S> &visitor, T *out, T *in,
-                const T *jacobian_scales) override {
-    visitor.template compute_Jv(this, out, in, jacobian_scales);
+                const T *jacobian_scales, cudaStream_t* streams, size_t num_streams) override {
+    visitor.template compute_Jv(this, out, in, jacobian_scales, streams, num_streams);
   }
 
   void visit_Jtv(GraphVisitor<T, S> &visitor, T *out, T *in,
-                 const T *jacobian_scales) override {
-    visitor.template compute_Jtv(this, out, in, jacobian_scales);
+                 const T *jacobian_scales, cudaStream_t* streams, size_t num_streams) override {
+    visitor.template compute_Jtv(this, out, in, jacobian_scales, streams, num_streams);
   }
 
   void visit_jacobians(GraphVisitor<T, S> &visitor) override {

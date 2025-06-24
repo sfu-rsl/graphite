@@ -46,6 +46,10 @@ public:
   // Assumes that x is already initialized
   virtual bool solve(Graph<T, S> *graph, T *x, T damping_factor) override {
 
+    std::array<cudaStream_t, 2> streams;
+    cudaStreamCreate(&streams[0]);
+    cudaStreamCreate(&streams[1]);
+
     auto &vertex_descriptors = graph->get_vertex_descriptors();
     auto &factor_descriptors = graph->get_factor_descriptors();
     auto visitor = GraphVisitor<T, S>();
@@ -126,7 +130,7 @@ public:
       for (size_t i = 0; i < factor_descriptors.size(); i++) {
         factor_descriptors[i]->visit_Jv(
             visitor, v1_ptr, p.data().get(),
-            graph->get_jacobian_scales().data().get());
+            graph->get_jacobian_scales().data().get(), streams.data(), streams.size());
         v1_ptr += factor_descriptors[i]->get_residual_size();
       }
       // auto t_jv_end = std::chrono::steady_clock::now();
@@ -148,10 +152,10 @@ public:
       for (size_t i = 0; i < factor_descriptors.size(); i++) {
         factor_descriptors[i]->visit_Jtv(
             visitor, v2.data().get(), v1_ptr,
-            graph->get_jacobian_scales().data().get());
+            graph->get_jacobian_scales().data().get(), streams.data(), streams.size());
         v1_ptr += factor_descriptors[i]->get_residual_size();
       }
-      cudaDeviceSynchronize();
+      // cudaDeviceSynchronize();
       // Add damping factor
       // v2 += damping_factor*diag(H)*p
       damp_by_factor(dim_h, v2.data().get(), damping_factor, diag.data().get(),
@@ -201,6 +205,8 @@ public:
     }
 
     // TODO: Figure out failure cases
+    cudaStreamDestroy(streams[0]);
+    cudaStreamDestroy(streams[1]);
     return true;
   }
 };
