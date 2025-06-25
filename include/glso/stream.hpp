@@ -9,7 +9,7 @@ namespace glso {
         StreamPool(size_t num_streams) : num_streams(num_streams) {
             streams = new cudaStream_t[num_streams];
             for (size_t i = 0; i < num_streams; ++i) {
-                cudaStreamCreate(&streams[i]);
+                cudaStreamCreateWithFlags(&streams[i], cudaStreamNonBlocking);
             }
         }
 
