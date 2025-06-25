@@ -30,7 +30,7 @@ T compute_rho(Graph<T, S> *graph, thrust::device_vector<T> &delta_x,
 
 template <typename T, typename S>
 bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
-                         const size_t num_iterations, T damping_factor = 1e-2) {
+                         const size_t num_iterations, T damping_factor, StreamPool& streams) {
 
   // Initialize something for all iterations
   auto start = std::chrono::steady_clock::now();
@@ -45,7 +45,7 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
     return false;
   }
 
-  graph->linearize();
+  graph->linearize(streams);
 
   thrust::device_vector<T> delta_x(graph->get_hessian_dimension());
 
@@ -68,7 +68,7 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
     start = std::chrono::steady_clock::now();
     T chi2 = graph->chi2();
 
-    if (!solver->solve(graph, delta_x.data().get(), static_cast<T>(mu))) {
+    if (!solver->solve(graph, delta_x.data().get(), static_cast<T>(mu), streams)) {
       std::cerr << "Solver failed" << std::endl;
       return false;
     }
@@ -82,7 +82,7 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
     // std::cout << std::endl;
 
     graph->backup_parameters();
-    graph->apply_step(delta_x.data().get());
+    graph->apply_step(delta_x.data().get(), streams);
 
     // Try step
     graph->compute_error();
@@ -97,7 +97,7 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
       mu *= std::max(1.0 / 3.0, 1.0 - pow(2.0 * rho - 1, 3));
       nu = 2;
       // Relinearize since step is accepted
-      graph->linearize();
+      graph->linearize(streams);
       // std::cout << "Good step" << std::endl;
       // std::cout << "rho: " << rho << std::endl;
     } else {

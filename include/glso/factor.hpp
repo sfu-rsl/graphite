@@ -28,14 +28,14 @@ public:
   // virtual void error_func(const T** vertices, const T* obs, T* error) = 0;
   virtual bool use_autodiff() = 0;
   virtual void visit_error(GraphVisitor<T, S> &visitor) = 0;
-  virtual void visit_error_autodiff(GraphVisitor<T, S> &visitor) = 0;
+  virtual void visit_error_autodiff(GraphVisitor<T, S> &visitor, StreamPool& streams) = 0;
   virtual void visit_b(GraphVisitor<T, S> &visitor, T *b,
                        const T *jacobian_scales) = 0;
   virtual void visit_Jv(GraphVisitor<T, S> &visitor, T *out, T *in,
                         const T *jacobian_scales, cudaStream_t* streams, size_t num_streams) = 0;
   virtual void visit_Jtv(GraphVisitor<T, S> &visitor, T *out, T *in,
                          const T *jacobian_scales, cudaStream_t* streams, size_t num_streams) = 0;
-  virtual void visit_jacobians(GraphVisitor<T, S> &visitor) = 0;
+  virtual void visit_jacobians(GraphVisitor<T, S> &visitor, StreamPool& streams) = 0;
   virtual void visit_block_diagonal(
       GraphVisitor<T, S> &visitor,
       std::unordered_map<BaseVertexDescriptor<T, S> *,
@@ -166,8 +166,8 @@ public:
     visitor.template compute_error(this);
   }
 
-  void visit_error_autodiff(GraphVisitor<T, S> &visitor) override {
-    visitor.template compute_error_autodiff(this);
+  void visit_error_autodiff(GraphVisitor<T, S> &visitor, StreamPool& streams) override {
+    visitor.template compute_error_autodiff(this, streams);
   }
 
   void visit_b(GraphVisitor<T, S> &visitor, T *b,
@@ -185,10 +185,10 @@ public:
     visitor.template compute_Jtv(this, out, in, jacobian_scales, streams, num_streams);
   }
 
-  void visit_jacobians(GraphVisitor<T, S> &visitor) override {
+  void visit_jacobians(GraphVisitor<T, S> &visitor, StreamPool& streams) override {
     if constexpr (std::is_same_v<typename Traits::Differentiation,
                                  DifferentiationMode::Manual>) {
-      visitor.template compute_jacobians(this);
+      visitor.template compute_jacobians(this, streams);
     }
   }
 

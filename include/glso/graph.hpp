@@ -4,6 +4,7 @@
 #include <glso/visitor.hpp>
 #include <limits>
 #include <thrust/execution_policy.h>
+#include <glso/stream.hpp>
 
 namespace glso {
 
@@ -136,16 +137,16 @@ public:
     return chi2;
   }
 
-  void linearize() {
+  void linearize(StreamPool& streams) {
 
     for (auto &factor : factor_descriptors) {
       // compute error
       if (factor->use_autodiff() && (factor->store_jacobians() ||
                                      !factor->supports_dynamic_jacobians())) {
-        factor->visit_error_autodiff(visitor);
+        factor->visit_error_autodiff(visitor, streams);
       } else {
         factor->visit_error(visitor);
-        factor->visit_jacobians(visitor);
+        factor->visit_jacobians(visitor, streams);
       }
     }
 
@@ -195,9 +196,11 @@ public:
     cudaDeviceSynchronize();
   }
 
-  void apply_step(const T *delta_x) {
+  void apply_step(const T *delta_x, StreamPool& streams) {
+    size_t i = 0;
     for (auto &desc : vertex_descriptors) {
-      desc->visit_update(visitor, delta_x, jacobian_scales.data().get());
+      desc->visit_update(visitor, delta_x, jacobian_scales.data().get(), streams.select(i));
+      i++;
     }
     cudaDeviceSynchronize();
   }

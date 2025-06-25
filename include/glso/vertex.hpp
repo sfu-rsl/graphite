@@ -2,6 +2,7 @@
 #include <glso/common.hpp>
 #include <glso/vector.hpp>
 #include <glso/visitor.hpp>
+#include <glso/stream.hpp>
 #include <type_traits>
 
 namespace glso {
@@ -68,7 +69,7 @@ public:
 
   // virtual void update(const T* x, const T* delta) = 0;
   virtual void visit_update(GraphVisitor<T, S> &visitor, const T *delta_x,
-                            T *jacobian_scales) = 0;
+                            T *jacobian_scales, cudaStream_t stream) = 0;
   virtual void visit_augment_block_diagonal(GraphVisitor<T, S> &visitor,
                                             InvP *block_diagonal, T mu) = 0;
   virtual void visit_apply_block_jacobi(GraphVisitor<T, S> &visitor, T *z,
@@ -117,8 +118,8 @@ public:
   virtual ~VertexDescriptor(){};
 
   void visit_update(GraphVisitor<T, S> &visitor, const T *delta_x,
-                    T *jacobian_scales) override {
-    visitor.template apply_step(this, delta_x, jacobian_scales);
+                    T *jacobian_scales, cudaStream_t stream) override {
+    visitor.template apply_step(this, delta_x, jacobian_scales, stream);
   }
 
   void visit_augment_block_diagonal(GraphVisitor<T, S> &visitor,

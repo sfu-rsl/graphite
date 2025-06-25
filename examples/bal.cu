@@ -12,6 +12,7 @@
 #include <glso/core.hpp>
 #include <glso/solver.hpp>
 #include <glso/types.hpp>
+#include <glso/stream.hpp>
 
 namespace glso {
 
@@ -226,8 +227,10 @@ int main(void) {
             << std::endl;
   std::cout << "Optimizing!" << std::endl;
 
+  StreamPool streams(8); // Just two should be enough for BA
+
   start = std::chrono::steady_clock::now();
-  optimizer::levenberg_marquardt<FP, SP>(&graph, &solver, iterations, 1e-4);
+  optimizer::levenberg_marquardt<FP, SP>(&graph, &solver, iterations, 1e-4, streams);
   auto end = std::chrono::steady_clock::now();
 
   std::chrono::duration<FP> elapsed = end - start;

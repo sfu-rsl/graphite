@@ -7,6 +7,7 @@
 #include <memory>
 #include <thrust/execution_policy.h>
 #include <thrust/inner_product.h>
+#include <glso/stream.hpp>
 
 namespace glso {
 
@@ -14,7 +15,7 @@ template <typename T, typename S> class Solver {
 public:
   virtual ~Solver() = default;
 
-  virtual bool solve(Graph<T, S> *graph, T *delta_x, T damping_factor) = 0;
+  virtual bool solve(Graph<T, S> *graph, T *delta_x, T damping_factor, StreamPool& streams) = 0;
 };
 
 template <typename T, typename S> class PCGSolver : public Solver<T, S> {
@@ -44,14 +45,7 @@ public:
         preconditioner(preconditioner) {}
 
   // Assumes that x is already initialized
-  virtual bool solve(Graph<T, S> *graph, T *x, T damping_factor) override {
-
-
-    constexpr size_t num_streams = 2;
-    std::array<cudaStream_t, num_streams> streams;
-    for (size_t i = 0; i < streams.size(); i++) {
-      cudaStreamCreate(&streams[i]);
-    }
+  virtual bool solve(Graph<T, S> *graph, T *x, T damping_factor, StreamPool& streams) override {
 
     auto &vertex_descriptors = graph->get_vertex_descriptors();
     auto &factor_descriptors = graph->get_factor_descriptors();
@@ -111,7 +105,7 @@ public:
     z.resize(dim_h);
 
     thrust::fill(z.begin(), z.end(), 0);
-    preconditioner->apply(visitor, z.data().get(), y.data().get(), streams.data(), streams.size());
+    preconditioner->apply(visitor, z.data().get(), y.data().get(), streams.streams, streams.num_streams);
 
     p.resize(dim_h);
     thrust::copy(z.begin(), z.end(), p.begin()); // p = z
@@ -133,7 +127,7 @@ public:
       for (size_t i = 0; i < factor_descriptors.size(); i++) {
         factor_descriptors[i]->visit_Jv(
             visitor, v1_ptr, p.data().get(),
-            graph->get_jacobian_scales().data().get(), streams.data(), streams.size());
+            graph->get_jacobian_scales().data().get(), streams.streams, streams.num_streams);
         v1_ptr += factor_descriptors[i]->get_residual_size();
       }
       // auto t_jv_end = std::chrono::steady_clock::now();
@@ -155,7 +149,7 @@ public:
       for (size_t i = 0; i < factor_descriptors.size(); i++) {
         factor_descriptors[i]->visit_Jtv(
             visitor, v2.data().get(), v1_ptr,
-            graph->get_jacobian_scales().data().get(), streams.data(), streams.size());
+            graph->get_jacobian_scales().data().get(), streams.streams, streams.num_streams);
         v1_ptr += factor_descriptors[i]->get_residual_size();
       }
       // cudaDeviceSynchronize();
@@ -183,7 +177,7 @@ public:
 
       // Apply preconditioner again
       thrust::fill(z.begin(), z.end(), 0);
-      preconditioner->apply(visitor, z.data().get(), y.data().get(), streams.data(), streams.size());
+      preconditioner->apply(visitor, z.data().get(), y.data().get(), streams.streams, streams.num_streams);
       T rz_new = thrust::inner_product(r.begin(), r.end(), z.begin(),
                                        static_cast<T>(0.0));
 
@@ -208,9 +202,6 @@ public:
     }
 
     // TODO: Figure out failure cases
-    for (size_t i = 0; i < streams.size(); i++) {
-      cudaStreamDestroy(streams[i]);
-    }
     return true;
   }
 };

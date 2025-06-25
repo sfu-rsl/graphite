@@ -3,6 +3,7 @@
 #include <glso/differentiation.hpp>
 #include <glso/types.hpp>
 #include <glso/vertex.hpp>
+#include <glso/stream.hpp>
 
 namespace glso {
 
@@ -1405,7 +1406,7 @@ private:
   void launch_kernel_autodiff(
       F *f, std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
       VT &verts, std::array<S *, F::get_num_vertices()> &jacs,
-      const size_t num_factors, std::index_sequence<Is...>) {
+      const size_t num_factors, StreamPool& streams, std::index_sequence<Is...>) {
     (([&] {
        constexpr auto num_vertices = F::get_num_vertices();
        const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
@@ -1423,7 +1424,7 @@ private:
        compute_error_kernel_autodiff<T, S, Is, num_vertices,
                                      typename F::ObservationType, F::error_dim,
                                      F, typename F::VertexPointerPointerTuple>
-           <<<num_blocks, threads_per_block>>>(
+           <<<num_blocks, threads_per_block, 0, streams.select(Is)>>>(
                f->device_obs.data().get(), f->residuals.data().get(),
                f->data.data().get(), f->device_ids.data().get(),
                hessian_ids[Is], num_threads, verts, jacs[Is],
@@ -1437,7 +1438,7 @@ private:
   void launch_kernel_jacobians(
       F *f, std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
       VT &verts, std::array<S *, F::get_num_vertices()> &jacs,
-      const size_t num_factors, std::index_sequence<Is...>) {
+      const size_t num_factors, StreamPool& streams, std::index_sequence<Is...>) {
     (([&] {
        constexpr auto num_vertices = F::get_num_vertices();
        const auto num_threads = num_factors;
@@ -1448,7 +1449,7 @@ private:
        compute_jacobian_kernel<T, S, Is, num_vertices,
                                typename F::ObservationType, F::error_dim, F,
                                typename F::VertexPointerPointerTuple>
-           <<<num_blocks, threads_per_block>>>(
+           <<<num_blocks, threads_per_block, 0, streams.select(Is)>>>(
                f->device_obs.data().get(), f->residuals.data().get(), jacs[Is],
                f->data.data().get(), f->device_ids.data().get(), num_threads,
                verts, f->vertex_descriptors[Is]->get_fixed_mask(),
@@ -1801,7 +1802,7 @@ private:
 public:
   GraphVisitor() = default;
 
-  template <typename F> void compute_error_autodiff(F *f) {
+  template <typename F> void compute_error_autodiff(F *f, StreamPool& streams) {
     // Assume autodiff
 
     // Then for each vertex, we need to compute the error
@@ -1824,12 +1825,12 @@ public:
 
     const auto num_factors = f->count();
 
-    launch_kernel_autodiff(f, hessian_ids, verts, jacs, num_factors,
+    launch_kernel_autodiff(f, hessian_ids, verts, jacs, num_factors, streams,
                            std::make_index_sequence<num_vertices>{});
     cudaDeviceSynchronize();
   }
 
-  template <typename F> void compute_jacobians(F *f) {
+  template <typename F> void compute_jacobians(F *f, StreamPool& streams) {
     if (!(f->store_jacobians() || !is_analytical<F>())) {
       return;
     }
@@ -1853,7 +1854,7 @@ public:
 
     const auto num_factors = f->count();
 
-    launch_kernel_jacobians(f, hessian_ids, verts, jacs, num_factors,
+    launch_kernel_jacobians(f, hessian_ids, verts, jacs, num_factors, streams,
                             std::make_index_sequence<num_vertices>{});
     cudaDeviceSynchronize();
   }
@@ -2068,7 +2069,7 @@ public:
   }
 
   template <typename V>
-  void apply_step(V *v, const T *delta_x, T *jacobian_scales) {
+  void apply_step(V *v, const T *delta_x, T *jacobian_scales, cudaStream_t stream) {
     const size_t num_parameters = v->count() * v->dimension();
     const size_t num_threads = v->count();
     const auto threads_per_block = 256;
@@ -2076,7 +2077,7 @@ public:
         (num_threads + threads_per_block - 1) / threads_per_block;
 
     apply_update_kernel<T, S, V, typename V::VertexType>
-        <<<num_blocks, threads_per_block>>>(
+        <<<num_blocks, threads_per_block, 0, stream>>>(
             v->vertices(), delta_x, jacobian_scales, v->get_hessian_ids(),
             thrust::raw_pointer_cast(v->fixed_mask.data()), num_threads);
     // cudaDeviceSynchronize();
