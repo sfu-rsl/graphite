@@ -9,23 +9,6 @@ namespace glso {
         return (active_val & NOT_MSB) > level;
     }
 
-    // __global__ void initialize_active_indices(
-    //     const uint8_t *active,
-    //     size_t *active_indices,
-    //     const size_t count,
-    //     const uint8_t level
-    // ) {
-    //     const size_t local_id = static_cast<size_t>(blockIdx.x) * static_cast<size_t>(blockDim.x) +
-    //      static_cast<size_t>(threadIdx.x);
-
-    //      if (local_id >= count) {
-    //         return; // Out of bounds
-    //      }
-
-        
-
-    // }
-
     // Returns the number of active constraints and fills the active_indices vector
     size_t build_active_indices(
         const thrust::device_vector<uint8_t> &active,
@@ -48,13 +31,14 @@ namespace glso {
 
         // Resize active indices to the number of active constraints
         active_indices.clear();
-        active_indices.reserve(active_count);
+        active_indices.resize(active_count);
 
         // Fill active indices with the indices of active constraints
         thrust::copy_if(
             thrust::device,
             thrust::make_counting_iterator<size_t>(0),
             thrust::make_counting_iterator<size_t>(count),
+            active.begin(),
             active_indices.begin(),
             [level] __device__(const uint8_t a) { 
                 return is_active(a, level);
