@@ -134,7 +134,7 @@ int main(void) {
   // Optimize
   constexpr size_t iterations = 10;
   std::cout << "Graph built with " << num_vertices << " vertices and "
-            << factor_desc.count() << " factors." << std::endl;
+            << factor_desc.internal_count() << " factors." << std::endl;
   std::cout << "Optimizing!" << std::endl;
 
   auto start = std::chrono::steady_clock::now();

@@ -9,6 +9,7 @@
 #include <thrust/execution_policy.h>
 #include <thrust/inner_product.h>
 #include <thrust/universal_vector.h>
+#include <glso/active.hpp>
 
 namespace glso {
 
@@ -49,7 +50,9 @@ public:
   virtual void initialize_jacobian_storage() = 0;
   // virtual size_t get_num_vertices() const = 0;
 
-  virtual size_t count() const = 0;
+  // virtual size_t internal_count() const = 0;
+  virtual size_t active_count() const = 0;
+
   virtual size_t get_residual_size() const = 0;
   virtual void scale_jacobians(GraphVisitor<T, S> &visitor,
                                T *jacobian_scales) = 0;
@@ -102,6 +105,7 @@ private:
   HandleManager<size_t> hm;
 
   bool _store_jacobians;
+  size_t _active_count;
 
 public:
   using InvP = std::conditional_t<is_low_precision<S>::value, T, S>;
@@ -150,13 +154,17 @@ public:
   thrust::device_vector<S> chi2_derivative;
   uninitialized_vector<LossType> loss;
 
+  thrust::host_vector<uint8_t> active;
+  thrust::device_vector<uint8_t> device_active;
+  thrust::device_vector<size_t> active_indices;
+
   std::array<JacobianStorage<S>, N> jacobians;
   std::array<S, Traits::dimension * Traits::dimension> default_precision_matrix;
 
   template <typename... VertexDescPtrs,
             typename = std::enable_if_t<sizeof...(VertexDescPtrs) == N>>
   FactorDescriptor(VertexDescPtrs... vertex_descriptors)
-      : _store_jacobians(true) {
+      : _store_jacobians(true), _active_count(0) {
     link_factors({vertex_descriptors...});
 
     default_precision_matrix = get_default_precision_matrix();
@@ -230,6 +238,7 @@ public:
     loss.reserve(size);
     chi2_vec.reserve(size);
     residuals.reserve(size * error_dim);
+    active.reserve(size);
 
     // Prefetch everything
     /*
@@ -252,7 +261,7 @@ public:
     }
 
     auto local_id = global_to_local_map[id];
-    auto last_local_id = count() - 1;
+    auto last_local_id = internal_count() - 1;
 
     // copy constraint
     for (size_t i = 0; i < N; i++) {
@@ -284,6 +293,9 @@ public:
     chi2_vec[local_id] = chi2_vec[last_local_id];
     chi2_vec.pop_back();
 
+    active[local_id] = active[last_local_id];
+    active.pop_back();
+
     // Next, fix ids
     const auto last_global_id = local_to_global_map[last_local_id];
     global_to_local_map[last_global_id] = local_id;
@@ -302,7 +314,7 @@ public:
                     const LossType &loss_func) {
 
     const auto id = hm.get();
-    const auto local_id = count();
+    const auto local_id = internal_count();
 
     global_to_local_map.insert({id, local_id});
     local_to_global_map.push_back(id);
@@ -331,6 +343,7 @@ public:
 
     data.push_back(constraint_data);
     loss.push_back(loss_func);
+    active.push_back(0x1);
     return id; // only global within this class (it's just an external id)
   }
 
@@ -348,7 +361,26 @@ public:
     ();
   }
 
-  size_t count() const override { return global_ids.size() / N; }
+  void set_active(size_t id, const uint8_t active_value) {
+    if (global_to_local_map.find(id) == global_to_local_map.end()) {
+      std::cerr << "Factor with id " << id << " not found." << std::endl;
+      return;
+    }
+
+    constexpr uint8_t NOT_MSB = 0x7F; // 01111111
+
+    auto local_id = global_to_local_map[id];
+    active[local_id] = NOT_MSB & active_value; // we reserve the MSB for later use
+  }
+
+  void reset_active() {
+    thrust::fill(thrust::device, active.begin(), active.end(), 0x1);
+  }
+
+  size_t internal_count() const { return global_ids.size() / N; }
+  size_t active_count() const override {
+    return _active_count;
+  }
 
   void to_device() override {
 
@@ -365,6 +397,14 @@ public:
     }
     device_ids = host_ids;
 
+    device_active = active; 
+    constexpr uint8_t active_level = 0;
+    _active_count = build_active_indices(
+        device_active, active_indices, internal_count(), active_level);
+
+    // std::cout << "Internal count: " << internal_count() << std::endl;
+    // std::cout << "Active count: " << _active_count << std::endl;
+
     // auto end = std::chrono::high_resolution_clock::now();
     // std::chrono::duration<double> elapsed = end - start;
     // std::cout << "Device id building time: " << elapsed.count() << " seconds"
@@ -372,8 +412,8 @@ public:
 
     // device_ids = host_ids;
     // device_obs = host_obs;
-    chi2_vec.resize(count());
-    chi2_derivative.resize(count());
+    chi2_vec.resize(active_count());
+    chi2_derivative.resize(active_count());
 
     // prefetch everything
     int cuda_device = 0;
@@ -387,11 +427,8 @@ public:
     // std::cout << "Prefetching factor data to device" << std::endl;
     cudaDeviceSynchronize();
     // Resize and reset residuals
-    // std::cout << "Resizing residuals to: " << error_dim*count() << std::endl;
-    residuals.resize(error_dim * count());
-    // std::cout << "Filling residuals with zeros" << std::endl;
+    residuals.resize(error_dim * active_count());
     thrust::fill(residuals.begin(), residuals.end(), 0);
-    // std::cout << "Resizing residuals to: " << error_dim*count() << std::endl;
   }
 
   void link_factors(
@@ -430,13 +467,13 @@ public:
         jacobians[i].dimensions = {error_dim,
                                    vertex_descriptors[i]->dimension()};
         jacobians[i].data.resize(error_dim *
-                                 vertex_descriptors[i]->dimension() * count());
+                                 vertex_descriptors[i]->dimension() * active_count());
       }
     }
   }
 
   virtual size_t get_residual_size() const override {
-    return error_dim * count();
+    return error_dim * active_count();
   }
 
   // TODO: Make this consider kernels and active edges

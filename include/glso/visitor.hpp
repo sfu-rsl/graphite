@@ -1823,7 +1823,7 @@ public:
       thrust::fill(f->jacobians[i].data.begin(), f->jacobians[i].data.end(), 0);
     }
 
-    const auto num_factors = f->count();
+    const auto num_factors = f->active_count();
 
     launch_kernel_autodiff(f, hessian_ids, verts, jacs, num_factors, streams,
                            std::make_index_sequence<num_vertices>{});
@@ -1852,7 +1852,7 @@ public:
       thrust::fill(f->jacobians[i].data.begin(), f->jacobians[i].data.end(), 0);
     }
 
-    const auto num_factors = f->count();
+    const auto num_factors = f->active_count();
 
     launch_kernel_jacobians(f, hessian_ids, verts, jacs, num_factors, streams,
                             std::make_index_sequence<num_vertices>{});
@@ -1874,7 +1874,7 @@ public:
     }
 
     constexpr auto error_dim = F::error_dim;
-    const auto num_factors = f->count();
+    const auto num_factors = f->active_count();
 
     const auto num_threads = num_factors;
     size_t threads_per_block = 256;
@@ -1906,7 +1906,7 @@ public:
     // }
 
     constexpr auto error_dim = F::error_dim;
-    const auto num_factors = f->count();
+    const auto num_factors = f->active_count();
 
     const auto num_threads = num_factors;
     size_t threads_per_block = 256;
@@ -1935,7 +1935,7 @@ public:
     }
 
     constexpr auto error_dim = F::error_dim;
-    const auto num_factors = f->count();
+    const auto num_factors = f->active_count();
 
     launch_kernel_compute_b(f, b, hessian_ids, jacs, jacobian_scales,
                             num_factors,
@@ -1958,7 +1958,7 @@ public:
       hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
     }
 
-    const auto num_factors = f->count();
+    const auto num_factors = f->active_count();
 
     launch_kernel_compute_Jv(f, out, in, hessian_ids, jacs, jacobian_scales,
                              num_factors, streams, num_streams,
@@ -1981,7 +1981,7 @@ public:
       hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
     }
 
-    const auto num_factors = f->count();
+    const auto num_factors = f->active_count();
 
     launch_kernel_compute_JtPv(f, out, in, hessian_ids, jacs, jacobian_scales,
                                num_factors, streams, num_streams,
@@ -2008,7 +2008,7 @@ public:
       hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
     }
 
-    const auto num_factors = f->count();
+    const auto num_factors = f->active_count();
 
     launch_kernel_block_diagonal(f, diagonal_blocks, hessian_ids, jacs,
                                  jacobian_scales, num_factors,
@@ -2033,7 +2033,7 @@ public:
       hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
     }
 
-    const auto num_factors = f->count();
+    const auto num_factors = f->active_count();
 
     launch_kernel_scalar_diagonal(f, diagonal, hessian_ids, jacs,
                                   jacobian_scales, num_factors,
@@ -2060,7 +2060,7 @@ public:
       hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
     }
 
-    const auto num_factors = f->count();
+    const auto num_factors = f->active_count();
 
     launch_kernel_scale_jacobians(f, jacobian_scales, hessian_ids, jacs,
                                   num_factors,
