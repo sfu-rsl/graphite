@@ -177,7 +177,7 @@ __global__ void compute_error_kernel_autodiff(
   }
 
   constexpr auto vertex_sizes = F::get_vertex_sizes();
-  const auto factor_id = idx / vertex_sizes[I];
+  const auto factor_id = active_ids[idx / vertex_sizes[I]];
   const auto vertex_id = ids[factor_id * N + I];
 
   // printf("CEAD: Thread %d, Vertex %d, Factor %d\n", idx, vertex_id,
@@ -417,9 +417,10 @@ __global__ void compute_b_kernel(T *b, const T *error, const size_t *active_ids,
 template <typename T, typename S, size_t I, size_t N, typename M, size_t E,
           typename F, typename VT, std::size_t... Is>
 __global__ void
-compute_b_dynamic_kernel(T *b, const T *error, const size_t *ids,
-                         const size_t *hessian_ids, const size_t num_threads,
-                         const VT args, const M *obs, const T *jacobian_scales,
+compute_b_dynamic_kernel(T *b, const T *error, const size_t *active_ids,
+                         const size_t *ids, const size_t *hessian_ids,
+                         const size_t num_threads, const VT args, const M *obs,
+                         const T *jacobian_scales,
                          const typename F::ConstraintDataType *constraint_data,
                          const uint32_t *fixed, const S *pmat,
                          const S *loss_derivative, std::index_sequence<Is...>) {
@@ -434,7 +435,7 @@ compute_b_dynamic_kernel(T *b, const T *error, const size_t *ids,
 
   // Stored as E x d col major, but we need to transpose it to d x E, where d is
   // the vertex size
-  const size_t factor_id = idx / vertex_sizes[I];
+  const size_t factor_id = active_ids[idx / vertex_sizes[I]];
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
@@ -627,9 +628,10 @@ template <typename T, typename S, size_t I, size_t N, typename M, size_t E,
           typename F, typename VT, size_t rows_per_tb, std::size_t... Is>
 __global__ void compute_Jv_dynamic_autodiff(
     T *y, T *x, const M *obs, const T *jacobian_scales,
-    const typename F::ConstraintDataType *constraint_data, size_t *ids,
-    const size_t *hessian_ids, const size_t num_factors, VT args,
-    const uint32_t *fixed, std::index_sequence<Is...>) {
+    const typename F::ConstraintDataType *constraint_data,
+    const size_t *active_ids, const size_t *ids, const size_t *hessian_ids,
+    const size_t num_factors, VT args, const uint32_t *fixed,
+    std::index_sequence<Is...>) {
   const size_t idx = get_thread_id();
   constexpr size_t D = F::get_vertex_sizes()[I];
   // const size_t rows_per_tb =
@@ -640,7 +642,7 @@ __global__ void compute_Jv_dynamic_autodiff(
 
   // Assume that number of threads in a block is a multiple of D (row length)
   const size_t row_idx = idx / D;
-  const size_t factor_id = row_idx / rows_per_jacobian;
+  const size_t factor_id = active_ids[row_idx / rows_per_jacobian];
   const size_t column = idx % D;
   const size_t row_in_jacobian = row_idx % rows_per_jacobian;
   const size_t row_in_tb = row_idx % rows_per_tb;
@@ -713,9 +715,10 @@ template <typename T, typename S, size_t I, size_t N, typename M, size_t E,
 __global__ void
 compute_Jv_dynamic_manual(T *y, T *x, const M *obs, const T *jacobian_scales,
                           const typename F::ConstraintDataType *constraint_data,
-                          size_t *ids, const size_t *hessian_ids,
-                          const size_t num_factors, VT args,
-                          const uint32_t *fixed, std::index_sequence<Is...>) {
+                          const size_t *active_ids, const size_t *ids,
+                          const size_t *hessian_ids, const size_t num_factors,
+                          VT args, const uint32_t *fixed,
+                          std::index_sequence<Is...>) {
   const size_t idx = get_thread_id();
   constexpr size_t D = F::get_vertex_sizes()[I];
   // const size_t rows_per_tb =
@@ -726,7 +729,7 @@ compute_Jv_dynamic_manual(T *y, T *x, const M *obs, const T *jacobian_scales,
 
   // Assume that number of threads in a block is a multiple of D (row length)
   const size_t row_idx = idx / D;
-  const size_t factor_id = row_idx / rows_per_jacobian;
+  const size_t factor_id = active_ids[row_idx / rows_per_jacobian];
   const size_t column = idx % D;
   const size_t row_in_jacobian = row_idx % rows_per_jacobian;
   const size_t row_in_tb = row_idx % rows_per_tb;
@@ -810,13 +813,14 @@ template <typename T, typename S, size_t I, size_t N, typename M, size_t E,
           typename F, typename VT, std::size_t... Is>
 __global__ void compute_Jv_dynamic_manual2(
     T *y, T *x, const M *obs, const T *jacobian_scales,
-    const typename F::ConstraintDataType *constraint_data, size_t *ids,
-    const size_t *hessian_ids, const size_t num_factors, VT args,
-    const uint32_t *fixed, std::index_sequence<Is...>) {
+    const typename F::ConstraintDataType *constraint_data,
+    const size_t *active_ids, const size_t *ids, const size_t *hessian_ids,
+    const size_t num_factors, VT args, const uint32_t *fixed,
+    std::index_sequence<Is...>) {
   const size_t idx = get_thread_id();
   constexpr size_t D = F::get_vertex_sizes()[I];
 
-  const size_t factor_id = idx / E;
+  const size_t factor_id = active_ids[idx / E];
   const size_t row_in_jacobian = idx % E;
   if (factor_id < num_factors) {
 
@@ -963,9 +967,9 @@ __global__ void compute_JtPv_kernel(T *y, const T *x, const size_t *active_ids,
 template <typename T, typename S, size_t I, size_t N, typename M, size_t E,
           size_t D, typename F, typename VT, std::size_t... Is>
 __global__ void compute_JtPv_dynamic_kernel(
-    T *y, const T *x, const size_t *ids, const size_t *hessian_ids,
-    const size_t num_threads, const VT args, const M *obs,
-    const T *jacobian_scales,
+    T *y, const T *x, const size_t *active_ids, const size_t *ids,
+    const size_t *hessian_ids, const size_t num_threads, const VT args,
+    const M *obs, const T *jacobian_scales,
     const typename F::ConstraintDataType *constraint_data,
     const uint32_t *fixed, const S *pmat, const S *chi2_derivative,
     const std::index_sequence<Is...>) {
@@ -979,7 +983,7 @@ __global__ void compute_JtPv_dynamic_kernel(
 
   // Stored as E x d col major, but we need to transpose it to d x E, where d is
   // the vertex size
-  const size_t factor_id = idx / D;
+  const size_t factor_id = active_ids[idx / D];
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
@@ -1150,9 +1154,9 @@ __global__ void compute_hessian_diagonal_kernel(
 template <typename highp, typename InvP, typename T, size_t I, size_t N,
           size_t E, size_t D, typename VT, typename F>
 __global__ void compute_hessian_diagonal_dynamic_kernel(
-    InvP *diagonal_blocks, const size_t *ids, const size_t *hessian_ids,
-    const VT args, const typename F::ObservationType *obs,
-    const highp *jacobian_scales,
+    InvP *diagonal_blocks, const size_t *active_ids, const size_t *ids,
+    const size_t *hessian_ids, const VT args,
+    const typename F::ObservationType *obs, const highp *jacobian_scales,
     const typename F::ConstraintDataType *constraint_data,
     const uint32_t *fixed, const T *pmat, const T *chi2_derivative,
     const size_t num_threads) {
@@ -1167,7 +1171,7 @@ __global__ void compute_hessian_diagonal_dynamic_kernel(
 
   // Stored as E x d col major, but we need to transpose it to d x E, where d is
   // the vertex size
-  const size_t factor_id = idx / block_size;
+  const size_t factor_id = active_ids[idx / block_size];
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
@@ -1325,7 +1329,7 @@ __global__ void compute_hessian_scalar_diagonal_kernel(
 template <typename highp, typename T, size_t I, size_t N, size_t E, size_t D,
           typename VT, typename F, bool use_scales>
 __global__ void compute_hessian_scalar_diagonal_dynamic_kernel(
-    highp *diagonal, const T *jacs, const size_t *ids,
+    highp *diagonal, const T *jacs, const size_t *active_ids, const size_t *ids,
     const size_t *hessian_ids, const VT args,
     const typename F::ObservationType *obs, const highp *jacobian_scales,
     const typename F::ConstraintDataType *constraint_data,
@@ -1341,7 +1345,7 @@ __global__ void compute_hessian_scalar_diagonal_dynamic_kernel(
 
   // Stored as E x d col major, but we need to transpose it to d x E, where d is
   // the vertex size
-  const size_t factor_id = idx / D;
+  const size_t factor_id = active_ids[idx / D];
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
@@ -1504,10 +1508,10 @@ private:
                                     typename F::ObservationType, F::error_dim,
                                     F, typename F::VertexPointerPointerTuple>
                <<<num_blocks, threads_per_block>>>(
-                   b, f->residuals.data().get(), f->device_ids.data().get(),
-                   hessian_ids[Is], num_threads, f->get_vertices(),
-                   f->device_obs.data().get(), jacobian_scales,
-                   f->data.data().get(),
+                   b, f->residuals.data().get(), f->active_indices.data().get(),
+                   f->device_ids.data().get(), hessian_ids[Is], num_threads,
+                   f->get_vertices(), f->device_obs.data().get(),
+                   jacobian_scales, f->data.data().get(),
                    f->vertex_descriptors[Is]->get_fixed_mask(),
                    f->precision_matrices.data().get(),
                    f->chi2_derivative.data().get(),
@@ -1556,8 +1560,9 @@ private:
                                        F, typename F::VertexPointerPointerTuple>
                <<<num_blocks, threads_per_block, 0,
                   streams[Is % num_streams]>>>(
-                   out, in, f->device_ids.data().get(), hessian_ids[Is],
-                   num_threads, f->get_vertices(), f->device_obs.data().get(),
+                   out, in, f->active_indices.data().get(),
+                   f->device_ids.data().get(), hessian_ids[Is], num_threads,
+                   f->get_vertices(), f->device_obs.data().get(),
                    jacobian_scales, f->data.data().get(),
                    f->vertex_descriptors[Is]->get_fixed_mask(),
                    f->precision_matrices.data().get(),
@@ -1659,8 +1664,9 @@ private:
                <<<num_blocks, threads_per_block, 0,
                   streams[Is % num_streams]>>>(
                    out, in, f->device_obs.data().get(), jacobian_scales,
-                   f->data.data().get(), f->device_ids.data().get(),
-                   hessian_ids[Is], num_factors, f->get_vertices(),
+                   f->data.data().get(), f->active_indices.data().get(),
+                   f->device_ids.data().get(), hessian_ids[Is], num_factors,
+                   f->get_vertices(),
                    f->vertex_descriptors[Is]->get_fixed_mask(),
                    std::make_index_sequence<num_vertices>{});
          }
@@ -1707,10 +1713,10 @@ private:
                T, InvP, S, Is, num_vertices, F::error_dim, dimension,
                typename F::VertexPointerPointerTuple, F>
                <<<num_blocks, threads_per_block>>>(
-                   diagonal_blocks[Is], f->device_ids.data().get(),
-                   hessian_ids[Is], f->get_vertices(),
-                   f->device_obs.data().get(), jacobian_scales,
-                   f->data.data().get(),
+                   diagonal_blocks[Is], f->active_indices.data().get(),
+                   f->device_ids.data().get(), hessian_ids[Is],
+                   f->get_vertices(), f->device_obs.data().get(),
+                   jacobian_scales, f->data.data().get(),
                    f->vertex_descriptors[Is]->get_fixed_mask(),
                    f->precision_matrices.data().get(),
                    f->chi2_derivative.data().get(), num_threads);
@@ -1762,9 +1768,10 @@ private:
                  T, S, Is, num_vertices, F::error_dim, dimension,
                  typename F::VertexPointerPointerTuple, F, false>
                  <<<num_blocks, threads_per_block>>>(
-                     diagonal, jacs[Is], f->device_ids.data().get(),
-                     hessian_ids[Is], f->get_vertices(),
-                     f->device_obs.data().get(), nullptr, f->data.data().get(),
+                     diagonal, jacs[Is], f->active_indices.data().get(),
+                     f->device_ids.data().get(), hessian_ids[Is],
+                     f->get_vertices(), f->device_obs.data().get(), nullptr,
+                     f->data.data().get(),
                      f->vertex_descriptors[Is]->get_fixed_mask(),
                      f->precision_matrices.data().get(),
                      f->chi2_derivative.data().get(), num_threads);
@@ -1773,10 +1780,10 @@ private:
                  T, S, Is, num_vertices, F::error_dim, dimension,
                  typename F::VertexPointerPointerTuple, F, true>
                  <<<num_blocks, threads_per_block>>>(
-                     diagonal, jacs[Is], f->device_ids.data().get(),
-                     hessian_ids[Is], f->get_vertices(),
-                     f->device_obs.data().get(), jacobian_scales,
-                     f->data.data().get(),
+                     diagonal, jacs[Is], f->active_indices.data().get(),
+                     f->device_ids.data().get(), hessian_ids[Is],
+                     f->get_vertices(), f->device_obs.data().get(),
+                     jacobian_scales, f->data.data().get(),
                      f->vertex_descriptors[Is]->get_fixed_mask(),
                      f->precision_matrices.data().get(),
                      f->chi2_derivative.data().get(), num_threads);
