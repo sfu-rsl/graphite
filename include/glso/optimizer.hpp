@@ -30,7 +30,8 @@ T compute_rho(Graph<T, S> *graph, thrust::device_vector<T> &delta_x,
 
 template <typename T, typename S>
 bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
-                         const size_t num_iterations, T damping_factor, StreamPool& streams) {
+                         const size_t num_iterations, T damping_factor,
+                         StreamPool &streams) {
 
   // Initialize something for all iterations
   auto start = std::chrono::steady_clock::now();
@@ -68,7 +69,8 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
     start = std::chrono::steady_clock::now();
     T chi2 = graph->chi2();
 
-    if (!solver->solve(graph, delta_x.data().get(), static_cast<T>(mu), streams)) {
+    if (!solver->solve(graph, delta_x.data().get(), static_cast<T>(mu),
+                       streams)) {
       std::cerr << "Solver failed" << std::endl;
       return false;
     }

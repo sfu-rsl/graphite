@@ -1,9 +1,9 @@
 #pragma once
 #include <glso/common.hpp>
 #include <glso/differentiation.hpp>
+#include <glso/stream.hpp>
 #include <glso/types.hpp>
 #include <glso/vertex.hpp>
-#include <glso/stream.hpp>
 
 namespace glso {
 
@@ -166,10 +166,10 @@ template <typename T, typename S, size_t I, size_t N, typename M, size_t E,
           typename F, typename VT, std::size_t... Is>
 __global__ void compute_error_kernel_autodiff(
     const M *obs, T *error,
-    const typename F::ConstraintDataType *constraint_data, 
-    const size_t* active_ids, const size_t *ids,
-    const size_t *hessian_ids, const size_t num_threads, VT args, S *jacs,
-    const uint32_t *fixed, std::index_sequence<Is...>) {
+    const typename F::ConstraintDataType *constraint_data,
+    const size_t *active_ids, const size_t *ids, const size_t *hessian_ids,
+    const size_t num_threads, VT args, S *jacs, const uint32_t *fixed,
+    std::index_sequence<Is...>) {
   const size_t idx = get_thread_id();
 
   if (idx >= num_threads) {
@@ -254,8 +254,8 @@ template <typename T, size_t N, typename M, size_t E, typename F, typename VT,
 __global__ void
 compute_error_kernel(const M *obs, T *error,
                      const typename F::ConstraintDataType *constraint_data,
-                     const size_t* active_ids,
-                     const size_t *ids, const size_t num_threads, VT args,
+                     const size_t *active_ids, const size_t *ids,
+                     const size_t num_threads, VT args,
                      std::index_sequence<Is...>) {
   const size_t idx = get_thread_id();
 
@@ -300,7 +300,8 @@ template <typename T, typename S, size_t I, size_t N, typename M, size_t E,
 __global__ void
 compute_jacobian_kernel(const M *obs, T *error, S *jacs,
                         const typename F::ConstraintDataType *constraint_data,
-                        const size_t* active_ids, const size_t *ids, const size_t num_threads, const VT args,
+                        const size_t *active_ids, const size_t *ids,
+                        const size_t num_threads, const VT args,
                         const uint32_t *fixed, std::index_sequence<Is...>) {
   const size_t idx = get_thread_id();
 
@@ -348,13 +349,12 @@ compute_jacobian_kernel(const M *obs, T *error, S *jacs,
 // Include precision matrix
 template <typename T, typename S, size_t I, size_t N, size_t E, typename F,
           std::size_t... Is>
-__global__ void
-compute_b_kernel(T *b, const T *error, 
-  const size_t* active_ids, const size_t *ids,
-                 const size_t *hessian_ids, const size_t num_threads, 
-                 const S *jacs,
-                 const uint32_t *fixed, const S *pmat, const S *loss_derivative,
-                 std::index_sequence<Is...>) {
+__global__ void compute_b_kernel(T *b, const T *error, const size_t *active_ids,
+                                 const size_t *ids, const size_t *hessian_ids,
+                                 const size_t num_threads, const S *jacs,
+                                 const uint32_t *fixed, const S *pmat,
+                                 const S *loss_derivative,
+                                 std::index_sequence<Is...>) {
   const size_t idx = get_thread_id();
 
   if (idx >= num_threads) {
@@ -490,9 +490,8 @@ compute_b_dynamic_kernel(T *b, const T *error, const size_t *ids,
 // In total we should hae E*num_factors threads?
 template <typename T, typename S, size_t I, size_t N, size_t E, size_t D,
           typename F, std::size_t... Is>
-__global__ void compute_Jv_kernel(T *y, const T *x, 
-                                  const size_t* active_ids, const size_t *ids,
-                                  const size_t *hessian_ids,
+__global__ void compute_Jv_kernel(T *y, const T *x, const size_t *active_ids,
+                                  const size_t *ids, const size_t *hessian_ids,
                                   const size_t num_threads, const S *jacs,
                                   const uint32_t *fixed,
                                   std::index_sequence<Is...>) {
@@ -858,8 +857,8 @@ __global__ void compute_Jv_dynamic_manual2(
 // Compute J^T * P * x where P is the precision matrix
 template <typename T, typename S, size_t I, size_t N, size_t E, size_t D,
           typename F, std::size_t... Is>
-__global__ void compute_JtPv_kernel(T *y, const T *x, const size_t* active_ids,
-  const size_t *ids,
+__global__ void compute_JtPv_kernel(T *y, const T *x, const size_t *active_ids,
+                                    const size_t *ids,
                                     const size_t *hessian_ids,
                                     const size_t num_threads, const S *jacs,
                                     const uint32_t *fixed, const S *pmat,
@@ -1049,12 +1048,10 @@ compute_chi2_kernel(T *chi2, S *chi2_derivative, const T *residuals,
 
 template <typename highp, typename InvP, typename T, size_t I, size_t N,
           size_t E, size_t D>
-__global__ void
-compute_hessian_diagonal_kernel(InvP *diagonal_blocks, const T *jacs,
-                                const size_t *active_ids, 
-                                const size_t *ids, const uint32_t *fixed,
-                                const T *pmat, const T *chi2_derivative,
-                                const size_t num_threads) {
+__global__ void compute_hessian_diagonal_kernel(
+    InvP *diagonal_blocks, const T *jacs, const size_t *active_ids,
+    const size_t *ids, const uint32_t *fixed, const T *pmat,
+    const T *chi2_derivative, const size_t num_threads) {
   const size_t idx = get_thread_id();
 
   if (idx >= num_threads) {
@@ -1228,8 +1225,7 @@ __global__ void compute_hessian_diagonal_dynamic_kernel(
 template <typename highp, typename T, size_t I, size_t N, size_t E, size_t D>
 __global__ void
 scale_jacobians_kernel(T *jacs, const highp *jacobian_scales,
-                        const size_t *active_ids, 
-                       const size_t *ids,
+                       const size_t *active_ids, const size_t *ids,
                        const size_t *hessian_ids, const uint32_t *fixed,
                        const size_t num_threads) {
 
@@ -1270,9 +1266,7 @@ scale_jacobians_kernel(T *jacs, const highp *jacobian_scales,
 
 template <typename highp, typename T, size_t I, size_t N, size_t E, size_t D>
 __global__ void compute_hessian_scalar_diagonal_kernel(
-    highp *diagonal, const T *jacs, 
-    const size_t *active_ids,
-    const size_t *ids,
+    highp *diagonal, const T *jacs, const size_t *active_ids, const size_t *ids,
     const size_t *hessian_ids, const uint32_t *fixed, const T *pmat,
     const T *chi2_derivative, const size_t num_threads) {
   const size_t idx = get_thread_id();
@@ -1417,7 +1411,8 @@ private:
   void launch_kernel_autodiff(
       F *f, std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
       VT &verts, std::array<S *, F::get_num_vertices()> &jacs,
-      const size_t num_factors, StreamPool& streams, std::index_sequence<Is...>) {
+      const size_t num_factors, StreamPool &streams,
+      std::index_sequence<Is...>) {
     (([&] {
        constexpr auto num_vertices = F::get_num_vertices();
        const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
@@ -1437,10 +1432,9 @@ private:
                                      F, typename F::VertexPointerPointerTuple>
            <<<num_blocks, threads_per_block, 0, streams.select(Is)>>>(
                f->device_obs.data().get(), f->residuals.data().get(),
-               f->data.data().get(), f->active_indices.data().get(), 
-               f->device_ids.data().get(),
-               hessian_ids[Is], num_threads, verts, jacs[Is],
-               f->vertex_descriptors[Is]->get_fixed_mask(),
+               f->data.data().get(), f->active_indices.data().get(),
+               f->device_ids.data().get(), hessian_ids[Is], num_threads, verts,
+               jacs[Is], f->vertex_descriptors[Is]->get_fixed_mask(),
                std::make_index_sequence<num_vertices>{});
      }()),
      ...);
@@ -1450,7 +1444,8 @@ private:
   void launch_kernel_jacobians(
       F *f, std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
       VT &verts, std::array<S *, F::get_num_vertices()> &jacs,
-      const size_t num_factors, StreamPool& streams, std::index_sequence<Is...>) {
+      const size_t num_factors, StreamPool &streams,
+      std::index_sequence<Is...>) {
     (([&] {
        constexpr auto num_vertices = F::get_num_vertices();
        const auto num_threads = num_factors;
@@ -1463,8 +1458,9 @@ private:
                                typename F::VertexPointerPointerTuple>
            <<<num_blocks, threads_per_block, 0, streams.select(Is)>>>(
                f->device_obs.data().get(), f->residuals.data().get(), jacs[Is],
-               f->data.data().get(), f->active_indices.data().get(), f->device_ids.data().get(), num_threads,
-               verts, f->vertex_descriptors[Is]->get_fixed_mask(),
+               f->data.data().get(), f->active_indices.data().get(),
+               f->device_ids.data().get(), num_threads, verts,
+               f->vertex_descriptors[Is]->get_fixed_mask(),
                std::make_index_sequence<num_vertices>{});
      }()),
      ...);
@@ -1494,11 +1490,9 @@ private:
 
          compute_b_kernel<T, S, Is, num_vertices, F::error_dim, F>
              <<<num_blocks, threads_per_block>>>(
-                 b, f->residuals.data().get(), 
-                 f->active_indices.data().get(),
-                 f->device_ids.data().get(),
-                 hessian_ids[Is], num_threads, jacs[Is],
-                 f->vertex_descriptors[Is]->get_fixed_mask(),
+                 b, f->residuals.data().get(), f->active_indices.data().get(),
+                 f->device_ids.data().get(), hessian_ids[Is], num_threads,
+                 jacs[Is], f->vertex_descriptors[Is]->get_fixed_mask(),
                  f->precision_matrices.data().get(),
                  f->chi2_derivative.data().get(),
                  std::make_index_sequence<num_vertices>{});
@@ -1529,7 +1523,8 @@ private:
       F *f, T *out, T *in,
       std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
       std::array<S *, F::get_num_vertices()> &jacs, const T *jacobian_scales,
-      const size_t num_factors, cudaStream_t* streams, const size_t num_streams, std::index_sequence<Is...>) {
+      const size_t num_factors, cudaStream_t *streams, const size_t num_streams,
+      std::index_sequence<Is...>) {
     (([&] {
        constexpr auto num_vertices = F::get_num_vertices();
        const auto num_threads = num_factors * F::get_vertex_sizes()[Is];
@@ -1547,9 +1542,9 @@ private:
          compute_JtPv_kernel<T, S, Is, num_vertices, F::error_dim,
                              f->get_vertex_sizes()[Is], F>
              <<<num_blocks, threads_per_block, 0, streams[Is % num_streams]>>>(
-                 out, in, f->active_indices.data().get(), f->device_ids.data().get(), hessian_ids[Is],
-                 num_threads, jacs[Is],
-                 f->vertex_descriptors[Is]->get_fixed_mask(),
+                 out, in, f->active_indices.data().get(),
+                 f->device_ids.data().get(), hessian_ids[Is], num_threads,
+                 jacs[Is], f->vertex_descriptors[Is]->get_fixed_mask(),
                  f->precision_matrices.data().get(),
                  f->chi2_derivative.data().get(),
                  std::make_index_sequence<num_vertices>{});
@@ -1559,7 +1554,8 @@ private:
                                        typename F::ObservationType,
                                        F::error_dim, f->get_vertex_sizes()[Is],
                                        F, typename F::VertexPointerPointerTuple>
-               <<<num_blocks, threads_per_block, 0, streams[Is % num_streams]>>>(
+               <<<num_blocks, threads_per_block, 0,
+                  streams[Is % num_streams]>>>(
                    out, in, f->device_ids.data().get(), hessian_ids[Is],
                    num_threads, f->get_vertices(), f->device_obs.data().get(),
                    jacobian_scales, f->data.data().get(),
@@ -1578,8 +1574,7 @@ private:
       F *f, T *out, T *in,
       std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
       std::array<S *, F::get_num_vertices()> &jacs, const T *jacobian_scales,
-      const size_t num_factors, 
-      cudaStream_t* streams, size_t num_streams,
+      const size_t num_factors, cudaStream_t *streams, size_t num_streams,
       std::index_sequence<Is...>) {
     (([&] {
        constexpr auto num_vertices = F::get_num_vertices();
@@ -1593,9 +1588,9 @@ private:
          compute_Jv_kernel<T, S, Is, num_vertices, F::error_dim,
                            f->get_vertex_sizes()[Is], F>
              <<<num_blocks, threads_per_block, 0, streams[Is % num_streams]>>>(
-                 out, in, f->active_indices.data().get(), f->device_ids.data().get(), hessian_ids[Is],
-                 num_threads, jacs[Is],
-                 f->vertex_descriptors[Is]->get_fixed_mask(),
+                 out, in, f->active_indices.data().get(),
+                 f->device_ids.data().get(), hessian_ids[Is], num_threads,
+                 jacs[Is], f->vertex_descriptors[Is]->get_fixed_mask(),
                  std::make_index_sequence<num_vertices>{});
        }
        /*
@@ -1661,7 +1656,8 @@ private:
            compute_Jv_dynamic_manual2<T, S, Is, num_vertices,
                                       typename F::ObservationType, E, F,
                                       typename F::VertexPointerPointerTuple>
-               <<<num_blocks, threads_per_block, 0, streams[Is % num_streams]>>>(
+               <<<num_blocks, threads_per_block, 0,
+                  streams[Is % num_streams]>>>(
                    out, in, f->device_obs.data().get(), jacobian_scales,
                    f->data.data().get(), f->device_ids.data().get(),
                    hessian_ids[Is], num_factors, f->get_vertices(),
@@ -1700,8 +1696,7 @@ private:
          compute_hessian_diagonal_kernel<T, InvP, S, Is, num_vertices,
                                          F::error_dim, dimension>
              <<<num_blocks, threads_per_block>>>(
-                 diagonal_blocks[Is], jacs[Is], 
-                 f->active_indices.data().get(),
+                 diagonal_blocks[Is], jacs[Is], f->active_indices.data().get(),
                  f->device_ids.data().get(),
                  f->vertex_descriptors[Is]->get_fixed_mask(),
                  f->precision_matrices.data().get(),
@@ -1755,10 +1750,9 @@ private:
          compute_hessian_scalar_diagonal_kernel<T, S, Is, num_vertices,
                                                 F::error_dim, dimension>
              <<<num_blocks, threads_per_block>>>(
-                 diagonal, jacs[Is], 
-                 f->active_indices.data().get(),
-                 f->device_ids.data().get(),
-                 hessian_ids[Is], f->vertex_descriptors[Is]->get_fixed_mask(),
+                 diagonal, jacs[Is], f->active_indices.data().get(),
+                 f->device_ids.data().get(), hessian_ids[Is],
+                 f->vertex_descriptors[Is]->get_fixed_mask(),
                  f->precision_matrices.data().get(),
                  f->chi2_derivative.data().get(), num_threads);
        } else {
@@ -1810,11 +1804,9 @@ private:
 
        scale_jacobians_kernel<T, S, Is, num_vertices, F::error_dim, dimension>
            <<<num_blocks, threads_per_block>>>(
-               jacs[Is], jacobian_scales, 
-               f->active_indices.data().get(),
-               f->device_ids.data().get(),
-               hessian_ids[Is], f->vertex_descriptors[Is]->get_fixed_mask(),
-               num_threads);
+               jacs[Is], jacobian_scales, f->active_indices.data().get(),
+               f->device_ids.data().get(), hessian_ids[Is],
+               f->vertex_descriptors[Is]->get_fixed_mask(), num_threads);
      }()),
      ...);
   }
@@ -1822,7 +1814,7 @@ private:
 public:
   GraphVisitor() = default;
 
-  template <typename F> void compute_error_autodiff(F *f, StreamPool& streams) {
+  template <typename F> void compute_error_autodiff(F *f, StreamPool &streams) {
     // Assume autodiff
 
     // Then for each vertex, we need to compute the error
@@ -1850,7 +1842,7 @@ public:
     cudaDeviceSynchronize();
   }
 
-  template <typename F> void compute_jacobians(F *f, StreamPool& streams) {
+  template <typename F> void compute_jacobians(F *f, StreamPool &streams) {
     if (!(f->store_jacobians() || !is_analytical<F>())) {
       return;
     }
@@ -1905,9 +1897,9 @@ public:
                          F::error_dim, F, typename F::VertexPointerPointerTuple>
         <<<num_blocks, threads_per_block>>>(
             f->device_obs.data().get(), f->residuals.data().get(),
-            f->data.data().get(), f->active_indices.data().get(), 
-            f->device_ids.data().get(), num_threads,
-            verts, std::make_index_sequence<num_vertices>{});
+            f->data.data().get(), f->active_indices.data().get(),
+            f->device_ids.data().get(), num_threads, verts,
+            std::make_index_sequence<num_vertices>{});
 
     cudaDeviceSynchronize();
   }
@@ -1957,7 +1949,8 @@ public:
 
     constexpr auto error_dim = F::error_dim;
     const auto num_factors = f->active_count();
-    // std::cout << "Computing b for " << num_factors << " factors" << std::endl;
+    // std::cout << "Computing b for " << num_factors << " factors" <<
+    // std::endl;
     launch_kernel_compute_b(f, b, hessian_ids, jacs, jacobian_scales,
                             num_factors,
                             std::make_index_sequence<num_vertices>{});
@@ -1965,7 +1958,8 @@ public:
   }
 
   template <typename F>
-  void compute_Jv(F *f, T *out, T *in, const T *jacobian_scales, cudaStream_t* streams, size_t num_streams) {
+  void compute_Jv(F *f, T *out, T *in, const T *jacobian_scales,
+                  cudaStream_t *streams, size_t num_streams) {
     constexpr auto num_vertices = F::get_num_vertices();
     constexpr auto vertex_sizes = F::get_vertex_sizes();
 
@@ -1988,7 +1982,8 @@ public:
   }
 
   template <typename F>
-  void compute_Jtv(F *f, T *out, T *in, const T *jacobian_scales, cudaStream_t* streams, size_t num_streams) {
+  void compute_Jtv(F *f, T *out, T *in, const T *jacobian_scales,
+                   cudaStream_t *streams, size_t num_streams) {
     constexpr auto num_vertices = f->get_num_vertices();
     constexpr auto vertex_sizes = F::get_vertex_sizes();
 
@@ -2090,7 +2085,8 @@ public:
   }
 
   template <typename V>
-  void apply_step(V *v, const T *delta_x, T *jacobian_scales, cudaStream_t stream) {
+  void apply_step(V *v, const T *delta_x, T *jacobian_scales,
+                  cudaStream_t stream) {
     const size_t num_parameters = v->count() * v->dimension();
     const size_t num_threads = v->count();
     const auto threads_per_block = 256;
@@ -2121,7 +2117,8 @@ public:
   }
 
   template <typename V>
-  void apply_block_jacobi(V *v, T *z, const T *r, InvP *block_diagonal, cudaStream_t stream) {
+  void apply_block_jacobi(V *v, T *z, const T *r, InvP *block_diagonal,
+                          cudaStream_t stream) {
     const size_t num_parameters = v->count() * v->dimension();
     const size_t num_threads = num_parameters;
     const auto threads_per_block = 256;

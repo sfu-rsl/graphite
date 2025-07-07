@@ -1,4 +1,5 @@
 #pragma once
+#include <glso/active.hpp>
 #include <glso/common.hpp>
 #include <glso/differentiation.hpp>
 #include <glso/loss.hpp>
@@ -9,7 +10,6 @@
 #include <thrust/execution_policy.h>
 #include <thrust/inner_product.h>
 #include <thrust/universal_vector.h>
-#include <glso/active.hpp>
 
 namespace glso {
 
@@ -29,14 +29,18 @@ public:
   // virtual void error_func(const T** vertices, const T* obs, T* error) = 0;
   virtual bool use_autodiff() = 0;
   virtual void visit_error(GraphVisitor<T, S> &visitor) = 0;
-  virtual void visit_error_autodiff(GraphVisitor<T, S> &visitor, StreamPool& streams) = 0;
+  virtual void visit_error_autodiff(GraphVisitor<T, S> &visitor,
+                                    StreamPool &streams) = 0;
   virtual void visit_b(GraphVisitor<T, S> &visitor, T *b,
                        const T *jacobian_scales) = 0;
   virtual void visit_Jv(GraphVisitor<T, S> &visitor, T *out, T *in,
-                        const T *jacobian_scales, cudaStream_t* streams, size_t num_streams) = 0;
+                        const T *jacobian_scales, cudaStream_t *streams,
+                        size_t num_streams) = 0;
   virtual void visit_Jtv(GraphVisitor<T, S> &visitor, T *out, T *in,
-                         const T *jacobian_scales, cudaStream_t* streams, size_t num_streams) = 0;
-  virtual void visit_jacobians(GraphVisitor<T, S> &visitor, StreamPool& streams) = 0;
+                         const T *jacobian_scales, cudaStream_t *streams,
+                         size_t num_streams) = 0;
+  virtual void visit_jacobians(GraphVisitor<T, S> &visitor,
+                               StreamPool &streams) = 0;
   virtual void visit_block_diagonal(
       GraphVisitor<T, S> &visitor,
       std::unordered_map<BaseVertexDescriptor<T, S> *,
@@ -174,7 +178,8 @@ public:
     visitor.template compute_error(this);
   }
 
-  void visit_error_autodiff(GraphVisitor<T, S> &visitor, StreamPool& streams) override {
+  void visit_error_autodiff(GraphVisitor<T, S> &visitor,
+                            StreamPool &streams) override {
     visitor.template compute_error_autodiff(this, streams);
   }
 
@@ -184,16 +189,21 @@ public:
   }
 
   void visit_Jv(GraphVisitor<T, S> &visitor, T *out, T *in,
-                const T *jacobian_scales, cudaStream_t* streams, size_t num_streams) override {
-    visitor.template compute_Jv(this, out, in, jacobian_scales, streams, num_streams);
+                const T *jacobian_scales, cudaStream_t *streams,
+                size_t num_streams) override {
+    visitor.template compute_Jv(this, out, in, jacobian_scales, streams,
+                                num_streams);
   }
 
   void visit_Jtv(GraphVisitor<T, S> &visitor, T *out, T *in,
-                 const T *jacobian_scales, cudaStream_t* streams, size_t num_streams) override {
-    visitor.template compute_Jtv(this, out, in, jacobian_scales, streams, num_streams);
+                 const T *jacobian_scales, cudaStream_t *streams,
+                 size_t num_streams) override {
+    visitor.template compute_Jtv(this, out, in, jacobian_scales, streams,
+                                 num_streams);
   }
 
-  void visit_jacobians(GraphVisitor<T, S> &visitor, StreamPool& streams) override {
+  void visit_jacobians(GraphVisitor<T, S> &visitor,
+                       StreamPool &streams) override {
     if constexpr (std::is_same_v<typename Traits::Differentiation,
                                  DifferentiationMode::Manual>) {
       visitor.template compute_jacobians(this, streams);
@@ -370,7 +380,8 @@ public:
     constexpr uint8_t NOT_MSB = 0x7F; // 01111111
 
     auto local_id = global_to_local_map[id];
-    active[local_id] = NOT_MSB & active_value; // we reserve the MSB for later use
+    active[local_id] =
+        NOT_MSB & active_value; // we reserve the MSB for later use
   }
 
   void reset_active() {
@@ -378,9 +389,7 @@ public:
   }
 
   size_t internal_count() const { return global_ids.size() / N; }
-  size_t active_count() const override {
-    return _active_count;
-  }
+  size_t active_count() const override { return _active_count; }
 
   void to_device() override {
 
@@ -397,10 +406,10 @@ public:
     }
     device_ids = host_ids;
 
-    device_active = active; 
+    device_active = active;
     constexpr uint8_t active_level = 0;
-    _active_count = build_active_indices(
-        device_active, active_indices, internal_count(), active_level);
+    _active_count = build_active_indices(device_active, active_indices,
+                                         internal_count(), active_level);
 
     // std::cout << "Internal count: " << internal_count() << std::endl;
     // std::cout << "Active count: " << _active_count << std::endl;
@@ -466,8 +475,8 @@ public:
                                                DifferentiationMode::Manual>) {
         jacobians[i].dimensions = {error_dim,
                                    vertex_descriptors[i]->dimension()};
-        jacobians[i].data.resize(error_dim *
-                                 vertex_descriptors[i]->dimension() * internal_count());
+        jacobians[i].data.resize(
+            error_dim * vertex_descriptors[i]->dimension() * internal_count());
       }
     }
   }

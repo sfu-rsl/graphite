@@ -1,10 +1,10 @@
 #pragma once
 #include <glso/factor.hpp>
+#include <glso/stream.hpp>
 #include <glso/vertex.hpp>
 #include <glso/visitor.hpp>
 #include <limits>
 #include <thrust/execution_policy.h>
-#include <glso/stream.hpp>
 
 namespace glso {
 
@@ -137,7 +137,7 @@ public:
     return chi2;
   }
 
-  void linearize(StreamPool& streams) {
+  void linearize(StreamPool &streams) {
 
     for (auto &factor : factor_descriptors) {
       // compute error
@@ -196,10 +196,11 @@ public:
     cudaDeviceSynchronize();
   }
 
-  void apply_step(const T *delta_x, StreamPool& streams) {
+  void apply_step(const T *delta_x, StreamPool &streams) {
     size_t i = 0;
     for (auto &desc : vertex_descriptors) {
-      desc->visit_update(visitor, delta_x, jacobian_scales.data().get(), streams.select(i));
+      desc->visit_update(visitor, delta_x, jacobian_scales.data().get(),
+                         streams.select(i));
       i++;
     }
     cudaDeviceSynchronize();

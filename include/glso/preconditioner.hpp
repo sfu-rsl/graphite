@@ -17,7 +17,8 @@ public:
 
              size_t dimension, T mu) = 0;
 
-  virtual void apply(GraphVisitor<T, S> &visitor, T *z, const T *r, cudaStream_t* streams, size_t num_streams) = 0;
+  virtual void apply(GraphVisitor<T, S> &visitor, T *z, const T *r,
+                     cudaStream_t *streams, size_t num_streams) = 0;
 };
 
 template <typename T, typename S>
@@ -35,7 +36,8 @@ public:
     this->dimension = dimension;
   }
 
-  void apply(GraphVisitor<T, S> &visitor, T *z, const T *r, cudaStream_t* streams, size_t num_streams) override {
+  void apply(GraphVisitor<T, S> &visitor, T *z, const T *r,
+             cudaStream_t *streams, size_t num_streams) override {
     cudaMemcpy(z, r, dimension * sizeof(T), cudaMemcpyDeviceToDevice);
   }
 };
@@ -198,7 +200,8 @@ public:
     cudaDeviceSynchronize();
   }
 
-  void apply(GraphVisitor<T, S> &visitor, T *z, const T *r, cudaStream_t* streams, size_t num_streams) override {
+  void apply(GraphVisitor<T, S> &visitor, T *z, const T *r,
+             cudaStream_t *streams, size_t num_streams) override {
     // Apply the preconditioner
     size_t i = 0;
     if constexpr (is_low_precision<S>::value) {
@@ -206,7 +209,8 @@ public:
       for (auto &desc : *vds) {
         const auto d = desc->dimension();
         P *blocks = hp_diagonals[desc].data().get();
-        desc->visit_apply_block_jacobi(visitor, z, r, blocks, streams[i % num_streams]);
+        desc->visit_apply_block_jacobi(visitor, z, r, blocks,
+                                       streams[i % num_streams]);
         i++;
       }
     } else {
@@ -215,7 +219,8 @@ public:
         S *blocks = block_diagonals[desc].data().get();
         // std::cout << "bd size: " << block_diagonals[desc].size() <<
         // std::endl;
-        desc->visit_apply_block_jacobi(visitor, z, r, blocks, streams[i % num_streams]);
+        desc->visit_apply_block_jacobi(visitor, z, r, blocks,
+                                       streams[i % num_streams]);
         i++;
       }
     }
