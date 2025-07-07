@@ -412,8 +412,8 @@ public:
 
     // device_ids = host_ids;
     // device_obs = host_obs;
-    chi2_vec.resize(active_count());
-    chi2_derivative.resize(active_count());
+    chi2_vec.resize(internal_count());
+    chi2_derivative.resize(internal_count());
 
     // prefetch everything
     int cuda_device = 0;
@@ -427,7 +427,7 @@ public:
     // std::cout << "Prefetching factor data to device" << std::endl;
     cudaDeviceSynchronize();
     // Resize and reset residuals
-    residuals.resize(error_dim * active_count());
+    residuals.resize(error_dim * internal_count());
     thrust::fill(residuals.begin(), residuals.end(), 0);
   }
 
@@ -467,13 +467,13 @@ public:
         jacobians[i].dimensions = {error_dim,
                                    vertex_descriptors[i]->dimension()};
         jacobians[i].data.resize(error_dim *
-                                 vertex_descriptors[i]->dimension() * active_count());
+                                 vertex_descriptors[i]->dimension() * internal_count());
       }
     }
   }
 
   virtual size_t get_residual_size() const override {
-    return error_dim * active_count();
+    return error_dim * internal_count();
   }
 
   // TODO: Make this consider kernels and active edges
