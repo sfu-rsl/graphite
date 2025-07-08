@@ -127,9 +127,12 @@ int main(void) {
   // Set the last vertex as fixed
   point_desc.set_fixed(num_vertices - 1 + id_offset, true);
 
+  // Disable third constraint for point 2
+  factor_desc.set_active(2, 0x0);
+
   // Configure solver
   glso::IdentityPreconditioner<FP, SP> preconditioner;
-  glso::PCGSolver<FP, SP> solver(50, 1e-6, 1.0, &preconditioner);
+  glso::PCGSolver<FP, SP> solver(50, 1e-6, 10.0, &preconditioner);
 
   // Optimize
   constexpr size_t iterations = 10;
@@ -137,8 +140,11 @@ int main(void) {
             << factor_desc.internal_count() << " factors." << std::endl;
   std::cout << "Optimizing!" << std::endl;
 
+  StreamPool streams(1);
+
   auto start = std::chrono::steady_clock::now();
-  optimizer::levenberg_marquardt<FP, SP>(&graph, &solver, iterations, 1e-6);
+  optimizer::levenberg_marquardt<FP, SP>(&graph, &solver, iterations, 1e-6,
+                                         streams);
   auto end = std::chrono::steady_clock::now();
   std::chrono::duration<double> elapsed = end - start;
   std::cout << "Optimization took " << elapsed.count() << " seconds."

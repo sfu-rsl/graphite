@@ -32,9 +32,9 @@ __device__ void real_to_dual(const VPtr v, Dual<T, P> *dst) {
   }
 }
 
-__device__ bool is_fixed(const uint32_t *fixed, const size_t vertex_id) {
-  const uint32_t mask = 1 << (vertex_id % 32);
-  return (fixed[vertex_id / 32] & mask);
+__device__ bool is_inactive(const uint8_t *active_state,
+                            const size_t vertex_id) {
+  return active_state[vertex_id] > 0;
 }
 
 template <typename T, typename P, size_t E>
@@ -83,11 +83,11 @@ __device__ void compute_Jblock(
 template <typename T, typename S, typename Descriptor, typename V>
 __global__ void
 apply_update_kernel(V **vertices, const T *delta_x, const T *jacobian_scales,
-                    const size_t *hessian_ids, const uint32_t *fixed,
+                    const size_t *hessian_ids, const uint8_t *active_state,
                     const size_t num_threads) {
   const size_t vertex_id = get_thread_id();
 
-  if (vertex_id >= num_threads || is_fixed(fixed, vertex_id)) {
+  if (vertex_id >= num_threads || is_inactive(active_state, vertex_id)) {
     return;
   }
 
@@ -106,7 +106,7 @@ apply_update_kernel(V **vertices, const T *delta_x, const T *jacobian_scales,
 
 template <typename S, int D>
 __global__ void augment_hessian_diagonal_kernel(S *diagonal_blocks, const S mu,
-                                                const uint32_t *fixed,
+                                                const uint8_t *active_state,
                                                 const size_t num_threads) {
   const size_t idx = get_thread_id();
 
@@ -117,7 +117,7 @@ __global__ void augment_hessian_diagonal_kernel(S *diagonal_blocks, const S mu,
   constexpr auto block_size = D * D;
 
   const auto vertex_id = idx;
-  if (is_fixed(fixed, vertex_id)) {
+  if (is_inactive(active_state, vertex_id)) {
     return;
   }
 
@@ -138,12 +138,12 @@ __global__ void augment_hessian_diagonal_kernel(S *diagonal_blocks, const S mu,
 template <typename T, typename S, int D>
 __global__ void apply_block_jacobi_kernel(T *z, const T *r, S *block_diagonal,
                                           const size_t *hessian_ids,
-                                          const uint32_t *fixed,
+                                          const uint8_t *active_state,
                                           const size_t num_threads) {
   const size_t idx = get_thread_id();
   const auto local_vertex_id = idx / D;
 
-  if (idx >= num_threads || is_fixed(fixed, local_vertex_id)) {
+  if (idx >= num_threads || is_inactive(active_state, local_vertex_id)) {
     return;
   }
 
@@ -168,7 +168,7 @@ __global__ void compute_error_kernel_autodiff(
     const M *obs, T *error,
     const typename F::ConstraintDataType *constraint_data,
     const size_t *active_ids, const size_t *ids, const size_t *hessian_ids,
-    const size_t num_threads, VT args, S *jacs, const uint32_t *fixed,
+    const size_t num_threads, VT args, S *jacs, const uint8_t *active_state,
     std::index_sequence<Is...>) {
   const size_t idx = get_thread_id();
 
@@ -229,7 +229,7 @@ __global__ void compute_error_kernel_autodiff(
 
   // This should write one Jacobian column per dimension per vertex for each
   // factor We only need a Jacobian if the vertex is not fixed
-  if (is_fixed(fixed, vertex_id)) {
+  if (is_inactive(active_state, vertex_id)) {
     return;
   }
 
@@ -297,12 +297,11 @@ compute_error_kernel(const M *obs, T *error,
 
 template <typename T, typename S, size_t I, size_t N, typename M, size_t E,
           typename F, typename VT, std::size_t... Is>
-__global__ void
-compute_jacobian_kernel(const M *obs, T *error, S *jacs,
-                        const typename F::ConstraintDataType *constraint_data,
-                        const size_t *active_ids, const size_t *ids,
-                        const size_t num_threads, const VT args,
-                        const uint32_t *fixed, std::index_sequence<Is...>) {
+__global__ void compute_jacobian_kernel(
+    const M *obs, T *error, S *jacs,
+    const typename F::ConstraintDataType *constraint_data,
+    const size_t *active_ids, const size_t *ids, const size_t num_threads,
+    const VT args, const uint8_t *active_state, std::index_sequence<Is...>) {
   const size_t idx = get_thread_id();
 
   if (idx >= num_threads) {
@@ -312,7 +311,7 @@ compute_jacobian_kernel(const M *obs, T *error, S *jacs,
   constexpr auto vertex_sizes = F::get_vertex_sizes();
   const auto factor_id = active_ids[idx];
   const size_t vertex_id = ids[factor_id * N + I];
-  if (is_fixed(fixed, vertex_id)) {
+  if (is_inactive(active_state, vertex_id)) {
     return;
   }
 
@@ -352,7 +351,7 @@ template <typename T, typename S, size_t I, size_t N, size_t E, typename F,
 __global__ void compute_b_kernel(T *b, const T *error, const size_t *active_ids,
                                  const size_t *ids, const size_t *hessian_ids,
                                  const size_t num_threads, const S *jacs,
-                                 const uint32_t *fixed, const S *pmat,
+                                 const uint8_t *active_state, const S *pmat,
                                  const S *loss_derivative,
                                  std::index_sequence<Is...>) {
   const size_t idx = get_thread_id();
@@ -370,7 +369,7 @@ __global__ void compute_b_kernel(T *b, const T *error, const size_t *active_ids,
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_fixed(fixed, local_id)) {
+  if (is_inactive(active_state, local_id)) {
     return;
   }
   const auto jacobian_offset = factor_id * jacobian_size;
@@ -422,7 +421,7 @@ compute_b_dynamic_kernel(T *b, const T *error, const size_t *active_ids,
                          const size_t num_threads, const VT args, const M *obs,
                          const T *jacobian_scales,
                          const typename F::ConstraintDataType *constraint_data,
-                         const uint32_t *fixed, const S *pmat,
+                         const uint8_t *active_state, const S *pmat,
                          const S *loss_derivative, std::index_sequence<Is...>) {
   const size_t idx = get_thread_id();
 
@@ -439,7 +438,7 @@ compute_b_dynamic_kernel(T *b, const T *error, const size_t *active_ids,
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_fixed(fixed, local_id)) {
+  if (is_inactive(active_state, local_id)) {
     return;
   }
   const auto jacobian_offset = factor_id * jacobian_size;
@@ -494,7 +493,7 @@ template <typename T, typename S, size_t I, size_t N, size_t E, size_t D,
 __global__ void compute_Jv_kernel(T *y, const T *x, const size_t *active_ids,
                                   const size_t *ids, const size_t *hessian_ids,
                                   const size_t num_threads, const S *jacs,
-                                  const uint32_t *fixed,
+                                  const uint8_t *active_state,
                                   std::index_sequence<Is...>) {
 
   const size_t idx = get_thread_id();
@@ -510,7 +509,7 @@ __global__ void compute_Jv_kernel(T *y, const T *x, const size_t *active_ids,
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_fixed(fixed, local_id)) {
+  if (is_inactive(active_state, local_id)) {
     return;
   }
   const auto jacobian_offset = factor_id * jacobian_size;
@@ -547,7 +546,7 @@ template <typename T, typename S, size_t I, size_t N, size_t E, size_t D,
 __global__ void
 compute_Jv_dynamic_kernel(T *y, T *x, size_t *ids, const size_t *hessian_ids,
                   const size_t num_threads, const S *jacs,
-                  const uint32_t *fixed, std::index_sequence<Is...>) {
+                  const uint8_t *active_state, std::index_sequence<Is...>) {
 
   const size_t idx = get_thread_id();
 
@@ -562,7 +561,7 @@ compute_Jv_dynamic_kernel(T *y, T *x, size_t *ids, const size_t *hessian_ids,
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_fixed(fixed, local_id)) {
+  if (is_inactive(active_state, local_id)) {
     return;
   }
   const auto jacobian_offset = factor_id * jacobian_size;
@@ -630,7 +629,7 @@ __global__ void compute_Jv_dynamic_autodiff(
     T *y, T *x, const M *obs, const T *jacobian_scales,
     const typename F::ConstraintDataType *constraint_data,
     const size_t *active_ids, const size_t *ids, const size_t *hessian_ids,
-    const size_t num_factors, VT args, const uint32_t *fixed,
+    const size_t num_factors, VT args, const uint8_t *active_state,
     std::index_sequence<Is...>) {
   const size_t idx = get_thread_id();
   constexpr size_t D = F::get_vertex_sizes()[I];
@@ -664,7 +663,7 @@ __global__ void compute_Jv_dynamic_autodiff(
     const T scale = jacobian_scales[hess_col + column];
     // T product = 0.0;
     // Each thread block stores a complete Jacobian row in shared memory
-    if (!is_fixed(fixed, vertex_id)) {
+    if (!is_inactive(active_state, vertex_id)) {
       using G = std::conditional_t<is_low_precision<S>::value, T, S>;
       Dual<T, G> error[E];
       compute_Jcol_ad<T, G, I, N, M, E, F, VT>(
@@ -688,7 +687,7 @@ __global__ void compute_Jv_dynamic_autodiff(
   if (factor_id < num_factors) {
 
     const auto vertex_id = ids[factor_id * N + I];
-    if (!is_fixed(fixed, vertex_id)) {
+    if (!is_inactive(active_state, vertex_id)) {
       // const auto hess_col = hessian_ids[vertex_id];
       // const T *x_start = x + hess_col;
 
@@ -717,7 +716,7 @@ compute_Jv_dynamic_manual(T *y, T *x, const M *obs, const T *jacobian_scales,
                           const typename F::ConstraintDataType *constraint_data,
                           const size_t *active_ids, const size_t *ids,
                           const size_t *hessian_ids, const size_t num_factors,
-                          VT args, const uint32_t *fixed,
+                          VT args, const uint8_t *active_state,
                           std::index_sequence<Is...>) {
   const size_t idx = get_thread_id();
   constexpr size_t D = F::get_vertex_sizes()[I];
@@ -751,7 +750,7 @@ compute_Jv_dynamic_manual(T *y, T *x, const M *obs, const T *jacobian_scales,
     // const T scale = jacobian_scales[hess_col + column];
     // T product = 0.0;
     // Each thread block stores a complete Jacobian row in shared memory
-    if (!is_fixed(fixed, vertex_id)) {
+    if (!is_inactive(active_state, vertex_id)) {
       using G = std::conditional_t<is_low_precision<S>::value, T, S>;
       // Dual<T, G> error[E];
       constexpr auto jacobian_size = E * D;
@@ -788,7 +787,7 @@ compute_Jv_dynamic_manual(T *y, T *x, const M *obs, const T *jacobian_scales,
   if (factor_id < num_factors) {
 
     const auto vertex_id = ids[factor_id * N + I];
-    if (!is_fixed(fixed, vertex_id)) {
+    if (!is_inactive(active_state, vertex_id)) {
       // const auto hess_col = hessian_ids[vertex_id];
       // const T *x_start = x + hess_col;
 
@@ -815,7 +814,7 @@ __global__ void compute_Jv_dynamic_manual2(
     T *y, T *x, const M *obs, const T *jacobian_scales,
     const typename F::ConstraintDataType *constraint_data,
     const size_t *active_ids, const size_t *ids, const size_t *hessian_ids,
-    const size_t num_factors, VT args, const uint32_t *fixed,
+    const size_t num_factors, VT args, const uint8_t *active_state,
     std::index_sequence<Is...>) {
   const size_t idx = get_thread_id();
   constexpr size_t D = F::get_vertex_sizes()[I];
@@ -830,7 +829,7 @@ __global__ void compute_Jv_dynamic_manual2(
     const T *x_start = x + hess_col;
 
     // Each thread block stores a complete Jacobian row in shared memory
-    if (!is_fixed(fixed, vertex_id)) {
+    if (!is_inactive(active_state, vertex_id)) {
       using G = std::conditional_t<is_low_precision<S>::value, T, S>;
       // Dual<T, G> error[E];
       constexpr auto jacobian_size = E * D;
@@ -865,7 +864,7 @@ __global__ void compute_JtPv_kernel(T *y, const T *x, const size_t *active_ids,
                                     const size_t *ids,
                                     const size_t *hessian_ids,
                                     const size_t num_threads, const S *jacs,
-                                    const uint32_t *fixed, const S *pmat,
+                                    const uint8_t *active_state, const S *pmat,
                                     const S *chi2_derivative,
                                     const std::index_sequence<Is...>) {
   const size_t idx = get_thread_id();
@@ -882,7 +881,7 @@ __global__ void compute_JtPv_kernel(T *y, const T *x, const size_t *active_ids,
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_fixed(fixed, local_id)) {
+  if (is_inactive(active_state, local_id)) {
     return;
   }
   const auto jacobian_offset = factor_id * jacobian_size;
@@ -971,7 +970,7 @@ __global__ void compute_JtPv_dynamic_kernel(
     const size_t *hessian_ids, const size_t num_threads, const VT args,
     const M *obs, const T *jacobian_scales,
     const typename F::ConstraintDataType *constraint_data,
-    const uint32_t *fixed, const S *pmat, const S *chi2_derivative,
+    const uint8_t *active_state, const S *pmat, const S *chi2_derivative,
     const std::index_sequence<Is...>) {
   const size_t idx = get_thread_id();
 
@@ -987,7 +986,7 @@ __global__ void compute_JtPv_dynamic_kernel(
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_fixed(fixed, local_id)) {
+  if (is_inactive(active_state, local_id)) {
     return;
   }
   const auto jacobian_offset = factor_id * jacobian_size;
@@ -1054,7 +1053,7 @@ template <typename highp, typename InvP, typename T, size_t I, size_t N,
           size_t E, size_t D>
 __global__ void compute_hessian_diagonal_kernel(
     InvP *diagonal_blocks, const T *jacs, const size_t *active_ids,
-    const size_t *ids, const uint32_t *fixed, const T *pmat,
+    const size_t *ids, const uint8_t *active_state, const T *pmat,
     const T *chi2_derivative, const size_t num_threads) {
   const size_t idx = get_thread_id();
 
@@ -1071,7 +1070,7 @@ __global__ void compute_hessian_diagonal_kernel(
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_fixed(fixed, local_id)) {
+  if (is_inactive(active_state, local_id)) {
     return;
   }
   const auto jacobian_offset = factor_id * jacobian_size;
@@ -1158,7 +1157,7 @@ __global__ void compute_hessian_diagonal_dynamic_kernel(
     const size_t *hessian_ids, const VT args,
     const typename F::ObservationType *obs, const highp *jacobian_scales,
     const typename F::ConstraintDataType *constraint_data,
-    const uint32_t *fixed, const T *pmat, const T *chi2_derivative,
+    const uint8_t *active_state, const T *pmat, const T *chi2_derivative,
     const size_t num_threads) {
   const size_t idx = get_thread_id();
 
@@ -1175,7 +1174,7 @@ __global__ void compute_hessian_diagonal_dynamic_kernel(
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_fixed(fixed, local_id)) {
+  if (is_inactive(active_state, local_id)) {
     return;
   }
   const auto jacobian_offset = factor_id * jacobian_size;
@@ -1230,7 +1229,7 @@ template <typename highp, typename T, size_t I, size_t N, size_t E, size_t D>
 __global__ void
 scale_jacobians_kernel(T *jacs, const highp *jacobian_scales,
                        const size_t *active_ids, const size_t *ids,
-                       const size_t *hessian_ids, const uint32_t *fixed,
+                       const size_t *hessian_ids, const uint8_t *active_state,
                        const size_t num_threads) {
 
   const size_t idx = get_thread_id();
@@ -1250,7 +1249,7 @@ scale_jacobians_kernel(T *jacs, const highp *jacobian_scales,
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_fixed(fixed, local_id)) {
+  if (is_inactive(active_state, local_id)) {
     return;
   }
 
@@ -1271,7 +1270,7 @@ scale_jacobians_kernel(T *jacs, const highp *jacobian_scales,
 template <typename highp, typename T, size_t I, size_t N, size_t E, size_t D>
 __global__ void compute_hessian_scalar_diagonal_kernel(
     highp *diagonal, const T *jacs, const size_t *active_ids, const size_t *ids,
-    const size_t *hessian_ids, const uint32_t *fixed, const T *pmat,
+    const size_t *hessian_ids, const uint8_t *active_state, const T *pmat,
     const T *chi2_derivative, const size_t num_threads) {
   const size_t idx = get_thread_id();
 
@@ -1287,7 +1286,7 @@ __global__ void compute_hessian_scalar_diagonal_kernel(
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_fixed(fixed, local_id)) {
+  if (is_inactive(active_state, local_id)) {
     return;
   }
   const auto jacobian_offset = factor_id * jacobian_size;
@@ -1333,7 +1332,7 @@ __global__ void compute_hessian_scalar_diagonal_dynamic_kernel(
     const size_t *hessian_ids, const VT args,
     const typename F::ObservationType *obs, const highp *jacobian_scales,
     const typename F::ConstraintDataType *constraint_data,
-    const uint32_t *fixed, const T *pmat, const T *chi2_derivative,
+    const uint8_t *active_state, const T *pmat, const T *chi2_derivative,
     const size_t num_threads) {
   const size_t idx = get_thread_id();
 
@@ -1349,7 +1348,7 @@ __global__ void compute_hessian_scalar_diagonal_dynamic_kernel(
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_fixed(fixed, local_id)) {
+  if (is_inactive(active_state, local_id)) {
     return;
   }
   const auto jacobian_offset = factor_id * jacobian_size;
@@ -1438,7 +1437,7 @@ private:
                f->device_obs.data().get(), f->residuals.data().get(),
                f->data.data().get(), f->active_indices.data().get(),
                f->device_ids.data().get(), hessian_ids[Is], num_threads, verts,
-               jacs[Is], f->vertex_descriptors[Is]->get_fixed_mask(),
+               jacs[Is], f->vertex_descriptors[Is]->get_active_state(),
                std::make_index_sequence<num_vertices>{});
      }()),
      ...);
@@ -1464,7 +1463,7 @@ private:
                f->device_obs.data().get(), f->residuals.data().get(), jacs[Is],
                f->data.data().get(), f->active_indices.data().get(),
                f->device_ids.data().get(), num_threads, verts,
-               f->vertex_descriptors[Is]->get_fixed_mask(),
+               f->vertex_descriptors[Is]->get_active_state(),
                std::make_index_sequence<num_vertices>{});
      }()),
      ...);
@@ -1496,7 +1495,7 @@ private:
              <<<num_blocks, threads_per_block>>>(
                  b, f->residuals.data().get(), f->active_indices.data().get(),
                  f->device_ids.data().get(), hessian_ids[Is], num_threads,
-                 jacs[Is], f->vertex_descriptors[Is]->get_fixed_mask(),
+                 jacs[Is], f->vertex_descriptors[Is]->get_active_state(),
                  f->precision_matrices.data().get(),
                  f->chi2_derivative.data().get(),
                  std::make_index_sequence<num_vertices>{});
@@ -1512,7 +1511,7 @@ private:
                    f->device_ids.data().get(), hessian_ids[Is], num_threads,
                    f->get_vertices(), f->device_obs.data().get(),
                    jacobian_scales, f->data.data().get(),
-                   f->vertex_descriptors[Is]->get_fixed_mask(),
+                   f->vertex_descriptors[Is]->get_active_state(),
                    f->precision_matrices.data().get(),
                    f->chi2_derivative.data().get(),
                    std::make_index_sequence<num_vertices>{});
@@ -1548,7 +1547,7 @@ private:
              <<<num_blocks, threads_per_block, 0, streams[Is % num_streams]>>>(
                  out, in, f->active_indices.data().get(),
                  f->device_ids.data().get(), hessian_ids[Is], num_threads,
-                 jacs[Is], f->vertex_descriptors[Is]->get_fixed_mask(),
+                 jacs[Is], f->vertex_descriptors[Is]->get_active_state(),
                  f->precision_matrices.data().get(),
                  f->chi2_derivative.data().get(),
                  std::make_index_sequence<num_vertices>{});
@@ -1564,7 +1563,7 @@ private:
                    f->device_ids.data().get(), hessian_ids[Is], num_threads,
                    f->get_vertices(), f->device_obs.data().get(),
                    jacobian_scales, f->data.data().get(),
-                   f->vertex_descriptors[Is]->get_fixed_mask(),
+                   f->vertex_descriptors[Is]->get_active_state(),
                    f->precision_matrices.data().get(),
                    f->chi2_derivative.data().get(),
                    std::make_index_sequence<num_vertices>{});
@@ -1595,7 +1594,7 @@ private:
              <<<num_blocks, threads_per_block, 0, streams[Is % num_streams]>>>(
                  out, in, f->active_indices.data().get(),
                  f->device_ids.data().get(), hessian_ids[Is], num_threads,
-                 jacs[Is], f->vertex_descriptors[Is]->get_fixed_mask(),
+                 jacs[Is], f->vertex_descriptors[Is]->get_active_state(),
                  std::make_index_sequence<num_vertices>{});
        }
        /*
@@ -1619,7 +1618,7 @@ private:
                  out, in, f->device_obs.data().get(), jacobian_scales,
                  f->data.data().get(), f->device_ids.data().get(),
                  hessian_ids[Is], num_factors, f->get_vertices(),
-                 f->vertex_descriptors[Is]->get_fixed_mask(),
+                 f->vertex_descriptors[Is]->get_active_state(),
                  std::make_index_sequence<num_vertices>{});
        } */
        else {
@@ -1642,7 +1641,7 @@ private:
                   out, in, f->device_obs.data().get(), jacobian_scales,
                   f->data.data().get(), f->device_ids.data().get(),
                   hessian_ids[Is], num_factors, f->get_vertices(),
-                  f->vertex_descriptors[Is]->get_fixed_mask(),
+                  f->vertex_descriptors[Is]->get_active_state(),
                   std::make_index_sequence<num_vertices>{});
                   */
 
@@ -1667,7 +1666,7 @@ private:
                    f->data.data().get(), f->active_indices.data().get(),
                    f->device_ids.data().get(), hessian_ids[Is], num_factors,
                    f->get_vertices(),
-                   f->vertex_descriptors[Is]->get_fixed_mask(),
+                   f->vertex_descriptors[Is]->get_active_state(),
                    std::make_index_sequence<num_vertices>{});
          }
        }
@@ -1704,7 +1703,7 @@ private:
              <<<num_blocks, threads_per_block>>>(
                  diagonal_blocks[Is], jacs[Is], f->active_indices.data().get(),
                  f->device_ids.data().get(),
-                 f->vertex_descriptors[Is]->get_fixed_mask(),
+                 f->vertex_descriptors[Is]->get_active_state(),
                  f->precision_matrices.data().get(),
                  f->chi2_derivative.data().get(), num_threads);
        } else {
@@ -1717,7 +1716,7 @@ private:
                    f->device_ids.data().get(), hessian_ids[Is],
                    f->get_vertices(), f->device_obs.data().get(),
                    jacobian_scales, f->data.data().get(),
-                   f->vertex_descriptors[Is]->get_fixed_mask(),
+                   f->vertex_descriptors[Is]->get_active_state(),
                    f->precision_matrices.data().get(),
                    f->chi2_derivative.data().get(), num_threads);
          }
@@ -1758,7 +1757,7 @@ private:
              <<<num_blocks, threads_per_block>>>(
                  diagonal, jacs[Is], f->active_indices.data().get(),
                  f->device_ids.data().get(), hessian_ids[Is],
-                 f->vertex_descriptors[Is]->get_fixed_mask(),
+                 f->vertex_descriptors[Is]->get_active_state(),
                  f->precision_matrices.data().get(),
                  f->chi2_derivative.data().get(), num_threads);
        } else {
@@ -1772,7 +1771,7 @@ private:
                      f->device_ids.data().get(), hessian_ids[Is],
                      f->get_vertices(), f->device_obs.data().get(), nullptr,
                      f->data.data().get(),
-                     f->vertex_descriptors[Is]->get_fixed_mask(),
+                     f->vertex_descriptors[Is]->get_active_state(),
                      f->precision_matrices.data().get(),
                      f->chi2_derivative.data().get(), num_threads);
            } else {
@@ -1784,7 +1783,7 @@ private:
                      f->device_ids.data().get(), hessian_ids[Is],
                      f->get_vertices(), f->device_obs.data().get(),
                      jacobian_scales, f->data.data().get(),
-                     f->vertex_descriptors[Is]->get_fixed_mask(),
+                     f->vertex_descriptors[Is]->get_active_state(),
                      f->precision_matrices.data().get(),
                      f->chi2_derivative.data().get(), num_threads);
            }
@@ -1813,7 +1812,7 @@ private:
            <<<num_blocks, threads_per_block>>>(
                jacs[Is], jacobian_scales, f->active_indices.data().get(),
                f->device_ids.data().get(), hessian_ids[Is],
-               f->vertex_descriptors[Is]->get_fixed_mask(), num_threads);
+               f->vertex_descriptors[Is]->get_active_state(), num_threads);
      }()),
      ...);
   }
@@ -2103,7 +2102,7 @@ public:
     apply_update_kernel<T, S, V, typename V::VertexType>
         <<<num_blocks, threads_per_block, 0, stream>>>(
             v->vertices(), delta_x, jacobian_scales, v->get_hessian_ids(),
-            thrust::raw_pointer_cast(v->fixed_mask.data()), num_threads);
+            v->get_active_state(), num_threads);
     // cudaDeviceSynchronize();
 
     // return num_parameters;
@@ -2117,9 +2116,8 @@ public:
         (num_threads + threads_per_block - 1) / threads_per_block;
 
     augment_hessian_diagonal_kernel<InvP, V::dim>
-        <<<num_blocks, threads_per_block>>>(
-            block_diagonal, (InvP)mu,
-            thrust::raw_pointer_cast(v->fixed_mask.data()), num_threads);
+        <<<num_blocks, threads_per_block>>>(block_diagonal, (InvP)mu,
+                                            v->get_active_state(), num_threads);
     cudaDeviceSynchronize();
   }
 
@@ -2134,8 +2132,8 @@ public:
 
     apply_block_jacobi_kernel<T, InvP, V::dim>
         <<<num_blocks, threads_per_block, 0, stream>>>(
-            z, r, block_diagonal, v->get_hessian_ids(),
-            thrust::raw_pointer_cast(v->fixed_mask.data()), num_threads);
+            z, r, block_diagonal, v->get_hessian_ids(), v->get_active_state(),
+            num_threads);
     // cudaDeviceSynchronize();
   }
 };

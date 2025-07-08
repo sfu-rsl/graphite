@@ -30,12 +30,12 @@ using get_State_or_t = typename get_State_or<T, Fallback>::type;
 
 template <typename VertexType, typename State, typename Traits, typename T>
 __global__ void backup_state_kernel(VertexType **vertices, State *dst,
-                                    const uint32_t *fixed,
+                                    const uint8_t *active_state,
                                     const size_t num_vertices) {
 
   const size_t vertex_id = get_thread_id();
 
-  if (vertex_id >= num_vertices || is_fixed(fixed, vertex_id))
+  if (vertex_id >= num_vertices || is_inactive(active_state, vertex_id))
     return;
   if constexpr (has_type_alias_State<Traits>::value) {
     dst[vertex_id] = Traits::get_state(*vertices[vertex_id]);
@@ -46,12 +46,12 @@ __global__ void backup_state_kernel(VertexType **vertices, State *dst,
 
 template <typename VertexType, typename State, typename Traits, typename T>
 __global__ void set_state_kernel(VertexType **vertices, const State *src,
-                                 const uint32_t *fixed,
+                                 const uint8_t *active_state,
                                  const size_t num_vertices) {
 
   const size_t vertex_id = get_thread_id();
 
-  if (vertex_id >= num_vertices || is_fixed(fixed, vertex_id))
+  if (vertex_id >= num_vertices || is_inactive(active_state, vertex_id))
     return;
 
   if constexpr (has_type_alias_State<Traits>::value) {
@@ -87,7 +87,7 @@ public:
   virtual const size_t *get_hessian_ids() const = 0;
   virtual void set_hessian_column(size_t global_id, size_t hessian_column) = 0;
   virtual bool is_fixed(const size_t id) const = 0;
-  virtual const uint32_t *get_fixed_mask() const = 0;
+  virtual const uint8_t *get_active_state() const = 0;
 };
 
 template <typename T, typename S, typename VTraits>
@@ -111,7 +111,7 @@ public:
   std::vector<size_t> local_to_global_map;
   thrust::host_vector<size_t> local_to_hessian_offsets;
   thrust::device_vector<size_t> hessian_ids;
-  uninitialized_vector<uint32_t> fixed_mask;
+  uninitialized_vector<uint8_t> active_state;
 
   static constexpr size_t dim = Traits::dimension;
 
@@ -154,7 +154,7 @@ public:
 
     backup_state_kernel<VertexType, State, Traits, T>
         <<<num_blocks, block_size>>>(vertices, backup_state.data().get(),
-                                     fixed_mask.data().get(), num_vertices);
+                                     active_state.data().get(), num_vertices);
   }
 
   virtual void restore_parameters() override {
@@ -166,7 +166,7 @@ public:
     const auto num_blocks = (num_threads + block_size - 1) / block_size;
     set_state_kernel<VertexType, State, Traits, T>
         <<<num_blocks, block_size>>>(vertices, backup_state.data().get(),
-                                     fixed_mask.data().get(), num_vertices);
+                                     active_state.data().get(), num_vertices);
   }
 
   virtual size_t count() const override { return x_host.size(); }
@@ -176,7 +176,7 @@ public:
     global_to_local_map.reserve(size);
     local_to_global_map.reserve(size);
     local_to_hessian_offsets.reserve(size);
-    fixed_mask.reserve((size + 31) / 32);
+    active_state.reserve(size);
   }
 
   void remove_vertex(const size_t id) {
@@ -212,9 +212,7 @@ public:
     set_fixed(local_id, is_fixed(last_index));
 
     // Remove unused entry
-    if (last_index % 32 == 0) {
-      fixed_mask.pop_back();
-    }
+    active_state.pop_back();
   }
 
   void replace_vertex(const size_t id, VertexType *vertex) {
@@ -239,29 +237,22 @@ public:
     local_to_hessian_offsets.push_back(0); // Initialize to 0
 
     // Update fixed mask
-    if ((count() + 31) / 32 > fixed_mask.size()) {
-      fixed_mask.push_back(static_cast<uint32_t>(fixed));
-    } else {
-      fixed_mask.back() |= (static_cast<uint32_t>(fixed) << (count() % 32));
-    }
+    active_state.push_back(static_cast<uint8_t>(fixed));
   }
 
   void set_fixed(const size_t id, const bool fixed) {
     const auto local_id = global_to_local_map.at(id);
-    if (fixed) {
-      fixed_mask[local_id / 32] |= (1 << (local_id % 32));
-    } else {
-      fixed_mask[local_id / 32] &= ~(1 << (local_id % 32));
-    }
+    // Don't preserve MSB flag
+    active_state[local_id] = static_cast<uint8_t>(fixed);
   }
 
   bool is_fixed(const size_t id) const override {
     const auto local_id = global_to_local_map.at(id);
-    return (fixed_mask[local_id / 32] & (1 << (local_id % 32))) != 0;
+    return (active_state[local_id] & 0x1) > 0;
   }
 
-  const uint32_t *get_fixed_mask() const override {
-    return fixed_mask.data().get();
+  const uint8_t *get_active_state() const override {
+    return active_state.data().get();
   }
 
   VertexType *get_vertex(const size_t id) {
