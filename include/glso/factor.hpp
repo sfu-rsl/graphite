@@ -39,6 +39,10 @@ public:
   virtual void visit_Jtv(GraphVisitor<T, S> &visitor, T *out, T *in,
                          const T *jacobian_scales, cudaStream_t *streams,
                          size_t num_streams) = 0;
+
+  virtual void visit_flag_active_vertices(GraphVisitor<T, S> &visitor,
+                                          const uint8_t level) = 0;
+
   virtual void visit_jacobians(GraphVisitor<T, S> &visitor,
                                StreamPool &streams) = 0;
   virtual void visit_block_diagonal(
@@ -200,6 +204,11 @@ public:
                  size_t num_streams) override {
     visitor.template compute_Jtv(this, out, in, jacobian_scales, streams,
                                  num_streams);
+  }
+
+  void visit_flag_active_vertices(GraphVisitor<T, S> &visitor,
+                                  const uint8_t level) override {
+    visitor.template visit_flag_active_vertices(this, level);
   }
 
   void visit_jacobians(GraphVisitor<T, S> &visitor,

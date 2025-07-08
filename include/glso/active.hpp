@@ -6,6 +6,7 @@
 
 namespace glso {
 
+// For factors, ignores the MSB
 __host__ __device__ bool is_active(const uint8_t active_val,
                                    const uint8_t level) {
   constexpr uint8_t NOT_MSB = 0x7F; // 01111111

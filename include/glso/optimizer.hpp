@@ -38,7 +38,7 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
   T mu = damping_factor;
   T nu = 2;
 
-  if (!graph->initialize_optimization()) {
+  if (!graph->initialize_optimization(0)) {
     return false;
   }
 

@@ -75,6 +75,7 @@ public:
   virtual void visit_apply_block_jacobi(GraphVisitor<T, S> &visitor, T *z,
                                         const T *r, InvP *block_diagonal,
                                         cudaStream_t stream) = 0;
+
   virtual size_t dimension() const = 0;
   virtual size_t count() const = 0;
 
@@ -87,7 +88,7 @@ public:
   virtual const size_t *get_hessian_ids() const = 0;
   virtual void set_hessian_column(size_t global_id, size_t hessian_column) = 0;
   virtual bool is_fixed(const size_t id) const = 0;
-  virtual const uint8_t *get_active_state() const = 0;
+  virtual uint8_t *get_active_state() const = 0;
 };
 
 template <typename T, typename S, typename VTraits>
@@ -251,7 +252,7 @@ public:
     return (active_state[local_id] & 0x1) > 0;
   }
 
-  const uint8_t *get_active_state() const override {
+  uint8_t *get_active_state() const override {
     return active_state.data().get();
   }
 

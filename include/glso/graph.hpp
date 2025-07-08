@@ -66,7 +66,7 @@ public:
     factor_descriptors.push_back(factor);
   }
 
-  bool initialize_optimization() {
+  bool initialize_optimization(const uint8_t level) {
 
     // For each vertex descriptor, take global to local id mapping and transform
     // it into a Hessian column to local id mapping.
@@ -110,7 +110,38 @@ public:
       f->initialize_jacobian_storage();
     }
 
+    update_vertex_active_state(level);
+
     return true;
+  }
+
+  // Deactivates vertices of inactive factors
+  void update_vertex_active_state(const uint8_t level) {
+
+    // For each vertex descriptor, set the state MSB to 0
+    for (auto &desc : vertex_descriptors) {
+      thrust::transform(thrust::device, desc->get_active_state(),
+                        desc->get_active_state() + desc->count(),
+                        desc->get_active_state(),
+                        [] __device__(uint8_t state) { return state & 0x7F; });
+    }
+    cudaDeviceSynchronize();
+    // For each factor descriptor
+    // Go through each vertex descriptor and set the state MSB to 1 if the
+    // constraint is active
+    for (auto &desc : factor_descriptors) {
+      desc->visit_flag_active_vertices(visitor, level);
+    }
+    cudaDeviceSynchronize();
+    // For each vertex descriptor, MSB of the active state is XOR'd with 1
+    // (0->1, 1->0)
+    for (auto &desc : vertex_descriptors) {
+      thrust::transform(thrust::device, desc->get_active_state(),
+                        desc->get_active_state() + desc->count(),
+                        desc->get_active_state(),
+                        [] __device__(uint8_t state) { return state ^ 0x80; });
+    }
+    cudaDeviceSynchronize();
   }
 
   bool build_structure() {
