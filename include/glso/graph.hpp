@@ -102,7 +102,7 @@ public:
 
     // Copy factors to device
     for (auto &desc : factor_descriptors) {
-      desc->to_device();
+      desc->to_device(level);
     }
 
     // Initialize Jacobian storage

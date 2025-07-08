@@ -31,14 +31,14 @@ T compute_rho(Graph<T, S> *graph, thrust::device_vector<T> &delta_x,
 template <typename T, typename S>
 bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
                          const size_t num_iterations, T damping_factor,
-                         StreamPool &streams) {
+                         uint8_t optimization_level, StreamPool &streams) {
 
   // Initialize something for all iterations
   auto start = std::chrono::steady_clock::now();
   T mu = damping_factor;
   T nu = 2;
 
-  if (!graph->initialize_optimization(0)) {
+  if (!graph->initialize_optimization(optimization_level)) {
     return false;
   }
 

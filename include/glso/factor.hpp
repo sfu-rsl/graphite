@@ -65,7 +65,7 @@ public:
   virtual void scale_jacobians(GraphVisitor<T, S> &visitor,
                                T *jacobian_scales) = 0;
 
-  virtual void to_device() = 0;
+  virtual void to_device(const uint8_t optimization_level) = 0;
 
   virtual T chi2(GraphVisitor<T, S> &visitor) = 0;
 
@@ -400,7 +400,7 @@ public:
   size_t internal_count() const { return global_ids.size() / N; }
   size_t active_count() const override { return _active_count; }
 
-  void to_device() override {
+  void to_device(const uint8_t optimization_level) override {
 
     // Map constraint ids to local ids
 
@@ -416,9 +416,8 @@ public:
     device_ids = host_ids;
 
     device_active = active;
-    constexpr uint8_t active_level = 0;
     _active_count = build_active_indices(device_active, active_indices,
-                                         internal_count(), active_level);
+                                         internal_count(), optimization_level);
 
     // std::cout << "Internal count: " << internal_count() << std::endl;
     // std::cout << "Active count: " << _active_count << std::endl;

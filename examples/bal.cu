@@ -228,10 +228,11 @@ int main(void) {
   std::cout << "Optimizing!" << std::endl;
 
   StreamPool streams(8); // Just two should be enough for BA
+  constexpr uint8_t optimization_level = 0;
 
   start = std::chrono::steady_clock::now();
   optimizer::levenberg_marquardt<FP, SP>(&graph, &solver, iterations, 1e-4,
-                                         streams);
+                                         optimization_level, streams);
   auto end = std::chrono::steady_clock::now();
 
   std::chrono::duration<FP> elapsed = end - start;
