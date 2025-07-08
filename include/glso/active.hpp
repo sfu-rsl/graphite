@@ -13,6 +13,11 @@ __host__ __device__ bool is_active(const uint8_t active_val,
   return (active_val & NOT_MSB) <= level && ((active_val & 0x80) == 0);
 }
 
+// For vertex
+__host__ __device__ bool is_vertex_active(const uint8_t state) {
+  return state > 0;
+}
+
 // Returns the number of active constraints and fills the active_indices vector
 size_t build_active_indices(const thrust::device_vector<uint8_t> &active,
                             thrust::device_vector<size_t> &active_indices,

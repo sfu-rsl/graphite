@@ -88,7 +88,7 @@ public:
     // Assign Hessian columns to local indices
     hessian_column = 0;
     for (const auto &entry : global_to_local_combined) {
-      if (!vertex_descriptors[entry.second.first]->is_fixed(entry.first)) {
+      if (!vertex_descriptors[entry.second.first]->is_active(entry.first)) {
         vertex_descriptors[entry.second.first]->set_hessian_column(
             entry.first, hessian_column);
         hessian_column += vertex_descriptors[entry.second.first]->dimension();
@@ -110,13 +110,13 @@ public:
       f->initialize_jacobian_storage();
     }
 
-    update_vertex_active_state(level);
+    deactivate_unused_vertices(level);
 
     return true;
   }
 
   // Deactivates vertices of inactive factors
-  void update_vertex_active_state(const uint8_t level) {
+  void deactivate_unused_vertices(const uint8_t level) {
 
     // For each vertex descriptor, set the state MSB to 0
     for (auto &desc : vertex_descriptors) {

@@ -88,6 +88,7 @@ public:
   virtual const size_t *get_hessian_ids() const = 0;
   virtual void set_hessian_column(size_t global_id, size_t hessian_column) = 0;
   virtual bool is_fixed(const size_t id) const = 0;
+  virtual bool is_active(const size_t id) const = 0;
   virtual uint8_t *get_active_state() const = 0;
 };
 
@@ -250,6 +251,11 @@ public:
   bool is_fixed(const size_t id) const override {
     const auto local_id = global_to_local_map.at(id);
     return (active_state[local_id] & 0x1) > 0;
+  }
+
+  bool is_active(const size_t id) const override {
+    const auto local_id = global_to_local_map.at(id);
+    return is_vertex_active(active_state[local_id]);
   }
 
   uint8_t *get_active_state() const override {
