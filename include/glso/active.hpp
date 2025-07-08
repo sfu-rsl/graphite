@@ -10,7 +10,7 @@ namespace glso {
 __host__ __device__ bool is_active(const uint8_t active_val,
                                    const uint8_t level) {
   constexpr uint8_t NOT_MSB = 0x7F; // 01111111
-  return (active_val & NOT_MSB) > level;
+  return (active_val & NOT_MSB) <= level && ((active_val & 0x80) == 0);
 }
 
 // Returns the number of active constraints and fills the active_indices vector

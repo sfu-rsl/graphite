@@ -362,7 +362,7 @@ public:
 
     data.push_back(constraint_data);
     loss.push_back(loss_func);
-    active.push_back(0x1);
+    active.push_back(0);
     return id; // only global within this class (it's just an external id)
   }
 
