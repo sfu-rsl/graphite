@@ -85,6 +85,12 @@ public:
     std::sort(global_to_local_combined.begin(), global_to_local_combined.end(),
               [](const auto &a, const auto &b) { return a.first < b.first; });
 
+    // Initialize device ids and copy over factor and current vertex state
+    for (auto &desc : factor_descriptors) {
+      desc->initialize_device_ids(level);
+    }
+    deactivate_unused_vertices(level);
+
     // Assign Hessian columns to local indices
     hessian_column = 0;
     for (const auto &entry : global_to_local_combined) {
@@ -102,7 +108,7 @@ public:
 
     // Copy factors to device
     for (auto &desc : factor_descriptors) {
-      desc->to_device(level);
+      desc->to_device();
     }
 
     // Initialize Jacobian storage
@@ -110,12 +116,11 @@ public:
       f->initialize_jacobian_storage();
     }
 
-    deactivate_unused_vertices(level);
-
     return true;
   }
 
   // Deactivates vertices of inactive factors
+  // Expects that vertices and factor states are finalized
   void deactivate_unused_vertices(const uint8_t level) {
 
     // For each vertex descriptor, set the state MSB to 0

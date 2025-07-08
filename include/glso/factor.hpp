@@ -65,7 +65,8 @@ public:
   virtual void scale_jacobians(GraphVisitor<T, S> &visitor,
                                T *jacobian_scales) = 0;
 
-  virtual void to_device(const uint8_t optimization_level) = 0;
+  virtual void initialize_device_ids(const uint8_t optimization_level) = 0;
+  virtual void to_device() = 0;
 
   virtual T chi2(GraphVisitor<T, S> &visitor) = 0;
 
@@ -400,8 +401,7 @@ public:
   size_t internal_count() const { return global_ids.size() / N; }
   size_t active_count() const override { return _active_count; }
 
-  void to_device(const uint8_t optimization_level) override {
-
+  void initialize_device_ids(const uint8_t optimization_level) override {
     // Map constraint ids to local ids
 
     // auto start = std::chrono::high_resolution_clock::now();
@@ -426,6 +426,9 @@ public:
     // std::chrono::duration<double> elapsed = end - start;
     // std::cout << "Device id building time: " << elapsed.count() << " seconds"
     // << std::endl;
+  }
+
+  void to_device() override {
 
     // device_ids = host_ids;
     // device_obs = host_obs;
