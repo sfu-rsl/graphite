@@ -503,6 +503,15 @@ public:
                           static_cast<T>(0.0), thrust::plus<T>());
   }
 
+  T chi2(const size_t id) const {
+    auto it = global_to_local_map.find(id);
+    if (it == global_to_local_map.end()) {
+      std::cerr << "Factor with id " << id << " not found." << std::endl;
+      return static_cast<T>(0.0);
+    }
+    return chi2_vec[it->second];
+  }
+
   virtual void scale_jacobians(GraphVisitor<T, S> &visitor,
                                T *jacobian_scales) override {
     visitor.template scale_jacobians(this, jacobian_scales);
