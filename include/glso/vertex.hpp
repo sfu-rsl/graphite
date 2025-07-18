@@ -263,12 +263,19 @@ public:
   }
 
   VertexType *get_vertex(const size_t id) {
-    // std::array<T, D> vertex_data;
-    const auto local_id = global_to_local_map.at(id);
-    return x_host[local_id];
-    // const T* data_ptr = x_host.data() + local_id * D;
-    // std::copy(data_ptr, data_ptr + D, vertex_data.begin());
-    // return vertex_data;
+    // const auto local_id = global_to_local_map.at(id);
+    // return x_host[local_id];
+    auto it = global_to_local_map.find(id);
+    if (it != global_to_local_map.end()) {
+      return x_host[it->second];
+    } else {
+      std::cerr << "Vertex with id " << id << " not found." << std::endl;
+      return nullptr;
+    }
+  }
+
+  bool exists(const size_t id) const {
+    return global_to_local_map.find(id) != global_to_local_map.end();
   }
 
   const std::unordered_map<size_t, size_t> &get_global_map() const override {
