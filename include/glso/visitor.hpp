@@ -1886,9 +1886,11 @@ public:
 
     const auto num_factors = f->active_count();
 
-    launch_kernel_autodiff(f, hessian_ids, verts, jacs, num_factors, streams,
-                           std::make_index_sequence<num_vertices>{});
-    cudaDeviceSynchronize();
+    if constexpr (!is_analytical<F>()) {
+      launch_kernel_autodiff(f, hessian_ids, verts, jacs, num_factors, streams,
+                            std::make_index_sequence<num_vertices>{});
+      cudaDeviceSynchronize();
+    }
   }
 
   template <typename F> void compute_jacobians(F *f, StreamPool &streams) {
