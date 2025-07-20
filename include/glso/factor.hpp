@@ -512,6 +512,29 @@ public:
     return chi2_vec[it->second];
   }
 
+  ConstraintDataType* get_constraint_data(const size_t id) {
+    auto it = global_to_local_map.find(id);
+    if (it == global_to_local_map.end()) {
+      std::cerr << "Factor with id " << id << " not found." << std::endl;
+      return nullptr;
+    }
+    return &data[it->second];
+  }
+
+  std::array<size_t, N> get_vertex_ids(const size_t id) const {
+    auto it = global_to_local_map.find(id);
+    if (it == global_to_local_map.end()) {
+      std::cerr << "Factor with id " << id << " not found." << std::endl;
+      return {};
+    }
+    const auto local_id = it->second;
+    std::array<size_t, N> ids;
+    for (size_t i = 0; i < N; i++) {
+      ids[i] = global_ids[local_id * N + i];
+    }
+    return ids;
+  }
+
   virtual void scale_jacobians(GraphVisitor<T, S> &visitor,
                                T *jacobian_scales) override {
     visitor.template scale_jacobians(this, jacobian_scales);
