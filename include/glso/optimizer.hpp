@@ -56,7 +56,7 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
       std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
           .count();
   // Print iteration table headers
-  std::cout << std::setw(10) << "Iteration" << std::setw(16) << "Initial Chi2"
+  std::cout << std::setprecision(4) << std::setw(10) << "Iteration" << std::setw(16) << "Initial Chi2"
             << std::setw(16) << "Current Chi2" << std::setw(16) << "Lambda"
             << std::setw(16) << "Time" << std::setw(16) << "Total Time"
             << std::endl;
@@ -118,7 +118,7 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
     time += iteration_time;
-    std::cout << std::setw(10) << i << std::setw(16) << chi2 << std::setw(16)
+    std::cout << std::setprecision(4) << std::setw(10) << i << std::setw(16) << chi2 << std::setw(16)
               << new_chi2 << std::setw(16) << mu << std::setw(16)
               << iteration_time << std::setw(16) << time << std::endl;
 
