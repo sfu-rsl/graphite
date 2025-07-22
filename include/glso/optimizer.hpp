@@ -31,7 +31,7 @@ T compute_rho(Graph<T, S> *graph, thrust::device_vector<T> &delta_x,
 template <typename T, typename S>
 bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
                          const size_t num_iterations, T damping_factor,
-                         uint8_t optimization_level, StreamPool &streams) {
+                         uint8_t optimization_level, StreamPool &streams, const bool* stop_flag = nullptr) {
 
   // Initialize something for all iterations
   auto start = std::chrono::steady_clock::now();
@@ -127,6 +127,12 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
                 << std::endl;
       run = false;
     }
+
+    if (stop_flag && *stop_flag) {
+      std::cout << "Stopping optimization due to stop flag" << std::endl;
+      break;
+    }
+
   }
 
   // Should only really do this when optimization is successful
