@@ -204,17 +204,17 @@ public:
     global_to_local_map[last_global_id] = local_id;
     local_to_global_map[local_id] = last_global_id;
 
+    // Only need to update the fixed mask for the swapped vertex
+    active_state[local_id] = active_state[last_index];
+
+    // Remove unused entry
+    active_state.pop_back();
+    
     // Remove the last vertex
     x_host.pop_back();
     local_to_hessian_offsets.pop_back();
     global_to_local_map.erase(id);
     local_to_global_map.pop_back();
-
-    // Only need to update the fixed mask for the swapped vertex
-    set_fixed(local_id, is_fixed(last_index));
-
-    // Remove unused entry
-    active_state.pop_back();
   }
 
   void replace_vertex(const size_t id, VertexType *vertex) {
