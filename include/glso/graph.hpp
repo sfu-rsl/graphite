@@ -123,6 +123,21 @@ public:
   // Expects that vertices and factor states are finalized
   void deactivate_unused_vertices(const uint8_t level) {
 
+    // Check for empty descriptors
+    for (size_t i = 0; i < vertex_descriptors.size(); ++i) {
+      if (vertex_descriptors[i]->count() == 0) {
+        std::cerr << "Error: Vertex descriptor " << i
+                  << " has no entries." << std::endl;
+      }
+    }
+
+    for (size_t i = 0; i < factor_descriptors.size(); ++i) {
+      if (factor_descriptors[i]->active_count() == 0) {
+        std::cerr << "Error: Factor descriptor " << i
+                  << " has no entries." << std::endl;
+      }
+    }
+
     // For each vertex descriptor, set the state MSB to 0
     for (auto &desc : vertex_descriptors) {
       thrust::transform(thrust::device, desc->get_active_state(),
