@@ -205,14 +205,14 @@ public:
       cudaDeviceSynchronize();
 
       if (std::abs(static_cast<T>(rz_new)) < tol) {
-        std::cout << "Converged after " << k + 1
-                  << " iterations with residual: " << rz_new << std::endl;
+        // std::cout << "Converged after " << k + 1
+        //           << " iterations with residual: " << rz_new << std::endl;
         break;
       }
-      if (k == max_iter - 1) {
-        std::cout << "Reached maximum iterations: " << max_iter
-                  << " with residual: " << rz_new << std::endl;
-      }
+      // if (k == max_iter - 1) {
+      //   std::cout << "Reached maximum iterations: " << max_iter
+      //             << " with residual: " << rz_new << std::endl;
+      // }
     }
     // TODO: Figure out failure cases
     return true;
