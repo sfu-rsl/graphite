@@ -87,9 +87,9 @@ public:
     // thrust::fill(diag.begin(), diag.end(), 1.0);
 
     // Check for negative values in diag and print an error if found
-    T min_diag = static_cast<T>(1.0e-6);
-    T max_diag = static_cast<T>(1.0e32);
-    clamp(dim_h, min_diag, max_diag, diag.data().get());
+    // T min_diag = static_cast<T>(1.0e-6);
+    // T max_diag = static_cast<T>(1.0e32);
+    // clamp(dim_h, min_diag, max_diag, diag.data().get());
 
     cudaDeviceSynchronize();
 
@@ -188,11 +188,13 @@ public:
                                        static_cast<T>(0.0));
 
       // if (rz_new > rejection_ratio * rz_0) {
-      if (std::abs(rz_new) > rejection_ratio * rz_0) {
-        thrust::copy(thrust::device, x_backup.begin(), x_backup.end(), x);
-        break;
-      }
-      rz_0 = std::min(rz_0, std::abs(rz_new));
+      // if (std::abs(rz_new) > rejection_ratio * rz_0) {
+      //   thrust::copy(thrust::device, x_backup.begin(), x_backup.end(), x);
+      //   std::cout << "Rejection: rz_new = " << rz_new
+      //             << ", rz_0 = " << rz_0 << " at iteration " << k + 1 << std::endl;
+      //   break;
+      // }
+      // rz_0 = std::min(rz_0, std::abs(rz_new));
 
       // 8. Compute beta
       T beta = rz_new / rz;
@@ -203,10 +205,15 @@ public:
       cudaDeviceSynchronize();
 
       if (std::abs(static_cast<T>(rz_new)) < tol) {
+        std::cout << "Converged after " << k + 1
+                  << " iterations with residual: " << rz_new << std::endl;
         break;
       }
+      if (k == max_iter - 1) {
+        std::cout << "Reached maximum iterations: " << max_iter
+                  << " with residual: " << rz_new << std::endl;
+      }
     }
-
     // TODO: Figure out failure cases
     return true;
   }

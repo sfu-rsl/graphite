@@ -149,8 +149,10 @@ __global__ void augment_hessian_diagonal_kernel(S *diagonal_blocks, const S mu,
     //              i]), 1.0e-6, 1.0e32));
 
     const double diag = static_cast<double>(block[i * D + i]);
+    // const double new_diag =
+    //     diag + static_cast<double>(mu) * std::clamp(diag, 1.0e-6, 1.0e32);
     const double new_diag =
-        diag + static_cast<double>(mu) * std::clamp(diag, 1.0e-6, 1.0e32);
+        diag + static_cast<double>(mu) * diag;
     block[i * D + i] = static_cast<S>(new_diag);
   }
 }
