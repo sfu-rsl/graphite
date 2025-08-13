@@ -105,7 +105,7 @@ public:
                                damping_factor);
     z.resize(dim_h);
 
-    thrust::fill(z.begin(), z.end(), 0);
+    thrust::fill(z.begin(), z.end(), 0.0);
     preconditioner->apply(visitor, z.data().get(), y.data().get(),
                           streams.streams, streams.num_streams);
 
@@ -180,20 +180,20 @@ public:
       rescale_vec<T>(dim_h, y.data().get(), scale, r.data().get());
 
       // Apply preconditioner again
-      thrust::fill(z.begin(), z.end(), 0);
+      thrust::fill(z.begin(), z.end(), 0.0);
       preconditioner->apply(visitor, z.data().get(), y.data().get(),
                             streams.streams, streams.num_streams);
       T rz_new = thrust::inner_product(r.begin(), r.end(), z.begin(),
                                        static_cast<T>(0.0));
 
       // if (rz_new > rejection_ratio * rz_0) {
-      // if (std::abs(rz_new) > rejection_ratio * rz_0) {
-      //   thrust::copy(thrust::device, x_backup.begin(), x_backup.end(), x);
-      //   std::cout << "Rejection: rz_new = " << rz_new
-      //             << ", rz_0 = " << rz_0 << " at iteration " << k + 1 << std::endl;
-      //   break;
-      // }
-      // rz_0 = std::min(rz_0, std::abs(rz_new));
+      if (std::abs(rz_new) > rejection_ratio * rz_0) {
+        thrust::copy(thrust::device, x_backup.begin(), x_backup.end(), x);
+        // std::cout << "Rejection: rz_new = " << rz_new
+        //           << ", rz_0 = " << rz_0 << " at iteration " << k + 1 << std::endl;
+        break;
+      }
+      rz_0 = std::min(rz_0, std::abs(rz_new));
 
       // 8. Compute beta
       T beta = rz_new / rz;
