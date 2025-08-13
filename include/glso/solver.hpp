@@ -77,19 +77,18 @@ public:
     // 3. Add damping factor
     // v2 += damping_factor*diag(H)*x
     diag.resize(dim_h);
-    thrust::fill(diag.begin(), diag.end(), 0);
+    thrust::fill(diag.begin(), diag.end(), 0.0);
     for (size_t i = 0; i < factor_descriptors.size(); i++) {
       factor_descriptors[i]->visit_scalar_diagonal(
           visitor, diag.data().get(),
           graph->get_jacobian_scales().data().get());
     }
     cudaDeviceSynchronize();
-    // thrust::fill(diag.begin(), diag.end(), 1.0);
 
     // Check for negative values in diag and print an error if found
-    // T min_diag = static_cast<T>(1.0e-6);
-    // T max_diag = static_cast<T>(1.0e32);
-    // clamp(dim_h, min_diag, max_diag, diag.data().get());
+    T min_diag = static_cast<T>(1.0e-6);
+    T max_diag = static_cast<T>(1.0e32);
+    clamp(dim_h, min_diag, max_diag, diag.data().get());
 
     cudaDeviceSynchronize();
 

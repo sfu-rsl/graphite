@@ -110,9 +110,9 @@ int main(void) {
   // std::string file_path = "../data/bal/problem-21-11315-pre.txt";
   // std::string file_path = "../data/bal/problem-257-65132-pre.txt";
   // std::string file_path = "../data/bal/problem-356-226730-pre.txt";
-  std::string file_path = "../data/bal/problem-1778-993923-pre.txt";
+  // std::string file_path = "../data/bal/problem-1778-993923-pre.txt";
   // std::string file_path = "../data/bal/problem-4585-1324582-pre.txt";
-  // std::string file_path = "../data/bal/problem-13682-4456117-pre.txt";
+  std::string file_path = "../data/bal/problem-13682-4456117-pre.txt";
 
   initialize_cuda();
 
