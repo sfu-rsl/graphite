@@ -436,16 +436,16 @@ public:
     chi2_derivative.resize(internal_count());
 
     // prefetch everything
-    int cuda_device = 0;
-    constexpr cudaStream_t stream = 0;
-    cudaGetDevice(&cuda_device);
+    // int cuda_device = 0;
+    // constexpr cudaStream_t stream = 0;
+    // cudaGetDevice(&cuda_device);
     // prefetch_vector_on_device_async(device_ids, cuda_device, stream);
-    prefetch_vector_on_device_async(device_obs, cuda_device, stream);
-    prefetch_vector_on_device_async(chi2_vec, cuda_device, stream);
-    prefetch_vector_on_device_async(data, cuda_device, stream);
-    prefetch_vector_on_device_async(loss, cuda_device, stream);
+    // prefetch_vector_on_device_async(device_obs, cuda_device, stream);
+    // prefetch_vector_on_device_async(chi2_vec, cuda_device, stream);
+    // prefetch_vector_on_device_async(data, cuda_device, stream);
+    // prefetch_vector_on_device_async(loss, cuda_device, stream);
     // std::cout << "Prefetching factor data to device" << std::endl;
-    cudaDeviceSynchronize();
+    // cudaDeviceSynchronize();
     // Resize and reset residuals
     residuals.resize(error_dim * internal_count());
     thrust::fill(residuals.begin(), residuals.end(), 0);
