@@ -107,12 +107,15 @@ int main(void) {
   // using SP = half;
 
   // std::string file_path = "../data/bal/problem-16-22106-pre.txt";
-  // std::string file_path = "../data/bal/problem-21-11315-pre.txt";
+  std::string file_path = "../data/bal/problem-21-11315-pre.txt";
+  // std::string file_path = "../data/bal/problem-49-7776-pre.txt";
+  // std::string file_path = "../data/bal/problem-52-64053-pre.txt";
   // std::string file_path = "../data/bal/problem-257-65132-pre.txt";
   // std::string file_path = "../data/bal/problem-356-226730-pre.txt";
+  // std::string file_path = "../data/bal/problem-1723-156502-pre.txt";
   // std::string file_path = "../data/bal/problem-1778-993923-pre.txt";
   // std::string file_path = "../data/bal/problem-4585-1324582-pre.txt";
-  std::string file_path = "../data/bal/problem-13682-4456117-pre.txt";
+  // std::string file_path = "../data/bal/problem-13682-4456117-pre.txt";
 
   initialize_cuda();
 
@@ -218,10 +221,10 @@ int main(void) {
   // Configure solver
   glso::BlockJacobiPreconditioner<FP, SP> preconditioner;
   // glso::IdentityPreconditioner<FP, SP> preconditioner;
-  PCGSolver<FP, SP> solver(100, 1e-1, 1.0, &preconditioner);
+  PCGSolver<FP, SP> solver(10, 1e0, 5, &preconditioner); // good parameters: 10, 1e0, 5
 
   // Optimize
-  constexpr size_t iterations = 50;
+  constexpr size_t iterations = 50; // 50 iterations
   std::cout << "Graph built with " << num_cameras << " cameras, " << num_points
             << " points, and " << r_desc.active_count() << " observations."
             << std::endl;

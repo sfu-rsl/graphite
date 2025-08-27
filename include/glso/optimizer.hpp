@@ -21,7 +21,7 @@ T compute_rho(Graph<T, S> *graph, thrust::device_vector<T> &delta_x,
   denom += static_cast<T>(thrust::inner_product(
       delta_x.begin(), delta_x.end(), b.begin(), static_cast<T>(0.0)));
   if (step_is_good) {
-    denom += std::numeric_limits<T>::epsilon();
+    denom += 1.0e-3;
   } else {
     denom = 1;
   }
@@ -94,9 +94,11 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
 
     T rho = compute_rho(graph, delta_x, chi2, new_chi2, mu, step_is_good);
 
-    if (step_is_good && rho > 0) {
+    if (step_is_good && std::isfinite(new_chi2) && rho > 0) {
       // update hyperparameters
-      mu *= std::max(1.0 / 3.0, 1.0 - pow(2.0 * rho - 1, 3));
+      double alpha = 1.0 - pow(2.0 * rho - 1.0, 3);
+      alpha = std::max(std::min(alpha, 2.0 / 3.0), 1.0 / 3.0);
+      mu *= static_cast<T>(alpha);
       nu = 2;
       // Relinearize since step is accepted
       graph->linearize(streams);
@@ -126,6 +128,11 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
       std::cout << "Damping factor is infinite, terminating optimization"
                 << std::endl;
       run = false;
+    }
+
+    if (rho == 0) {
+      std::cout << "Rho is zero, terminating optimization" << std::endl;
+      break;
     }
 
     if (stop_flag && *stop_flag) {
