@@ -215,7 +215,7 @@ bool levenberg_marquardt2(Graph<T, S> *graph, Solver<T, S> *solver,
     bool step_is_good = std::isfinite(new_chi2);
 
     T rho = compute_rho(graph, delta_x, chi2, new_chi2, mu, step_is_good);
-
+    bool step_accepted = false;
     if (step_is_good && std::isfinite(new_chi2) && rho > 0) {
       // update hyperparameters
       double alpha = 1.0 - pow(2.0 * rho - 1.0, 3);
@@ -225,6 +225,7 @@ bool levenberg_marquardt2(Graph<T, S> *graph, Solver<T, S> *solver,
       // Relinearize since step is accepted
       graph->linearize(streams);
       end_chi2 = new_chi2;
+      step_accepted = true;
       // std::cout << "Good step" << std::endl;
       // std::cout << "rho: " << rho << std::endl;
     } else {
@@ -263,15 +264,17 @@ bool levenberg_marquardt2(Graph<T, S> *graph, Solver<T, S> *solver,
       break;
     }
 
-    if (((initial_chi2 - end_chi2)*1.0e3) < initial_chi2) {
-      num_bad++;
-    }
-    else {
-      num_bad = 0;
-    }
+    if (step_accepted) {
+      if (((initial_chi2 - end_chi2)*1.0e3) < initial_chi2) {
+        num_bad++;
+      }
+      else {
+        num_bad = 0;
+      }
 
-    if (num_bad >= 3) {
-      break;
+      if (num_bad >= 3) {
+        break;
+      }
     }
 
   }
