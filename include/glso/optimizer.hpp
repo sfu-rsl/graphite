@@ -31,7 +31,7 @@ T compute_rho(Graph<T, S> *graph, thrust::device_vector<T> &delta_x,
 template <typename T, typename S>
 bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
                          const size_t num_iterations, T damping_factor,
-                         uint8_t optimization_level, StreamPool &streams, const bool* stop_flag = nullptr) {
+                         uint8_t optimization_level, StreamPool &streams, const bool* stop_flag = nullptr, const bool verbose = false) {
 
   // Initialize something for all iterations
   auto start = std::chrono::steady_clock::now();
@@ -56,13 +56,16 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
       std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
           .count();
   // Print iteration table headers
-  std::cout << std::setprecision(4) << std::setw(10) << "Iteration" << std::setw(16) << "Initial Chi2"
-            << std::setw(16) << "Current Chi2" << std::setw(16) << "Lambda"
-            << std::setw(16) << "Time" << std::setw(16) << "Total Time"
-            << std::endl;
-  std::cout << "---------------------------------------------------------------"
-               "---------------------------"
-            << std::endl;
+  if (verbose) {
+    std::cout << std::setprecision(12) << std::setw(18) << "Iteration" << std::setw(24) << "Initial Chi2"
+              << std::setw(24) << "Current Chi2" << std::setw(24) << "Lambda"
+              << std::setw(24) << "Time" << std::setw(24) << "Total Time"
+              << std::endl;
+    std::cout << "---------------------------------------------------------------"
+                "---------------------------------------------------------------"
+                "------------"
+              << std::endl;
+  }
 
   for (size_t i = 0; i < num_iterations && run; i++) {
 
@@ -120,9 +123,11 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
     time += iteration_time;
-    std::cout << std::setprecision(4) << std::setw(10) << i << std::setw(16) << chi2 << std::setw(16)
-              << new_chi2 << std::setw(16) << mu << std::setw(16)
-              << iteration_time << std::setw(16) << time << std::endl;
+    if (verbose) {
+      std::cout << std::setprecision(12) << std::setw(18) << i << std::setw(24) << chi2 << std::setw(24)
+                << new_chi2 << std::setw(24) << mu << std::setw(24)
+                << iteration_time << std::setw(24) << time << std::endl;
+    }
 
     if (!std::isfinite(mu)) {
       std::cout << "Damping factor is infinite, terminating optimization"
@@ -151,7 +156,7 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
 template <typename T, typename S>
 bool levenberg_marquardt2(Graph<T, S> *graph, Solver<T, S> *solver,
                          const size_t num_iterations, T damping_factor,
-                         uint8_t optimization_level, StreamPool &streams, const bool* stop_flag = nullptr) {
+                         uint8_t optimization_level, StreamPool &streams, const bool* stop_flag = nullptr, const bool verbose = false) {
 
   // Initialize something for all iterations
   auto start = std::chrono::steady_clock::now();
@@ -177,13 +182,16 @@ bool levenberg_marquardt2(Graph<T, S> *graph, Solver<T, S> *solver,
       std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
           .count();
   // Print iteration table headers
-  std::cout << std::setprecision(4) << std::setw(10) << "Iteration" << std::setw(16) << "Initial Chi2"
-            << std::setw(16) << "Current Chi2" << std::setw(16) << "Lambda"
-            << std::setw(16) << "Time" << std::setw(16) << "Total Time"
-            << std::endl;
-  std::cout << "---------------------------------------------------------------"
-               "---------------------------"
-            << std::endl;
+  if (verbose) {
+    std::cout << std::setprecision(12) << std::setw(18) << "Iteration" << std::setw(24) << "Initial Chi2"
+              << std::setw(24) << "Current Chi2" << std::setw(24) << "Lambda"
+              << std::setw(24) << "Time" << std::setw(24) << "Total Time"
+              << std::endl;
+    std::cout << "---------------------------------------------------------------"
+                "---------------------------------------------------------------"
+                "------------"
+              << std::endl;
+  }
 
   for (size_t i = 0; i < num_iterations && run; i++) {
 
@@ -244,9 +252,11 @@ bool levenberg_marquardt2(Graph<T, S> *graph, Solver<T, S> *solver,
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
     time += iteration_time;
+    if (verbose) {
     std::cout << std::setprecision(4) << std::setw(10) << i << std::setw(16) << chi2 << std::setw(16)
               << new_chi2 << std::setw(16) << mu << std::setw(16)
               << iteration_time << std::setw(16) << time << std::endl;
+    }
 
     if (!std::isfinite(mu)) {
       std::cout << "Damping factor is infinite, terminating optimization"

@@ -94,6 +94,14 @@ using ReprojectionError = FactorDescriptor<T, S, ReprojectionErrorTraits<T, S>>;
 
 } // namespace glso
 
+void print_memory_info() {
+  size_t free_mem, total_mem;
+  cudaMemGetInfo(&free_mem, &total_mem);
+  std::cout << "Free: " << free_mem / (1024 * 1024) << "MB, "
+            << "Used: " << (total_mem - free_mem) / (1024 * 1024) << "MB"
+            << std::endl;
+}
+
 int main(void) {
 
   using namespace glso;
@@ -107,13 +115,13 @@ int main(void) {
   // using SP = half;
 
   // std::string file_path = "../data/bal/problem-16-22106-pre.txt";
-  std::string file_path = "../data/bal/problem-21-11315-pre.txt";
+  // std::string file_path = "../data/bal/problem-21-11315-pre.txt";
   // std::string file_path = "../data/bal/problem-49-7776-pre.txt";
   // std::string file_path = "../data/bal/problem-52-64053-pre.txt";
   // std::string file_path = "../data/bal/problem-257-65132-pre.txt";
   // std::string file_path = "../data/bal/problem-356-226730-pre.txt";
   // std::string file_path = "../data/bal/problem-1723-156502-pre.txt";
-  // std::string file_path = "../data/bal/problem-1778-993923-pre.txt";
+  std::string file_path = "../data/bal/problem-1778-993923-pre.txt";
   // std::string file_path = "../data/bal/problem-4585-1324582-pre.txt";
   // std::string file_path = "../data/bal/problem-13682-4456117-pre.txt";
 
@@ -221,7 +229,8 @@ int main(void) {
   // Configure solver
   glso::BlockJacobiPreconditioner<FP, SP> preconditioner;
   // glso::IdentityPreconditioner<FP, SP> preconditioner;
-  PCGSolver<FP, SP> solver(10, 1e0, 5, &preconditioner); // good parameters: 10, 1e0, 5
+  PCGSolver<FP, SP> solver(10, 1e0, 5,
+                           &preconditioner); // good parameters: 10, 1e0, 5
 
   // Optimize
   constexpr size_t iterations = 50; // 50 iterations
@@ -235,7 +244,8 @@ int main(void) {
 
   start = std::chrono::steady_clock::now();
   optimizer::levenberg_marquardt<FP, SP>(&graph, &solver, iterations, 1e-4,
-                                         optimization_level, streams);
+                                         optimization_level, streams, nullptr,
+                                         true);
   auto end = std::chrono::steady_clock::now();
 
   std::chrono::duration<FP> elapsed = end - start;
