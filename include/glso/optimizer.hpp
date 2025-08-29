@@ -31,7 +31,9 @@ T compute_rho(Graph<T, S> *graph, thrust::device_vector<T> &delta_x,
 template <typename T, typename S>
 bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
                          const size_t num_iterations, T damping_factor,
-                         uint8_t optimization_level, StreamPool &streams, const bool* stop_flag = nullptr, const bool verbose = false) {
+                         uint8_t optimization_level, StreamPool &streams,
+                         const bool *stop_flag = nullptr,
+                         const bool verbose = false) {
 
   // Initialize something for all iterations
   auto start = std::chrono::steady_clock::now();
@@ -57,22 +59,24 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
           .count();
   // Print iteration table headers
   if (verbose) {
-    std::cout << std::setprecision(12) << std::setw(18) << "Iteration" << std::setw(24) << "Initial Chi2"
-              << std::setw(24) << "Current Chi2" << std::setw(24) << "Lambda"
-              << std::setw(24) << "Time" << std::setw(24) << "Total Time"
-              << std::endl;
-    std::cout << "---------------------------------------------------------------"
-                "---------------------------------------------------------------"
-                "------------"
-              << std::endl;
+    std::cout << std::setprecision(12) << std::setw(18) << "Iteration"
+              << std::setw(24) << "Initial Chi2" << std::setw(24)
+              << "Current Chi2" << std::setw(24) << "Lambda" << std::setw(24)
+              << "Time" << std::setw(24) << "Total Time" << std::endl;
+    std::cout
+        << "---------------------------------------------------------------"
+           "---------------------------------------------------------------"
+           "------------"
+        << std::endl;
   }
 
   for (size_t i = 0; i < num_iterations && run; i++) {
 
     start = std::chrono::steady_clock::now();
     T chi2 = graph->chi2();
-    
-    bool solve_ok = solver->solve(graph, delta_x.data().get(), static_cast<T>(mu), streams);
+
+    bool solve_ok =
+        solver->solve(graph, delta_x.data().get(), static_cast<T>(mu), streams);
 
     // print delta x
     // thrust::host_vector<S> hx = delta_x;
@@ -124,9 +128,10 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
             .count();
     time += iteration_time;
     if (verbose) {
-      std::cout << std::setprecision(12) << std::setw(18) << i << std::setw(24) << chi2 << std::setw(24)
-                << new_chi2 << std::setw(24) << mu << std::setw(24)
-                << iteration_time << std::setw(24) << time << std::endl;
+      std::cout << std::setprecision(12) << std::setw(18) << i << std::setw(24)
+                << chi2 << std::setw(24) << new_chi2 << std::setw(24) << mu
+                << std::setw(24) << iteration_time << std::setw(24) << time
+                << std::endl;
     }
 
     if (!std::isfinite(mu)) {
@@ -144,7 +149,6 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
       std::cout << "Stopping optimization due to stop flag" << std::endl;
       break;
     }
-
   }
 
   // Should only really do this when optimization is successful
@@ -155,8 +159,10 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
 
 template <typename T, typename S>
 bool levenberg_marquardt2(Graph<T, S> *graph, Solver<T, S> *solver,
-                         const size_t num_iterations, T damping_factor,
-                         uint8_t optimization_level, StreamPool &streams, const bool* stop_flag = nullptr, const bool verbose = false) {
+                          const size_t num_iterations, T damping_factor,
+                          uint8_t optimization_level, StreamPool &streams,
+                          const bool *stop_flag = nullptr,
+                          const bool verbose = false) {
 
   // Initialize something for all iterations
   auto start = std::chrono::steady_clock::now();
@@ -183,14 +189,15 @@ bool levenberg_marquardt2(Graph<T, S> *graph, Solver<T, S> *solver,
           .count();
   // Print iteration table headers
   if (verbose) {
-    std::cout << std::setprecision(12) << std::setw(18) << "Iteration" << std::setw(24) << "Initial Chi2"
-              << std::setw(24) << "Current Chi2" << std::setw(24) << "Lambda"
-              << std::setw(24) << "Time" << std::setw(24) << "Total Time"
-              << std::endl;
-    std::cout << "---------------------------------------------------------------"
-                "---------------------------------------------------------------"
-                "------------"
-              << std::endl;
+    std::cout << std::setprecision(12) << std::setw(18) << "Iteration"
+              << std::setw(24) << "Initial Chi2" << std::setw(24)
+              << "Current Chi2" << std::setw(24) << "Lambda" << std::setw(24)
+              << "Time" << std::setw(24) << "Total Time" << std::endl;
+    std::cout
+        << "---------------------------------------------------------------"
+           "---------------------------------------------------------------"
+           "------------"
+        << std::endl;
   }
 
   for (size_t i = 0; i < num_iterations && run; i++) {
@@ -200,7 +207,8 @@ bool levenberg_marquardt2(Graph<T, S> *graph, Solver<T, S> *solver,
     T initial_chi2 = chi2;
     T end_chi2 = initial_chi2;
 
-    bool solve_ok = solver->solve(graph, delta_x.data().get(), static_cast<T>(mu), streams);
+    bool solve_ok =
+        solver->solve(graph, delta_x.data().get(), static_cast<T>(mu), streams);
 
     // print delta x
     // thrust::host_vector<S> hx = delta_x;
@@ -253,9 +261,10 @@ bool levenberg_marquardt2(Graph<T, S> *graph, Solver<T, S> *solver,
             .count();
     time += iteration_time;
     if (verbose) {
-    std::cout << std::setprecision(4) << std::setw(10) << i << std::setw(16) << chi2 << std::setw(16)
-              << new_chi2 << std::setw(16) << mu << std::setw(16)
-              << iteration_time << std::setw(16) << time << std::endl;
+      std::cout << std::setprecision(4) << std::setw(10) << i << std::setw(16)
+                << chi2 << std::setw(16) << new_chi2 << std::setw(16) << mu
+                << std::setw(16) << iteration_time << std::setw(16) << time
+                << std::endl;
     }
 
     if (!std::isfinite(mu)) {
@@ -275,10 +284,9 @@ bool levenberg_marquardt2(Graph<T, S> *graph, Solver<T, S> *solver,
     }
 
     if (step_accepted) {
-      if (((initial_chi2 - end_chi2)*1.0e3) < initial_chi2) {
+      if (((initial_chi2 - end_chi2) * 1.0e3) < initial_chi2) {
         num_bad++;
-      }
-      else {
+      } else {
         num_bad = 0;
       }
 
@@ -286,7 +294,6 @@ bool levenberg_marquardt2(Graph<T, S> *graph, Solver<T, S> *solver,
         break;
       }
     }
-
   }
 
   // Should only really do this when optimization is successful

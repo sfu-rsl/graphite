@@ -1886,7 +1886,7 @@ public:
 
     if constexpr (!is_analytical<F>()) {
       launch_kernel_autodiff(f, hessian_ids, verts, jacs, num_factors, streams,
-                            std::make_index_sequence<num_vertices>{});
+                             std::make_index_sequence<num_vertices>{});
       cudaDeviceSynchronize();
     }
   }

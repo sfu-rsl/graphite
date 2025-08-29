@@ -512,7 +512,7 @@ public:
     return chi2_vec[it->second];
   }
 
-  ConstraintDataType* get_constraint_data(const size_t id) {
+  ConstraintDataType *get_constraint_data(const size_t id) {
     auto it = global_to_local_map.find(id);
     if (it == global_to_local_map.end()) {
       std::cerr << "Factor with id " << id << " not found." << std::endl;

@@ -190,7 +190,8 @@ public:
       if (std::abs(rz_new) > rejection_ratio * rz_0) {
         thrust::copy(thrust::device, x_backup.begin(), x_backup.end(), x);
         // std::cout << "Rejection: rz_new = " << rz_new
-        //           << ", rz_0 = " << rz_0 << " at iteration " << k + 1 << std::endl;
+        //           << ", rz_0 = " << rz_0 << " at iteration " << k + 1 <<
+        //           std::endl;
         break;
       }
       rz_0 = std::min(rz_0, std::abs(rz_new));

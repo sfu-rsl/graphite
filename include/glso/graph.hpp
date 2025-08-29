@@ -126,15 +126,15 @@ public:
     // Check for empty descriptors
     for (size_t i = 0; i < vertex_descriptors.size(); ++i) {
       if (vertex_descriptors[i]->count() == 0) {
-        std::cerr << "Error: Vertex descriptor " << i
-                  << " has no entries." << std::endl;
+        std::cerr << "Error: Vertex descriptor " << i << " has no entries."
+                  << std::endl;
       }
     }
 
     for (size_t i = 0; i < factor_descriptors.size(); ++i) {
       if (factor_descriptors[i]->active_count() == 0) {
-        std::cerr << "Error: Factor descriptor " << i
-                  << " has no entries." << std::endl;
+        std::cerr << "Error: Factor descriptor " << i << " has no entries."
+                  << std::endl;
       }
     }
 

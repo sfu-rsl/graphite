@@ -209,7 +209,7 @@ public:
 
     // Remove unused entry
     active_state.pop_back();
-    
+
     // Remove the last vertex
     x_host.pop_back();
     local_to_hessian_offsets.pop_back();
