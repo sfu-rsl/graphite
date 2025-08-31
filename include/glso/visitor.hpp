@@ -60,10 +60,10 @@ __device__ T compute_chi2(const T *residuals, const P *pmat,
   return value;
 }
 
-template <typename T, typename G, size_t I, size_t N, typename M, size_t E,
+template <typename T, size_t I, size_t N, typename M, size_t E,
           typename F, typename VT, std::size_t... Is>
 __device__ void compute_Jblock(
-    G *jacobian, const size_t factor_id, const size_t vertex_id, const M *obs,
+    T *jacobian, const size_t factor_id, const size_t vertex_id, const M *obs,
     const typename F::ConstraintDataType *constraint_data, const size_t *ids,
     const size_t *hessian_ids, VT args, std::index_sequence<Is...>) {
 
@@ -344,7 +344,8 @@ __global__ void compute_jacobian_kernel(
   constexpr size_t jacobian_size = E * vertex_sizes[I];
 
   S *j = jacs + factor_id * jacobian_size;
-  if constexpr (is_low_precision<S>::value) {
+  // if constexpr (is_low_precision<S>::value) {
+  if constexpr (!std::is_same<T, S>::value) {
     T jacobian[jacobian_size];
     F::Traits::template jacobian<T, I>(cuda::std::get<Is>(vargs)..., local_obs,
                                        jacobian, local_data);
@@ -485,10 +486,10 @@ compute_b_dynamic_kernel(T *b, const T *error, const size_t *active_ids,
     }
   }
 
-  using G = std::conditional_t<is_low_precision<S>::value, T, S>;
-  G jacobian[jacobian_size];
+  // using G = std::conditional_t<is_low_precision<S>::value, T, S>;
+  T jacobian[jacobian_size];
 
-  compute_Jblock<T, G, I, N, M, E, F, VT>(jacobian, factor_id, local_id, obs,
+  compute_Jblock<T, I, N, M, E, F, VT>(jacobian, factor_id, local_id, obs,
                                           constraint_data, ids, hessian_ids,
                                           args, std::make_index_sequence<N>{});
   const auto hessian_offset = hessian_ids[local_id];
@@ -848,11 +849,12 @@ __global__ void compute_Jv_dynamic_manual2(
 
     // Each thread block stores a complete Jacobian row in shared memory
     if (!is_inactive(active_state, vertex_id)) {
-      using G = std::conditional_t<is_low_precision<S>::value, T, S>;
+      // using G = std::conditional_t<is_low_precision<S>::value, T, S>;
+      using G = T;
       // Dual<T, G> error[E];
       constexpr auto jacobian_size = E * D;
       G jacobian[jacobian_size];
-      compute_Jblock<T, G, I, N, M, E, F, VT>(
+      compute_Jblock<T, I, N, M, E, F, VT>(
           jacobian, factor_id, vertex_id, obs, constraint_data, ids,
           hessian_ids, args, std::make_index_sequence<N>{});
 
@@ -1020,10 +1022,11 @@ __global__ void compute_JtPv_dynamic_kernel(
   // T x2[E] = {0};
   // T value = 0;
 
-  using G = std::conditional_t<is_low_precision<S>::value, T, S>;
+  // using G = std::conditional_t<is_low_precision<S>::value, T, S>;
+  using G = T;
   G jacobian[jacobian_size];
 
-  compute_Jblock<T, G, I, N, M, E, F, VT>(jacobian, factor_id, local_id, obs,
+  compute_Jblock<T, I, N, M, E, F, VT>(jacobian, factor_id, local_id, obs,
                                           constraint_data, ids, hessian_ids,
                                           args, std::make_index_sequence<N>{});
 
@@ -1208,10 +1211,10 @@ __global__ void compute_hessian_diagonal_dynamic_kernel(
   const size_t row = offset % D;
   const size_t col = offset / D;
 
-  using G = std::conditional_t<is_low_precision<T>::value, highp, T>;
-  G jacobian[jacobian_size];
+  // using G = std::conditional_t<is_low_precision<T>::value, highp, T>;
+  highp jacobian[jacobian_size];
 
-  compute_Jblock<highp, G, I, N, typename F::ObservationType, E, F, VT>(
+  compute_Jblock<highp, I, N, typename F::ObservationType, E, F, VT>(
       jacobian, factor_id, local_id, obs, constraint_data, ids, hessian_ids,
       args, std::make_index_sequence<N>{});
 
@@ -1378,10 +1381,11 @@ __global__ void compute_hessian_scalar_diagonal_dynamic_kernel(
   const size_t row = idx % D;
   const size_t col = row;
 
-  using G = std::conditional_t<is_low_precision<T>::value, highp, T>;
-  G jacobian[jacobian_size];
+  // using G = std::conditional_t<is_low_precision<T>::value, highp, T>;
+  // G jacobian[jacobian_size];
+  highp jacobian[jacobian_size];
 
-  compute_Jblock<highp, G, I, N, typename F::ObservationType, E, F, VT>(
+  compute_Jblock<highp, I, N, typename F::ObservationType, E, F, VT>(
       jacobian, factor_id, local_id, obs, constraint_data, ids, hessian_ids,
       args, std::make_index_sequence<N>{});
   const auto hessian_offset = hessian_ids[local_id];
