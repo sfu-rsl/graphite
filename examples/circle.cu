@@ -128,7 +128,7 @@ int main(void) {
   point_desc.set_fixed(num_vertices - 1 + id_offset, true);
 
   // Disable third constraint for point 2
-  factor_desc.set_active(2, 0x0);
+  factor_desc.set_active(2, 0x1);
 
   // Configure solver
   glso::IdentityPreconditioner<FP, SP> preconditioner;
