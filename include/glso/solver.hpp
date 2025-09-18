@@ -122,6 +122,11 @@ public:
 
     for (size_t k = 0; k < max_iter; k++) {
 
+      if (rz == 0) {
+        // std::cout << "rz is zero, stopping at iteration " << k << std::endl;
+        break;
+      }
+
       // auto t_jv_start = std::chrono::steady_clock::now();
       // 2. Compute v1 = Jp
       thrust::fill(v1.begin(), v1.end(), 0.0);
@@ -187,7 +192,7 @@ public:
                                        static_cast<T>(0.0));
 
       // if (rz_new > rejection_ratio * rz_0) {
-      if (std::abs(rz_new) > rejection_ratio * rz_0) {
+      if (std::abs(rz_new) > rejection_ratio * rz_0 || std::isnan(rz_new)) {
         thrust::copy(thrust::device, x_backup.begin(), x_backup.end(), x);
         // std::cout << "Rejection: rz_new = " << rz_new
         //           << ", rz_0 = " << rz_0 << " at iteration " << k + 1 <<
@@ -197,6 +202,9 @@ public:
       rz_0 = std::min(rz_0, std::abs(rz_new));
 
       // 8. Compute beta
+      // std::cout << "rz_new: " << rz_new << ", rz: " << rz
+      //           << ", at iteration " << k + 1 << std::endl;
+
       T beta = rz_new / rz;
       rz = rz_new;
 

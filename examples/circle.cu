@@ -126,17 +126,17 @@ int main(void) {
   }
 
   // Set the last vertex as fixed
-  point_desc.set_fixed(num_vertices - 1 + id_offset, true);
+  // point_desc.set_fixed(num_vertices - 1 + id_offset, true);
 
   // Disable third constraint for point 2
-  factor_desc.set_active(2, 0x1);
+  // factor_desc.set_active(2, 0x1);
 
   // Configure solver
   glso::IdentityPreconditioner<FP, SP> preconditioner;
-  glso::PCGSolver<FP, SP> solver(50, 1e-6, 10.0, &preconditioner);
+  glso::PCGSolver<FP, SP> solver(50, 1e-20, 10.0, &preconditioner);
 
   // Optimize
-  constexpr size_t iterations = 10;
+  constexpr size_t iterations = 100;
   std::cout << "Graph built with " << num_vertices << " vertices and "
             << factor_desc.internal_count() << " factors." << std::endl;
   std::cout << "Optimizing!" << std::endl;
@@ -146,7 +146,7 @@ int main(void) {
 
   auto start = std::chrono::steady_clock::now();
   optimizer::levenberg_marquardt<FP, SP>(&graph, &solver, iterations, 1e-6,
-                                         optimization_level, streams);
+                                         optimization_level, streams, nullptr, true);
   auto end = std::chrono::steady_clock::now();
   std::chrono::duration<double> elapsed = end - start;
   std::cout << "Optimization took " << elapsed.count() << " seconds."

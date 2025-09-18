@@ -118,6 +118,9 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
       mu *= nu;
       nu *= 2;
       // std::cout << "Bad step" << std::endl;
+      // std::cout << "rho: " << rho << std::endl;
+      // std::cout << "Previous chi2: " << chi2 << std::endl;
+      // std::cout << "Current chi2: " << new_chi2 << std::endl;
       new_chi2 = chi2;
     }
 
