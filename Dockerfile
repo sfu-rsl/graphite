@@ -35,3 +35,5 @@ RUN apt update && apt-get -y install cuda-toolkit-12-8 cuda-gdb-12-8
 
 # Install Python
 RUN apt update && apt-get -y install python3 python3-pip && pip3 install wrenfold
+
+RUN apt update && apt-get -y install clang-format
