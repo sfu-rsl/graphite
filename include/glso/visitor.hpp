@@ -60,8 +60,8 @@ __device__ T compute_chi2(const T *residuals, const P *pmat,
   return value;
 }
 
-template <typename T, size_t I, size_t N, typename M, size_t E,
-          typename F, typename VT, std::size_t... Is>
+template <typename T, size_t I, size_t N, typename M, size_t E, typename F,
+          typename VT, std::size_t... Is>
 __device__ void compute_Jblock(
     T *jacobian, const size_t factor_id, const size_t vertex_id, const M *obs,
     const typename F::ConstraintDataType *constraint_data, const size_t *ids,
@@ -490,8 +490,8 @@ compute_b_dynamic_kernel(T *b, const T *error, const size_t *active_ids,
   T jacobian[jacobian_size];
 
   compute_Jblock<T, I, N, M, E, F, VT>(jacobian, factor_id, local_id, obs,
-                                          constraint_data, ids, hessian_ids,
-                                          args, std::make_index_sequence<N>{});
+                                       constraint_data, ids, hessian_ids, args,
+                                       std::make_index_sequence<N>{});
   const auto hessian_offset = hessian_ids[local_id];
   const auto scale = jacobian_scales[hessian_offset + (idx % vertex_sizes[I])];
 #pragma unroll
@@ -854,9 +854,9 @@ __global__ void compute_Jv_dynamic_manual2(
       // Dual<T, G> error[E];
       constexpr auto jacobian_size = E * D;
       G jacobian[jacobian_size];
-      compute_Jblock<T, I, N, M, E, F, VT>(
-          jacobian, factor_id, vertex_id, obs, constraint_data, ids,
-          hessian_ids, args, std::make_index_sequence<N>{});
+      compute_Jblock<T, I, N, M, E, F, VT>(jacobian, factor_id, vertex_id, obs,
+                                           constraint_data, ids, hessian_ids,
+                                           args, std::make_index_sequence<N>{});
 
       T sum = 0.0;
 #pragma unroll
@@ -1027,8 +1027,8 @@ __global__ void compute_JtPv_dynamic_kernel(
   G jacobian[jacobian_size];
 
   compute_Jblock<T, I, N, M, E, F, VT>(jacobian, factor_id, local_id, obs,
-                                          constraint_data, ids, hessian_ids,
-                                          args, std::make_index_sequence<N>{});
+                                       constraint_data, ids, hessian_ids, args,
+                                       std::make_index_sequence<N>{});
 
   const auto hessian_offset = hessian_ids[local_id];
   const auto scale = jacobian_scales[hessian_offset + (idx % D)];
