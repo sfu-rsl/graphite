@@ -36,7 +36,7 @@ template <typename T, typename S> struct CircleFactorTraits {
   static constexpr size_t dimension = 1;
   using VertexDescriptors = std::tuple<PointDescriptor<T, S>>;
   using Observation = T;
-  using Data = unsigned char;
+  using Data = Empty;
   using Loss = DefaultLoss<T, dimension>;
   // using Differentiation = DifferentiationMode::Auto;
   using Differentiation = DifferentiationMode::Manual;
@@ -121,7 +121,8 @@ int main(void) {
 
   const auto loss = DefaultLoss<FP, 1>();
   for (size_t vertex_id = 0; vertex_id < num_vertices; ++vertex_id) {
-    factor_desc.add_factor({vertex_id + id_offset}, radius, nullptr, 0, loss);
+    factor_desc.add_factor({vertex_id + id_offset}, radius, nullptr, Empty(),
+                           loss);
   }
 
   // Set the last vertex as fixed

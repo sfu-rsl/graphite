@@ -38,4 +38,7 @@ __device__ lp convert_to_low_precision(const hp &value) {
   }
 }
 
+// For when we don't need storage
+struct Empty {};
+
 } // namespace glso
