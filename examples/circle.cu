@@ -146,7 +146,8 @@ int main(void) {
 
   auto start = std::chrono::steady_clock::now();
   optimizer::levenberg_marquardt<FP, SP>(&graph, &solver, iterations, 1e-6,
-                                         optimization_level, streams, nullptr, true);
+                                         optimization_level, streams, nullptr,
+                                         true);
   auto end = std::chrono::steady_clock::now();
   std::chrono::duration<double> elapsed = end - start;
   std::cout << "Optimization took " << elapsed.count() << " seconds."
