@@ -22,16 +22,16 @@ endif()
 # Libraries
 find_package(CUDAToolkit REQUIRED)
 find_package(Eigen3 3.1 REQUIRED)
-add_library(glso INTERFACE)
-target_include_directories(glso INTERFACE include)
-target_link_libraries(glso INTERFACE Boost::boost Eigen3::Eigen CUDA::cublas)
+add_library(graphite INTERFACE)
+target_include_directories(graphite INTERFACE include)
+target_link_libraries(graphite INTERFACE Boost::boost Eigen3::Eigen CUDA::cublas)
 
 # Examples
 add_executable(circle examples/circle.cu)
-target_link_libraries(circle glso)
+target_link_libraries(circle graphite)
 
 add_executable(bal examples/bal.cu)
-target_link_libraries(bal glso)
+target_link_libraries(bal graphite)
 
 # Formatter
 find_program(CLANG_FORMAT_BIN NAMES clang-format)

@@ -9,12 +9,12 @@
 #include <vector>
 
 #include "reprojection_error.cuh"
-#include <glso/core.hpp>
-#include <glso/solver.hpp>
-#include <glso/stream.hpp>
-#include <glso/types.hpp>
+#include <graphite/core.hpp>
+#include <graphite/solver.hpp>
+#include <graphite/stream.hpp>
+#include <graphite/types.hpp>
 
-namespace glso {
+namespace graphite {
 
 template <typename T> using Point = Eigen::Matrix<T, 3, 1>;
 
@@ -92,7 +92,7 @@ template <typename T, typename S> struct ReprojectionErrorTraits {
 template <typename T, typename S>
 using ReprojectionError = FactorDescriptor<T, S, ReprojectionErrorTraits<T, S>>;
 
-} // namespace glso
+} // namespace graphite
 
 void print_memory_info() {
   size_t free_mem, total_mem;
@@ -104,7 +104,7 @@ void print_memory_info() {
 
 int main(void) {
 
-  using namespace glso;
+  using namespace graphite;
 
   // using FP = double;
   // using SP = double;
@@ -227,8 +227,8 @@ int main(void) {
   file.close();
 
   // Configure solver
-  glso::BlockJacobiPreconditioner<FP, SP> preconditioner;
-  // glso::IdentityPreconditioner<FP, SP> preconditioner;
+  graphite::BlockJacobiPreconditioner<FP, SP> preconditioner;
+  // graphite::IdentityPreconditioner<FP, SP> preconditioner;
   PCGSolver<FP, SP> solver(10, 1e0, 5,
                            &preconditioner); // good parameters: 10, 1e0, 5
 

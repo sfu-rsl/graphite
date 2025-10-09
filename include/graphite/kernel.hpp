@@ -1,6 +1,6 @@
 #pragma once
 // #include <cublas_v2.h>
-namespace glso {
+namespace graphite {
 template <typename T>
 __global__ void axpy_kernel(size_t n, T *z, const T a, const T *x, T *y) {
   const size_t idx =
@@ -73,4 +73,4 @@ void rescale_vec(size_t n, T *out, const T scale, const T *x) {
   cudaDeviceSynchronize();
 }
 
-} // namespace glso
+} // namespace graphite

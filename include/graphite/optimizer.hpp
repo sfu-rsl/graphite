@@ -1,9 +1,9 @@
 #pragma once
-#include <glso/graph.hpp>
-#include <glso/solver.hpp>
+#include <graphite/graph.hpp>
+#include <graphite/solver.hpp>
 #include <iomanip>
 
-namespace glso {
+namespace graphite {
 
 namespace optimizer {
 
@@ -306,4 +306,4 @@ bool levenberg_marquardt2(Graph<T, S> *graph, Solver<T, S> *solver,
 }
 
 } // namespace optimizer
-} // namespace glso
+} // namespace graphite

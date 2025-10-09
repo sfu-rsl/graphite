@@ -1,6 +1,6 @@
 #pragma once
 
-namespace glso {
+namespace graphite {
 
 template <typename T, int E> class Loss {
 public:
@@ -49,4 +49,4 @@ public:
   }
 };
 
-} // namespace glso
+} // namespace graphite

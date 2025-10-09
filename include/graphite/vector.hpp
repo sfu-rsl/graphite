@@ -1,7 +1,7 @@
 #pragma once
 #include <thrust/device_ptr.h>
 #include <thrust/universal_vector.h>
-namespace glso {
+namespace graphite {
 
 // https://github.com/NVIDIA/cccl/issues/810
 
@@ -126,4 +126,4 @@ public:
 
 template <typename T> using uninitialized_vector = managed_vector<T>;
 
-} // namespace glso
+} // namespace graphite

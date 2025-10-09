@@ -1,7 +1,7 @@
 #pragma once
-#include <glso/optimizer.hpp>
+#include <graphite/optimizer.hpp>
 
-namespace glso {
+namespace graphite {
 
 void initialize_cuda() {
   cudaSetDevice(0);
@@ -10,4 +10,4 @@ void initialize_cuda() {
 
 void cleanup_cuda() { cudaDeviceReset(); }
 
-} // namespace glso
+} // namespace graphite

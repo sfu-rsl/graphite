@@ -2,7 +2,7 @@
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 
-namespace glso {
+namespace graphite {
 
 // Type traits to determine if a type is a low precision type (half or bfloat16)
 
@@ -41,4 +41,4 @@ __device__ lp convert_to_low_precision(const hp &value) {
 // For when we don't need storage
 struct Empty {};
 
-} // namespace glso
+} // namespace graphite

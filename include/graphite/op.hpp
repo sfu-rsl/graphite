@@ -1,6 +1,6 @@
 #pragma once
 
-namespace glso {
+namespace graphite {
 
 template <typename T> class Op {
 
@@ -20,4 +20,4 @@ public:
   }
 };
 
-} // namespace glso
+} // namespace graphite

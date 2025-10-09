@@ -1,11 +1,11 @@
 #pragma once
 #include <cublas_v2.h>
-#include <glso/factor.hpp>
-#include <glso/op.hpp>
-#include <glso/vertex.hpp>
+#include <graphite/factor.hpp>
+#include <graphite/op.hpp>
+#include <graphite/vertex.hpp>
 #include <thrust/execution_policy.h>
 
-namespace glso {
+namespace graphite {
 
 template <typename T, typename S> class Preconditioner {
 public:
@@ -228,4 +228,4 @@ public:
   }
 };
 
-} // namespace glso
+} // namespace graphite

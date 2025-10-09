@@ -1,17 +1,17 @@
 #pragma once
-#include <glso/active.hpp>
-#include <glso/common.hpp>
-#include <glso/differentiation.hpp>
-#include <glso/loss.hpp>
-#include <glso/op.hpp>
-#include <glso/utils.hpp>
-#include <glso/vector.hpp>
-#include <glso/vertex.hpp>
+#include <graphite/active.hpp>
+#include <graphite/common.hpp>
+#include <graphite/differentiation.hpp>
+#include <graphite/loss.hpp>
+#include <graphite/op.hpp>
+#include <graphite/utils.hpp>
+#include <graphite/vector.hpp>
+#include <graphite/vertex.hpp>
 #include <thrust/execution_policy.h>
 #include <thrust/inner_product.h>
 #include <thrust/universal_vector.h>
 
-namespace glso {
+namespace graphite {
 
 template <typename S> class JacobianStorage {
 public:
@@ -556,4 +556,4 @@ public:
   }
 };
 
-} // namespace glso
+} // namespace graphite

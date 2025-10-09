@@ -1,6 +1,6 @@
 #pragma once
 #include "projection_jacobians.cuh"
-namespace glso {
+namespace graphite {
 
 template <typename D, typename M, typename T>
 __device__ static void bal_reprojection_error(const D *camera, const D *point,
@@ -150,4 +150,4 @@ __device__ static void bal_jacobian_simple(const T *camera, const T *point,
   }
 }
 
-} // namespace glso
+} // namespace graphite

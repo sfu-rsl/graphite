@@ -2,7 +2,7 @@
 #include <cuda/std/cmath>
 #include <cuda/std/limits>
 
-namespace glso {
+namespace graphite {
 
 template <typename T, typename D> struct Dual {
   T real;
@@ -111,4 +111,4 @@ template <typename T, typename D> struct Dual {
   }
 };
 
-} // namespace glso
+} // namespace graphite

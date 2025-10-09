@@ -14,7 +14,7 @@
 // #include <tuple>
 #include <cuda/std/tuple>
 
-#include <glso/dual.hpp>
+#include <graphite/dual.hpp>
 
 // injection for hashing std::pair<size_t, size_t>
 namespace std {
@@ -29,6 +29,6 @@ template <> struct hash<std::pair<size_t, size_t>> {
 };
 } // namespace std
 
-namespace glso {
+namespace graphite {
 #define hd_fn __host__ __device__
-} // namespace glso
+} // namespace graphite

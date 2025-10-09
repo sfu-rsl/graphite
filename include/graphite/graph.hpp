@@ -1,12 +1,12 @@
 #pragma once
-#include <glso/factor.hpp>
-#include <glso/stream.hpp>
-#include <glso/vertex.hpp>
-#include <glso/visitor.hpp>
+#include <graphite/factor.hpp>
+#include <graphite/stream.hpp>
+#include <graphite/vertex.hpp>
+#include <graphite/visitor.hpp>
 #include <limits>
 #include <thrust/execution_policy.h>
 
-namespace glso {
+namespace graphite {
 
 // template<typename T> class Solver;
 
@@ -279,4 +279,4 @@ public:
   }
 };
 
-} // namespace glso
+} // namespace graphite

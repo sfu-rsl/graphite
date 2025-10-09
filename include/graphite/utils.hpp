@@ -1,10 +1,10 @@
 #pragma once
 #include <Eigen/Dense>
 #include <array>
-#include <glso/vector.hpp>
+#include <graphite/vector.hpp>
 #include <thrust/device_vector.h>
 
-namespace glso {
+namespace graphite {
 
 template <typename T>
 void prefetch_vector_on_device_async(const thrust::universal_vector<T> &vec,
@@ -106,4 +106,4 @@ vector_to_array(const Eigen::Matrix<T, D, 1> &vec) {
   return arr;
 }
 
-} // namespace glso
+} // namespace graphite

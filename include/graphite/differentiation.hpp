@@ -1,6 +1,6 @@
 #pragma once
 #include <type_traits>
-namespace glso {
+namespace graphite {
 
 struct DifferentiationMode {
   struct Auto {};
@@ -20,4 +20,4 @@ template <> constexpr bool use_autodiff_impl<DifferentiationMode::Auto>() {
   return true;
 }
 
-} // namespace glso
+} // namespace graphite

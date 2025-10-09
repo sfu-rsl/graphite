@@ -4,7 +4,7 @@
 #include <thrust/device_vector.h>
 #include <thrust/execution_policy.h>
 
-namespace glso {
+namespace graphite {
 
 // For factors, ignores the MSB
 __host__ __device__ bool is_active(const uint8_t active_val,
@@ -43,4 +43,4 @@ size_t build_active_indices(const thrust::device_vector<uint8_t> &active,
   return active_count;
 }
 
-} // namespace glso
+} // namespace graphite

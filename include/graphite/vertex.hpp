@@ -1,11 +1,11 @@
 #pragma once
-#include <glso/common.hpp>
-#include <glso/stream.hpp>
-#include <glso/vector.hpp>
-#include <glso/visitor.hpp>
+#include <graphite/common.hpp>
+#include <graphite/stream.hpp>
+#include <graphite/vector.hpp>
+#include <graphite/visitor.hpp>
 #include <type_traits>
 
-namespace glso {
+namespace graphite {
 
 template <typename, typename = void>
 struct has_type_alias_State : std::false_type {};
@@ -297,4 +297,4 @@ public:
   }
 };
 
-} // namespace glso
+} // namespace graphite

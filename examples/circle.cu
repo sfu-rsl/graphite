@@ -2,13 +2,13 @@
 #include <Eigen/Dense>
 #include <array>
 #include <chrono>
-#include <glso/core.hpp>
+#include <graphite/core.hpp>
 #include <iostream>
 #include <numeric>
 #include <random>
 #include <vector>
 
-namespace glso {
+namespace graphite {
 
 // Point definition
 template <typename T> using Point = Eigen::Matrix<T, 2, 1>;
@@ -67,11 +67,11 @@ template <typename T, typename S> struct CircleFactorTraits {
 template <typename T, typename S>
 using CircleFactor = FactorDescriptor<T, S, CircleFactorTraits<T, S>>;
 
-} // namespace glso
+} // namespace graphite
 
 int main(void) {
 
-  using namespace glso;
+  using namespace graphite;
 
   initialize_cuda();
 
@@ -132,8 +132,8 @@ int main(void) {
   // factor_desc.set_active(2, 0x1);
 
   // Configure solver
-  glso::IdentityPreconditioner<FP, SP> preconditioner;
-  glso::PCGSolver<FP, SP> solver(50, 1e-20, 10.0, &preconditioner);
+  graphite::IdentityPreconditioner<FP, SP> preconditioner;
+  graphite::PCGSolver<FP, SP> solver(50, 1e-20, 10.0, &preconditioner);
 
   // Optimize
   constexpr size_t iterations = 100;

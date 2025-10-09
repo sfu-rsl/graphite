@@ -1,11 +1,11 @@
 #pragma once
-#include <glso/common.hpp>
-#include <glso/differentiation.hpp>
-#include <glso/stream.hpp>
-#include <glso/types.hpp>
-#include <glso/vertex.hpp>
+#include <graphite/common.hpp>
+#include <graphite/differentiation.hpp>
+#include <graphite/stream.hpp>
+#include <graphite/types.hpp>
+#include <graphite/vertex.hpp>
 
-namespace glso {
+namespace graphite {
 
 __device__ size_t get_thread_id() {
   return static_cast<size_t>(blockIdx.x) * static_cast<size_t>(blockDim.x) +
@@ -2191,4 +2191,4 @@ public:
     cudaDeviceSynchronize();
   }
 };
-} // namespace glso
+} // namespace graphite

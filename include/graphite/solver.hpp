@@ -1,15 +1,15 @@
 #pragma once
-#include <glso/common.hpp>
-#include <glso/factor.hpp>
-#include <glso/kernel.hpp>
-#include <glso/preconditioner.hpp>
-#include <glso/stream.hpp>
-#include <glso/utils.hpp>
+#include <graphite/common.hpp>
+#include <graphite/factor.hpp>
+#include <graphite/kernel.hpp>
+#include <graphite/preconditioner.hpp>
+#include <graphite/stream.hpp>
+#include <graphite/utils.hpp>
 #include <memory>
 #include <thrust/execution_policy.h>
 #include <thrust/inner_product.h>
 
-namespace glso {
+namespace graphite {
 
 template <typename T, typename S> class Solver {
 public:
@@ -227,4 +227,4 @@ public:
   }
 };
 
-} // namespace glso
+} // namespace graphite

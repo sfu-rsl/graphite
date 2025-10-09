@@ -1,7 +1,7 @@
 #pragma once
 #include <cuda_runtime.h>
 
-namespace glso {
+namespace graphite {
 
 class StreamPool {
 public:
@@ -24,4 +24,4 @@ public:
   cudaStream_t *streams;
   size_t num_streams;
 };
-} // namespace glso
+} // namespace graphite
