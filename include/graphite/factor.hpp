@@ -119,20 +119,13 @@ private:
 public:
   using InvP = std::conditional_t<is_low_precision<S>::value, T, S>;
 
-  // using Traits = FactorTraits<T, Derived>;
-  using Traits = class FTraits;
+  using Traits = FTraits;
 
-  // static constexpr size_t N = sizeof...(VDTypes);
   static constexpr size_t N =
       std::tuple_size<typename Traits::VertexDescriptors>::value;
-  // static constexpr size_t error_dim = E;
   static constexpr size_t error_dim = Traits::dimension;
 
   std::array<BaseVertexDescriptor<T, S> *, N> vertex_descriptors;
-  // using VertexTypesTuple = std::tuple<typename VDTypes::VertexType...>;
-  // using VertexPointerTuple = std::tuple<typename VDTypes::VertexType*...>;
-  // using VertexPointerPointerTuple = std::tuple<typename
-  // VDTypes::VertexType**...>;
 
   using VertexDescriptorTuple = typename Traits::VertexDescriptors;
   using VertexTypesTuple =
@@ -144,14 +137,8 @@ public:
 
   using ObservationType = typename Traits::Observation;
   using ConstraintDataType = typename Traits::Data;
-  // using LossType = typename Traits::LossType<error_dim>;
   using LossType = typename Traits::Loss;
 
-  // using ObservationType = M;
-  // using ConstraintDataType = C;
-  // using LossType = L<T, E>;
-
-  // uninitialized_vector<size_t> device_ids; // local ids
   thrust::host_vector<size_t> host_ids;
   thrust::device_vector<size_t> device_ids;
   uninitialized_vector<ObservationType> device_obs;
@@ -472,12 +459,15 @@ public:
     return get_vertices_impl(std::make_index_sequence<N>{});
   }
 
+  template <std::size_t... I>
+  static constexpr std::array<size_t, N>
+  get_vertex_sizes_impl(std::index_sequence<I...>) {
+    return std::array<size_t, N>{
+        std::tuple_element_t<I, VertexDescriptorTuple>::dim...};
+  }
+
   static constexpr std::array<size_t, N> get_vertex_sizes() {
-    return []<std::size_t... I>(std::index_sequence<I...>) {
-      return std::array<size_t, N>{
-          std::tuple_element_t<I, VertexDescriptorTuple>::dim...};
-    }
-    (std::make_index_sequence<N>{});
+    return get_vertex_sizes_impl(std::make_index_sequence<N>{});
   }
 
   void initialize_jacobian_storage() override {

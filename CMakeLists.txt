@@ -2,7 +2,7 @@ project(gpu_least_squares_optimizer LANGUAGES CUDA CXX)
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --extended-lambda")
 cmake_minimum_required(VERSION 3.21)
 if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-  set(CMAKE_CUDA_ARCHITECTURES 72 75 80 86 87 89 90 120)
+  set(CMAKE_CUDA_ARCHITECTURES 75 80 86 87 89 90 120)
 endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")

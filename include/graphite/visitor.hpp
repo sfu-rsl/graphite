@@ -1009,20 +1009,12 @@ __global__ void compute_JtPv_dynamic_kernel(
   if (is_inactive(active_state, local_id)) {
     return;
   }
-  const auto jacobian_offset = factor_id * jacobian_size;
   const auto error_offset = factor_id * E;
   const auto col_offset = (idx % D) * E; // for untransposed J
 
   constexpr auto precision_matrix_size = E * E;
   const auto precision_offset = factor_id * precision_matrix_size;
 
-  // Use loss kernel
-  // const auto dL = chi2_derivative[factor_id];
-
-  // T x2[E] = {0};
-  // T value = 0;
-
-  // using G = std::conditional_t<is_low_precision<S>::value, T, S>;
   using G = T;
   G jacobian[jacobian_size];
 
@@ -1033,7 +1025,6 @@ __global__ void compute_JtPv_dynamic_kernel(
   const auto hessian_offset = hessian_ids[local_id];
   const auto scale = jacobian_scales[hessian_offset + (idx % D)];
 
-  // const S *jcol = jacs + jacobian_offset + col_offset;
   const G *jcol = jacobian + col_offset;
 
   const S *precision_matrix = pmat + precision_offset;
@@ -1198,20 +1189,16 @@ __global__ void compute_hessian_diagonal_dynamic_kernel(
   if (is_inactive(active_state, local_id)) {
     return;
   }
-  const auto jacobian_offset = factor_id * jacobian_size;
 
   constexpr auto precision_matrix_size = E * E;
   const auto precision_offset = factor_id * precision_matrix_size;
 
   // Identify H block row and column (column major)
-  // const size_t row = idx % D;
-  // const size_t col = idx / D;
 
   const size_t offset = idx % block_size;
   const size_t row = offset % D;
   const size_t col = offset / D;
 
-  // using G = std::conditional_t<is_low_precision<T>::value, highp, T>;
   highp jacobian[jacobian_size];
 
   compute_Jblock<highp, I, N, typename F::ObservationType, E, F, VT>(
@@ -1372,7 +1359,6 @@ __global__ void compute_hessian_scalar_diagonal_dynamic_kernel(
   if (is_inactive(active_state, local_id)) {
     return;
   }
-  const auto jacobian_offset = factor_id * jacobian_size;
 
   constexpr auto precision_matrix_size = E * E;
   const auto precision_offset = factor_id * precision_matrix_size;

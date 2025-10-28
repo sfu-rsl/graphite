@@ -23,8 +23,6 @@ size_t build_active_indices(const thrust::device_vector<uint8_t> &active,
                             thrust::device_vector<size_t> &active_indices,
                             const size_t count, const uint8_t level) {
 
-  constexpr uint8_t NOT_MSB = 0x7F; // 01111111
-
   // Count active constraints
   const size_t active_count = thrust::count_if(
       thrust::device, active.begin(), active.end(),

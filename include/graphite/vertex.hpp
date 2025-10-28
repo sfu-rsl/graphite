@@ -97,7 +97,7 @@ class VertexDescriptor : public BaseVertexDescriptor<T, S> {
 public:
   using InvP = std::conditional_t<is_low_precision<S>::value, T, S>;
 
-  using Traits = class VTraits;
+  using Traits = VTraits;
 
   using VertexType = typename Traits::Vertex;
   using State = get_State_or_t<Traits, VertexType>;
