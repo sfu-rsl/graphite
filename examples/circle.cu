@@ -18,8 +18,10 @@ template <typename T, typename S> struct PointTraits {
   static constexpr size_t dimension = 2;
   using Vertex = Point<T>;
 
-  hd_fn static std::array<T, dimension> parameters(const Vertex &vertex) {
-    return vector_to_array<T, dimension>(vertex);
+  template <typename P>
+  hd_fn static void parameters(const Vertex &vertex, P *parameters) {
+    Eigen::Map<Eigen::Matrix<P, dimension, 1>> params_map(parameters);
+    params_map = vertex.template cast<P>();
   }
 
   hd_fn static void update(Vertex &vertex, const T *delta) {

@@ -12,26 +12,6 @@ __device__ size_t get_thread_id() {
          static_cast<size_t>(threadIdx.x);
 }
 
-template <typename VPtr, class VD, typename T, size_t D>
-__device__ void device_copy(const VPtr v, T *dst) {
-  // const std::array<T, D> src = v->parameters();
-  const std::array<T, D> src = VD::Traits::parameters(*v);
-#pragma unroll
-  for (size_t i = 0; i < D; i++) {
-    dst[i] = src[i];
-  }
-}
-
-template <typename VPtr, class VD, typename T, typename P, size_t D>
-__device__ void real_to_dual(const VPtr v, Dual<T, P> *dst) {
-  // const std::array<T, D> src = v->parameters();
-  const std::array<T, D> src = VD::Traits::parameters(*v);
-#pragma unroll
-  for (size_t i = 0; i < D; i++) {
-    dst[i] = Dual<T, P>(src[i]);
-  }
-}
-
 __device__ bool is_inactive(const uint8_t *active_state,
                             const size_t vertex_id) {
   return active_state[vertex_id] > 0;
@@ -212,11 +192,9 @@ __global__ void compute_error_kernel_autodiff(
       std::make_tuple((*(std::get<Is>(args) + ids[factor_id * N + Is]))...);
 
   auto copy_vertices = [&v, &vertex_sizes, &vargs](auto &&...ptrs) {
-    ((real_to_dual<
-         decltype(std::get<Is>(vargs)),
-         std::tuple_element<Is, typename F::Traits::VertexDescriptors>::type, T,
-         G, vertex_sizes[Is]>(std::get<Is>(vargs),
-                              cuda::std::get<Is>(v).data())),
+    ((std::tuple_element<Is, typename F::Traits::VertexDescriptors>::type::
+          Traits::parameters(*std::get<Is>(vargs),
+                             cuda::std::get<Is>(v).data())),
      ...);
   };
 
@@ -295,10 +273,9 @@ compute_error_kernel(const M *obs, T *error,
       std::make_tuple((*(std::get<Is>(args) + ids[factor_id * N + Is]))...);
 
   auto copy_vertices = [&v, &vertex_sizes, &vargs](auto &&...ptrs) {
-    ((device_copy<
-         decltype(std::get<Is>(vargs)),
-         std::tuple_element<Is, typename F::Traits::VertexDescriptors>::type, T,
-         vertex_sizes[Is]>(std::get<Is>(vargs), cuda::std::get<Is>(v).data())),
+    ((std::tuple_element<Is, typename F::Traits::VertexDescriptors>::type::
+          Traits::parameters(*std::get<Is>(vargs),
+                             cuda::std::get<Is>(v).data())),
      ...);
   };
 
@@ -626,11 +603,9 @@ compute_Jcol_ad(Dual<T, G> *error, const size_t col, const size_t factor_id,
       std::make_tuple((*(std::get<Is>(args) + ids[factor_id * N + Is]))...);
 
   auto copy_vertices = [&v, &vertex_sizes, &vargs](auto &&...ptrs) {
-    ((real_to_dual<
-         decltype(std::get<Is>(vargs)),
-         std::tuple_element<Is, typename F::Traits::VertexDescriptors>::type, T,
-         G, vertex_sizes[Is]>(std::get<Is>(vargs),
-                              cuda::std::get<Is>(v).data())),
+    ((std::tuple_element<Is, typename F::Traits::VertexDescriptors>::type::
+          Traits::parameters(*std::get<Is>(vargs),
+                             cuda::std::get<Is>(v).data())),
      ...);
   };
 
