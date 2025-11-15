@@ -146,10 +146,16 @@ int main(void) {
   StreamPool streams(1);
   constexpr uint8_t optimization_level = 0;
 
+  optimizer::LevenbergMarquardtOptions<FP, SP> options;
+  options.solver = &solver;
+  options.initial_damping = 1e-6;
+  options.iterations = iterations;
+  options.optimization_level = optimization_level;
+  options.verbose = true;
+  options.streams = &streams;
+
   auto start = std::chrono::steady_clock::now();
-  optimizer::levenberg_marquardt<FP, SP>(&graph, &solver, iterations, 1e-6,
-                                         optimization_level, streams, nullptr,
-                                         true);
+  optimizer::levenberg_marquardt<FP, SP>(&graph, &options);
   auto end = std::chrono::steady_clock::now();
   std::chrono::duration<double> elapsed = end - start;
   std::cout << "Optimization took " << elapsed.count() << " seconds."

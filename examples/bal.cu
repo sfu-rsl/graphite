@@ -246,10 +246,16 @@ int main(void) {
   StreamPool streams(8); // Just two should be enough for BA
   constexpr uint8_t optimization_level = 0;
 
+  graphite::optimizer::LevenbergMarquardtOptions<FP, SP> options;
+  options.solver = &solver;
+  options.initial_damping = 1e-4;
+  options.iterations = iterations;
+  options.optimization_level = optimization_level;
+  options.verbose = true;
+  options.streams = &streams;
+
   start = std::chrono::steady_clock::now();
-  optimizer::levenberg_marquardt<FP, SP>(&graph, &solver, iterations, 1e-4,
-                                         optimization_level, streams, nullptr,
-                                         true);
+  optimizer::levenberg_marquardt<FP, SP>(&graph, &options);
   auto end = std::chrono::steady_clock::now();
 
   std::chrono::duration<FP> elapsed = end - start;

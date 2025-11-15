@@ -28,19 +28,59 @@ T compute_rho(Graph<T, S> *graph, thrust::device_vector<T> &delta_x,
   return num / (denom);
 }
 
+template <typename T, typename S> class LevenbergMarquardtOptions {
+public:
+  LevenbergMarquardtOptions()
+      : solver(nullptr), iterations(10), initial_damping(1e-4),
+        optimization_level(0), verbose(false), stop_flag(nullptr),
+        streams(nullptr) {}
+
+  Solver<T, S> *solver;
+  size_t iterations;
+  double initial_damping;
+  uint8_t optimization_level;
+  bool verbose;
+  bool *stop_flag;
+  StreamPool *streams;
+
+  bool validate() const {
+    if (solver == nullptr) {
+      if (verbose) {
+        std::cerr << "Levenberg-Marquardt options invalid: solver is null"
+                  << std::endl;
+      }
+      return false;
+    }
+    if (streams == nullptr) {
+      if (verbose) {
+        std::cerr << "Levenberg-Marquardt options invalid: streams is null"
+                  << std::endl;
+      }
+      return false;
+    }
+
+    return true;
+  }
+};
+
 template <typename T, typename S>
-bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
-                         const size_t num_iterations, T damping_factor,
-                         uint8_t optimization_level, StreamPool &streams,
-                         const bool *stop_flag = nullptr,
-                         const bool verbose = false) {
+bool levenberg_marquardt(Graph<T, S> *graph,
+                         LevenbergMarquardtOptions<T, S> *options) {
 
   // Initialize something for all iterations
   auto start = std::chrono::steady_clock::now();
-  T mu = damping_factor;
+
+  if (!options->validate()) {
+    if (options->verbose) {
+      std::cerr << "Levenberg-Marquardt options invalid" << std::endl;
+    }
+    return false;
+  }
+
+  T mu = static_cast<T>(options->initial_damping);
   T nu = 2;
 
-  if (!graph->initialize_optimization(optimization_level)) {
+  if (!graph->initialize_optimization(options->optimization_level)) {
     return false;
   }
 
@@ -48,7 +88,9 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
     return false;
   }
 
-  graph->linearize(streams);
+  auto streams = options->streams;
+
+  graph->linearize(*streams);
 
   thrust::device_vector<T> delta_x(graph->get_hessian_dimension());
 
@@ -58,7 +100,7 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
       std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
           .count();
   // Print iteration table headers
-  if (verbose) {
+  if (options->verbose) {
     std::cout << std::setprecision(12) << std::setw(18) << "Iteration"
               << std::setw(24) << "Initial Chi2" << std::setw(24)
               << "Current Chi2" << std::setw(24) << "Lambda" << std::setw(24)
@@ -70,24 +112,18 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
         << std::endl;
   }
 
+  const auto num_iterations = options->iterations;
   for (size_t i = 0; i < num_iterations && run; i++) {
 
     start = std::chrono::steady_clock::now();
     T chi2 = graph->chi2();
 
-    bool solve_ok =
-        solver->solve(graph, delta_x.data().get(), static_cast<T>(mu), streams);
-
-    // print delta x
-    // thrust::host_vector<S> hx = delta_x;
-    // std::cout << "Delta x: ";
-    // for (size_t j = 0; j < hx.size(); j++) {
-    //   std::cout << (T)hx[j] << " ";
-    // }
-    // std::cout << std::endl;
+    auto solver = options->solver;
+    bool solve_ok = solver->solve(graph, delta_x.data().get(),
+                                  static_cast<T>(mu), *streams);
 
     graph->backup_parameters();
-    graph->apply_step(delta_x.data().get(), streams);
+    graph->apply_step(delta_x.data().get(), *streams);
 
     // Try step
     graph->compute_error();
@@ -108,7 +144,7 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
       mu *= static_cast<T>(alpha);
       nu = 2;
       // Relinearize since step is accepted
-      graph->linearize(streams);
+      graph->linearize(*streams);
       // std::cout << "Good step" << std::endl;
       // std::cout << "rho: " << rho << std::endl;
     } else {
@@ -124,13 +160,11 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
       new_chi2 = chi2;
     }
 
-    // mu = std::clamp(mu, static_cast<T>(1e-12), static_cast<T>(1e12));
-
     double iteration_time =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
     time += iteration_time;
-    if (verbose) {
+    if (options->verbose) {
       std::cout << std::setprecision(12) << std::setw(18) << i << std::setw(24)
                 << chi2 << std::setw(24) << new_chi2 << std::setw(24) << mu
                 << std::setw(24) << iteration_time << std::setw(24) << time
@@ -148,7 +182,7 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
       break;
     }
 
-    if (stop_flag && *stop_flag) {
+    if (options->stop_flag && *(options->stop_flag)) {
       std::cout << "Stopping optimization due to stop flag" << std::endl;
       break;
     }
@@ -161,19 +195,24 @@ bool levenberg_marquardt(Graph<T, S> *graph, Solver<T, S> *solver,
 }
 
 template <typename T, typename S>
-bool levenberg_marquardt2(Graph<T, S> *graph, Solver<T, S> *solver,
-                          const size_t num_iterations, T damping_factor,
-                          uint8_t optimization_level, StreamPool &streams,
-                          const bool *stop_flag = nullptr,
-                          const bool verbose = false) {
+bool levenberg_marquardt2(Graph<T, S> *graph,
+                          LevenbergMarquardtOptions<T, S> *options) {
 
   // Initialize something for all iterations
   auto start = std::chrono::steady_clock::now();
-  T mu = damping_factor;
+
+  if (!options->validate()) {
+    if (options->verbose) {
+      std::cerr << "Levenberg-Marquardt options invalid" << std::endl;
+    }
+    return false;
+  }
+
+  T mu = static_cast<T>(options->initial_damping);
   T nu = 2;
   int num_bad = 0;
 
-  if (!graph->initialize_optimization(optimization_level)) {
+  if (!graph->initialize_optimization(options->optimization_level)) {
     return false;
   }
 
@@ -181,7 +220,8 @@ bool levenberg_marquardt2(Graph<T, S> *graph, Solver<T, S> *solver,
     return false;
   }
 
-  graph->linearize(streams);
+  auto streams = options->streams;
+  graph->linearize(*streams);
 
   thrust::device_vector<T> delta_x(graph->get_hessian_dimension());
 
@@ -191,7 +231,7 @@ bool levenberg_marquardt2(Graph<T, S> *graph, Solver<T, S> *solver,
       std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
           .count();
   // Print iteration table headers
-  if (verbose) {
+  if (options->verbose) {
     std::cout << std::setprecision(12) << std::setw(18) << "Iteration"
               << std::setw(24) << "Initial Chi2" << std::setw(24)
               << "Current Chi2" << std::setw(24) << "Lambda" << std::setw(24)
@@ -203,6 +243,7 @@ bool levenberg_marquardt2(Graph<T, S> *graph, Solver<T, S> *solver,
         << std::endl;
   }
 
+  const auto num_iterations = options->iterations;
   for (size_t i = 0; i < num_iterations && run; i++) {
 
     start = std::chrono::steady_clock::now();
@@ -210,19 +251,12 @@ bool levenberg_marquardt2(Graph<T, S> *graph, Solver<T, S> *solver,
     T initial_chi2 = chi2;
     T end_chi2 = initial_chi2;
 
-    bool solve_ok =
-        solver->solve(graph, delta_x.data().get(), static_cast<T>(mu), streams);
-
-    // print delta x
-    // thrust::host_vector<S> hx = delta_x;
-    // std::cout << "Delta x: ";
-    // for (size_t j = 0; j < hx.size(); j++) {
-    //   std::cout << (T)hx[j] << " ";
-    // }
-    // std::cout << std::endl;
+    auto solver = options->solver;
+    bool solve_ok = solver->solve(graph, delta_x.data().get(),
+                                  static_cast<T>(mu), *streams);
 
     graph->backup_parameters();
-    graph->apply_step(delta_x.data().get(), streams);
+    graph->apply_step(delta_x.data().get(), *streams);
 
     // Try step
     graph->compute_error();
@@ -242,7 +276,7 @@ bool levenberg_marquardt2(Graph<T, S> *graph, Solver<T, S> *solver,
       mu *= static_cast<T>(alpha);
       nu = 2;
       // Relinearize since step is accepted
-      graph->linearize(streams);
+      graph->linearize(*streams);
       end_chi2 = new_chi2;
       step_accepted = true;
       // std::cout << "Good step" << std::endl;
@@ -257,13 +291,11 @@ bool levenberg_marquardt2(Graph<T, S> *graph, Solver<T, S> *solver,
       new_chi2 = chi2;
     }
 
-    // mu = std::clamp(mu, static_cast<T>(1e-12), static_cast<T>(1e12));
-
     double iteration_time =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
     time += iteration_time;
-    if (verbose) {
+    if (options->verbose) {
       std::cout << std::setprecision(4) << std::setw(10) << i << std::setw(16)
                 << chi2 << std::setw(16) << new_chi2 << std::setw(16) << mu
                 << std::setw(16) << iteration_time << std::setw(16) << time
@@ -281,7 +313,7 @@ bool levenberg_marquardt2(Graph<T, S> *graph, Solver<T, S> *solver,
       break;
     }
 
-    if (stop_flag && *stop_flag) {
+    if (options->stop_flag && *(options->stop_flag)) {
       std::cout << "Stopping optimization due to stop flag" << std::endl;
       break;
     }
