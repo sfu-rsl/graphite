@@ -1,5 +1,4 @@
 #pragma once
-#include <Eigen/Dense>
 #include <array>
 #include <graphite/vector.hpp>
 #include <thrust/device_vector.h>
@@ -95,15 +94,5 @@ public:
 
   void release(H handle) { handles.push_back(handle); }
 };
-
-template <typename T, size_t D>
-__host__ __device__ std::array<T, D>
-vector_to_array(const Eigen::Matrix<T, D, 1> &vec) {
-  std::array<T, D> arr;
-  for (size_t i = 0; i < D; i++) {
-    arr[i] = vec(i);
-  }
-  return arr;
-}
 
 } // namespace graphite

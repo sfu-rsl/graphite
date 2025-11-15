@@ -10,9 +10,6 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
   # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -O3 --use_fast_math") # Use at your own peril
 endif()
 
-# External dependencies
-find_package(Boost 1.74 REQUIRED)
-
 # Check WSL2
 message(STATUS "CMake ${CMAKE_VERSION}  kernel: ${CMAKE_HOST_SYSTEM_VERSION}")
 if(CMAKE_HOST_SYSTEM_VERSION MATCHES "microsoft-standard-WSL2$")
@@ -21,17 +18,24 @@ endif()
 
 # Libraries
 find_package(CUDAToolkit REQUIRED)
-find_package(Eigen3 3.1 REQUIRED)
 add_library(graphite INTERFACE)
 target_include_directories(graphite INTERFACE include)
-target_link_libraries(graphite INTERFACE Boost::boost Eigen3::Eigen CUDA::cublas)
+target_link_libraries(graphite INTERFACE CUDA::cublas)
 
 # Examples
-add_executable(circle examples/circle.cu)
-target_link_libraries(circle graphite)
+option(BUILD_EXAMPLES "Build example applications" ON)
 
-add_executable(bal examples/bal.cu)
-target_link_libraries(bal graphite)
+if(BUILD_EXAMPLES)
+  message(STATUS "Configured to build example applications")
+  find_package(Eigen3 3.1 REQUIRED)
+  
+  add_executable(circle examples/circle.cu)
+  target_link_libraries(circle graphite Eigen3::Eigen)
+
+  add_executable(bal examples/bal.cu)
+  target_link_libraries(bal graphite Eigen3::Eigen)
+endif()
+
 
 # Formatter
 find_program(CLANG_FORMAT_BIN NAMES clang-format)

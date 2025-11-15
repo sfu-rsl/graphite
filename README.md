@@ -8,7 +8,7 @@ For more details, refer to the [paper](https://arxiv.org/abs/2509.26581).
 
 ## Building
 
-You need a recent version of the CUDA Toolkit (e.g. >= 12.0), as well as Eigen3 and boost. Graphite can be built using CMake. A Dockerfile for development is also included, which can be used to create a devcontainer for VS Code (requires the NVIDIA Container Toolkit).
+You need a recent version of the CUDA Toolkit (e.g. >= 12.0), and Eigen3 if you are building examples. Graphite can be built using CMake. A Dockerfile for development is also included, which can be used to create a devcontainer for VS Code (requires the NVIDIA Container Toolkit).
 
 ## Examples
 
