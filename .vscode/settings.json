@@ -66,6 +66,9 @@
         "typeindex": "cpp",
         "typeinfo": "cpp",
         "fstream": "cpp",
-        "iomanip": "cpp"
+        "iomanip": "cpp",
+        "any": "cpp",
+        "charconv": "cpp",
+        "codecvt": "cpp"
     }
 }

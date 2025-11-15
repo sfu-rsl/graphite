@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "reprojection_error.cuh"
+#include <argparse/argparse.hpp>
 #include <graphite/core.hpp>
 #include <graphite/solver.hpp>
 #include <graphite/stream.hpp>
@@ -106,28 +107,27 @@ void print_memory_info() {
             << std::endl;
 }
 
-int main(void) {
+template <typename T> const char *get_type_name() {
+  if (std::is_same<T, double>::value) {
+    return "double";
+  } else if (std::is_same<T, float>::value) {
+    return "float";
+  } else if (std::is_same<T, __nv_bfloat16>::value) {
+    return "bfloat16";
+  } else {
+    return "unknown";
+  }
+}
+
+template <typename FP, typename SP>
+void bundle_adjustment(argparse::ArgumentParser &program) {
 
   using namespace graphite;
 
-  // using FP = double;
-  // using SP = double;
-  // using SP = FP;
-  using FP = float;
-  // using SP = float;
-  using SP = __nv_bfloat16;
-  // using SP = half;
-
-  // std::string file_path = "../data/bal/problem-16-22106-pre.txt";
-  // std::string file_path = "../data/bal/problem-21-11315-pre.txt";
-  // std::string file_path = "../data/bal/problem-49-7776-pre.txt";
-  // std::string file_path = "../data/bal/problem-52-64053-pre.txt";
-  // std::string file_path = "../data/bal/problem-257-65132-pre.txt";
-  // std::string file_path = "../data/bal/problem-356-226730-pre.txt";
-  // std::string file_path = "../data/bal/problem-1723-156502-pre.txt";
-  std::string file_path = "../data/bal/problem-1778-993923-pre.txt";
-  // std::string file_path = "../data/bal/problem-4585-1324582-pre.txt";
-  // std::string file_path = "../data/bal/problem-13682-4456117-pre.txt";
+  std::cout << "Running bundle adjustment with graph precision = "
+            << get_type_name<FP>()
+            << " and solver precision = " << get_type_name<SP>() << std::endl;
+  std::string file_path = program.get<std::string>("file");
 
   initialize_cuda();
 
@@ -142,7 +142,7 @@ int main(void) {
   std::ifstream file(file_path);
   if (!file.is_open()) {
     std::cerr << "Error: Unable to open file " << file_path << std::endl;
-    return -1;
+    throw std::runtime_error("File open error");
   }
 
   // Read the number of cameras, points, and observations
@@ -233,13 +233,17 @@ int main(void) {
   // Configure solver
   graphite::BlockJacobiPreconditioner<FP, SP> preconditioner;
   // graphite::IdentityPreconditioner<FP, SP> preconditioner;
-  PCGSolver<FP, SP> solver(10, 1e0, 5,
+
+  const auto pcg_iter =
+      static_cast<size_t>(program.get<int>("--pcg_iterations"));
+  const auto pcg_tol = program.get<double>("--pcg_tolerance");
+  const auto rej_ratio = program.get<double>("--rejection_ratio");
+  PCGSolver<FP, SP> solver(pcg_iter, pcg_tol, rej_ratio,
                            &preconditioner); // good parameters: 10, 1e0, 5
 
   // Optimize
-  constexpr size_t iterations = 50; // 50 iterations
   std::cout << "Graph built with " << num_cameras << " cameras, " << num_points
-            << " points, and " << r_desc.active_count() << " observations."
+            << " points, and " << r_desc.internal_count() << " observations."
             << std::endl;
   std::cout << "Optimizing!" << std::endl;
 
@@ -248,10 +252,10 @@ int main(void) {
 
   graphite::optimizer::LevenbergMarquardtOptions<FP, SP> options;
   options.solver = &solver;
-  options.initial_damping = 1e-4;
-  options.iterations = iterations;
+  options.initial_damping = program.get<double>("--lambda");
+  options.iterations = static_cast<size_t>(program.get<int>("--iterations"));
   options.optimization_level = optimization_level;
-  options.verbose = true;
+  options.verbose = program.get<bool>("--verbose");
   options.streams = &streams;
 
   start = std::chrono::steady_clock::now();
@@ -265,6 +269,69 @@ int main(void) {
   auto mse = graph.chi2() / num_observations;
   std::cout << "MSE: " << mse << std::endl;
   std::cout << "Half MSE: " << mse / 2 << std::endl;
+}
+
+int main(int argc, char *argv[]) {
+
+  argparse::ArgumentParser program("bal");
+
+  program.add_argument("file").help("Path to the BAL problem file");
+
+  program.add_argument("--lambda")
+      .help("Initial damping factor for Levenberg-Marquardt")
+      .default_value(1.0e-4);
+
+  program.add_argument("--iterations")
+      .help("Number of LM iterations")
+      .default_value(50);
+
+  program.add_argument("--verbose").help("Enable verbose output").flag();
+
+  program.add_argument("--pcg_iterations")
+      .help("Number of PCG iterations per LM step")
+      .default_value(10);
+
+  program.add_argument("--pcg_tolerance")
+      .help("Tolerance for PCG solver")
+      .default_value(1.0);
+
+  program.add_argument("--rejection_ratio")
+      .help("Rejection ratio for PCG iteration")
+      .default_value(5.0);
+
+  program.add_argument("--precision")
+      .help("Precision for graph and solver")
+      .default_value(std::string("FP64-FP64"))
+      .choices("FP64-FP64", "FP64-FP32", "FP64-BF16", "FP32-FP32", "FP32-BF16");
+
+  try {
+    program.parse_args(argc, argv);
+  } catch (const std::exception &e) {
+    std::cerr << e.what() << std::endl;
+    std::cerr << program;
+    return 1;
+  }
+
+  try {
+    const auto precision = program.get<std::string>("--precision");
+    if (precision == "FP64-FP64") {
+      bundle_adjustment<double, double>(program);
+    } else if (precision == "FP64-FP32") {
+      bundle_adjustment<double, float>(program);
+    } else if (precision == "FP64-BF16") {
+      bundle_adjustment<double, __nv_bfloat16>(program);
+    } else if (precision == "FP32-FP32") {
+      bundle_adjustment<float, float>(program);
+    } else if (precision == "FP32-BF16") {
+      bundle_adjustment<float, __nv_bfloat16>(program);
+    } else {
+      throw std::runtime_error("Unsupported precision option");
+    }
+
+  } catch (const std::exception &e) {
+    std::cerr << "Error during bundle adjustment: " << e.what() << std::endl;
+    return 1;
+  }
 
   return 0;
 }

@@ -37,7 +37,7 @@ target_link_libraries(bal graphite)
 find_program(CLANG_FORMAT_BIN NAMES clang-format)
 if(CLANG_FORMAT_BIN)
   file(GLOB_RECURSE FORMAT_FILES
-    "include/*.cpp" "include/*.hpp" "include/*.c" "include/*.h" "include/*.cu" "include/*.cuh"
+    "include/graphite/*.cpp" "include/graphite/*.hpp" "include/graphite/*.c" "include/graphite/*.h" "include/graphite/*.cu" "include/graphite/*.cuh"
     "examples/*.cpp" "examples/*.hpp" "examples/*.c" "examples/*.h" "examples/*.cu" "examples/*.cuh"
   )
   add_custom_target(format
