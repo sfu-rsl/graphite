@@ -234,8 +234,7 @@ void bundle_adjustment(argparse::ArgumentParser &program) {
   graphite::BlockJacobiPreconditioner<FP, SP> preconditioner;
   // graphite::IdentityPreconditioner<FP, SP> preconditioner;
 
-  const auto pcg_iter =
-      static_cast<size_t>(program.get<int>("--pcg_iterations"));
+  const auto pcg_iter = program.get<size_t>("--pcg_iterations");
   const auto pcg_tol = program.get<double>("--pcg_tolerance");
   const auto rej_ratio = program.get<double>("--rejection_ratio");
   PCGSolver<FP, SP> solver(pcg_iter, pcg_tol, rej_ratio,
@@ -253,7 +252,7 @@ void bundle_adjustment(argparse::ArgumentParser &program) {
   graphite::optimizer::LevenbergMarquardtOptions<FP, SP> options;
   options.solver = &solver;
   options.initial_damping = program.get<double>("--lambda");
-  options.iterations = static_cast<size_t>(program.get<int>("--iterations"));
+  options.iterations = program.get<size_t>("--iterations");
   options.optimization_level = optimization_level;
   options.verbose = program.get<bool>("--verbose");
   options.streams = &streams;
@@ -279,25 +278,30 @@ int main(int argc, char *argv[]) {
 
   program.add_argument("--lambda")
       .help("Initial damping factor for Levenberg-Marquardt")
-      .default_value(1.0e-4);
+      .default_value(1.0e-4)
+      .scan<'g', double>();
 
   program.add_argument("--iterations")
       .help("Number of LM iterations")
-      .default_value(50);
+      .default_value(static_cast<size_t>(50))
+      .scan<'u', size_t>();
 
   program.add_argument("--verbose").help("Enable verbose output").flag();
 
   program.add_argument("--pcg_iterations")
       .help("Number of PCG iterations per LM step")
-      .default_value(10);
+      .default_value(static_cast<size_t>(10))
+      .scan<'u', size_t>();
 
   program.add_argument("--pcg_tolerance")
       .help("Tolerance for PCG solver")
-      .default_value(1.0);
+      .default_value(1.0)
+      .scan<'g', double>();
 
   program.add_argument("--rejection_ratio")
       .help("Rejection ratio for PCG iteration")
-      .default_value(5.0);
+      .default_value(5.0)
+      .scan<'g', double>();
 
   program.add_argument("--precision")
       .help("Precision for graph and solver")
