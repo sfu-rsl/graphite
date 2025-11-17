@@ -28,6 +28,19 @@ public:
 
   cudaStream_t &select(size_t index) { return streams[index % num_streams]; }
 
+  void sync_all() {
+    for (size_t i = 0; i < num_streams; ++i) {
+      cudaStreamSynchronize(streams[i]);
+    }
+  }
+
+  void sync_n(size_t n) {
+    n = std::min(n, num_streams);
+    for (size_t i = 0; i < n; ++i) {
+      cudaStreamSynchronize(streams[i]);
+    }
+  }
+
   cudaStream_t *streams;
   size_t num_streams;
   bool cleanup_streams;

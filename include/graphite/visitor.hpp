@@ -1532,7 +1532,7 @@ private:
       F *f, T *out, T *in,
       std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
       std::array<S *, F::get_num_vertices()> &jacs, const T *jacobian_scales,
-      const size_t num_factors, cudaStream_t *streams, const size_t num_streams,
+      const size_t num_factors, StreamPool &streams,
       std::index_sequence<Is...>) {
     (([&] {
        constexpr auto num_vertices = F::get_num_vertices();
@@ -1550,7 +1550,7 @@ private:
        if (f->store_jacobians() || !is_analytical<F>()) {
          compute_JtPv_kernel<T, S, Is, num_vertices, F::error_dim,
                              f->get_vertex_sizes()[Is], F>
-             <<<num_blocks, threads_per_block, 0, streams[Is % num_streams]>>>(
+             <<<num_blocks, threads_per_block, 0, streams.select(Is)>>>(
                  out, in, f->active_indices.data().get(),
                  f->device_ids.data().get(), hessian_ids[Is], num_threads,
                  jacs[Is], f->vertex_descriptors[Is]->get_active_state(),
@@ -1563,8 +1563,7 @@ private:
                                        typename F::ObservationType,
                                        F::error_dim, f->get_vertex_sizes()[Is],
                                        F, typename F::VertexPointerPointerTuple>
-               <<<num_blocks, threads_per_block, 0,
-                  streams[Is % num_streams]>>>(
+               <<<num_blocks, threads_per_block, 0, streams.select(Is)>>>(
                    out, in, f->active_indices.data().get(),
                    f->device_ids.data().get(), hessian_ids[Is], num_threads,
                    f->get_vertices(), f->device_obs.data().get(),
@@ -1584,7 +1583,7 @@ private:
       F *f, T *out, T *in,
       std::array<const size_t *, F::get_num_vertices()> &hessian_ids,
       std::array<S *, F::get_num_vertices()> &jacs, const T *jacobian_scales,
-      const size_t num_factors, cudaStream_t *streams, size_t num_streams,
+      const size_t num_factors, StreamPool &streams,
       std::index_sequence<Is...>) {
     (([&] {
        constexpr auto num_vertices = F::get_num_vertices();
@@ -1597,7 +1596,7 @@ private:
              (num_threads + threads_per_block - 1) / threads_per_block;
          compute_Jv_kernel<T, S, Is, num_vertices, F::error_dim,
                            f->get_vertex_sizes()[Is], F>
-             <<<num_blocks, threads_per_block, 0, streams[Is % num_streams]>>>(
+             <<<num_blocks, threads_per_block, 0, streams.select(Is)>>>(
                  out, in, f->active_indices.data().get(),
                  f->device_ids.data().get(), hessian_ids[Is], num_threads,
                  jacs[Is], f->vertex_descriptors[Is]->get_active_state(),
@@ -1666,8 +1665,7 @@ private:
            compute_Jv_dynamic_manual2<T, S, Is, num_vertices,
                                       typename F::ObservationType, E, F,
                                       typename F::VertexPointerPointerTuple>
-               <<<num_blocks, threads_per_block, 0,
-                  streams[Is % num_streams]>>>(
+               <<<num_blocks, threads_per_block, 0, streams.select(Is)>>>(
                    out, in, f->device_obs.data().get(), jacobian_scales,
                    f->data.data().get(), f->active_indices.data().get(),
                    f->device_ids.data().get(), hessian_ids[Is], num_factors,
@@ -1727,17 +1725,6 @@ private:
                    f->chi2_derivative.data().get(), num_threads);
          }
        }
-       //  cudaError_t err = cudaGetLastError();
-       //  if (err != cudaSuccess) {
-       //    std::cerr << "CUDA error: " << cudaGetErrorString(err) <<
-       //    std::endl;
-       //  }
-
-       //  err = cudaDeviceSynchronize();
-       //  if (err != cudaSuccess) {
-       //    std::cerr << "CUDA error after kernel execution: "
-       //              << cudaGetErrorString(err) << std::endl;
-       //  }
      }()),
      ...);
   }
@@ -1852,7 +1839,7 @@ public:
     if constexpr (!is_analytical<F>()) {
       launch_kernel_autodiff(f, hessian_ids, verts, jacs, num_factors, streams,
                              std::make_index_sequence<num_vertices>{});
-      cudaDeviceSynchronize();
+      streams.sync_n(num_vertices);
     }
   }
 
@@ -1882,7 +1869,7 @@ public:
 
     launch_kernel_jacobians(f, hessian_ids, verts, jacs, num_factors, streams,
                             std::make_index_sequence<num_vertices>{});
-    cudaDeviceSynchronize();
+    streams.sync_n(num_vertices);
   }
 
   template <typename F> void compute_error(F *f) {
@@ -1892,10 +1879,8 @@ public:
 
     // At this point all necessary data should be on the GPU
     auto verts = f->get_vertices();
-    // std::array<T*, num_vertices> verts;
     std::array<const size_t *, num_vertices> hessian_ids;
     for (int i = 0; i < num_vertices; i++) {
-      // verts[i] = f->vertex_descriptors[i]->x();
       hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
     }
 
@@ -1915,7 +1900,7 @@ public:
             f->device_ids.data().get(), num_threads, verts,
             std::make_index_sequence<num_vertices>{});
 
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(0);
   }
 
   template <typename F> void compute_chi2(F *f) {
@@ -1925,12 +1910,6 @@ public:
 
     // At this point all necessary data should be on the GPU
     auto verts = f->get_vertices();
-    // std::array<T*, num_vertices> verts;
-    // std::array<const size_t*, num_vertices> hessian_ids;
-    // for (int i = 0; i < num_vertices; i++) {
-    // verts[i] = f->vertex_descriptors[i]->x();
-    // hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
-    // }
 
     constexpr auto error_dim = F::error_dim;
     const auto num_factors = f->active_count();
@@ -1945,7 +1924,7 @@ public:
         f->residuals.data().get(), num_threads,
         f->precision_matrices.data().get(), f->loss.data().get());
 
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(0);
   }
 
   template <typename F> void compute_b(F *f, T *b, const T *jacobian_scales) {
@@ -1968,12 +1947,12 @@ public:
     launch_kernel_compute_b(f, b, hessian_ids, jacs, jacobian_scales,
                             num_factors,
                             std::make_index_sequence<num_vertices>{});
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(0);
   }
 
   template <typename F>
   void compute_Jv(F *f, T *out, T *in, const T *jacobian_scales,
-                  cudaStream_t *streams, size_t num_streams) {
+                  StreamPool &streams) {
     constexpr auto num_vertices = F::get_num_vertices();
     constexpr auto vertex_sizes = F::get_vertex_sizes();
 
@@ -1990,14 +1969,14 @@ public:
     const auto num_factors = f->active_count();
 
     launch_kernel_compute_Jv(f, out, in, hessian_ids, jacs, jacobian_scales,
-                             num_factors, streams, num_streams,
+                             num_factors, streams,
                              std::make_index_sequence<num_vertices>{});
-    cudaDeviceSynchronize();
+    streams.sync_n(num_vertices);
   }
 
   template <typename F>
   void compute_Jtv(F *f, T *out, T *in, const T *jacobian_scales,
-                   cudaStream_t *streams, size_t num_streams) {
+                   StreamPool &streams) {
     constexpr auto num_vertices = f->get_num_vertices();
     constexpr auto vertex_sizes = F::get_vertex_sizes();
 
@@ -2014,9 +1993,9 @@ public:
     const auto num_factors = f->active_count();
 
     launch_kernel_compute_JtPv(f, out, in, hessian_ids, jacs, jacobian_scales,
-                               num_factors, streams, num_streams,
+                               num_factors, streams,
                                std::make_index_sequence<num_vertices>{});
-    cudaDeviceSynchronize();
+    streams.sync_n(num_vertices);
   }
 
   template <typename F>
@@ -2043,7 +2022,7 @@ public:
     launch_kernel_block_diagonal(f, diagonal_blocks, hessian_ids, jacs,
                                  jacobian_scales, num_factors,
                                  std::make_index_sequence<num_vertices>{});
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(0);
   }
 
   template <typename F>
@@ -2068,7 +2047,7 @@ public:
     launch_kernel_scalar_diagonal(f, diagonal, hessian_ids, jacs,
                                   jacobian_scales, num_factors,
                                   std::make_index_sequence<num_vertices>{});
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(0);
   }
 
   template <typename F> void scale_jacobians(F *f, T *jacobian_scales) {
@@ -2095,7 +2074,7 @@ public:
     launch_kernel_scale_jacobians(f, jacobian_scales, hessian_ids, jacs,
                                   num_factors,
                                   std::make_index_sequence<num_vertices>{});
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(0);
   }
 
   template <typename V>
@@ -2111,9 +2090,6 @@ public:
         <<<num_blocks, threads_per_block, 0, stream>>>(
             v->vertices(), delta_x, jacobian_scales, v->get_hessian_ids(),
             v->get_active_state(), num_threads);
-    // cudaDeviceSynchronize();
-
-    // return num_parameters;
   }
 
   template <typename V>
@@ -2126,7 +2102,7 @@ public:
     augment_hessian_diagonal_kernel<InvP, V::dim>
         <<<num_blocks, threads_per_block>>>(block_diagonal, (InvP)mu,
                                             v->get_active_state(), num_threads);
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(0);
   }
 
   template <typename V>
@@ -2142,14 +2118,13 @@ public:
         <<<num_blocks, threads_per_block, 0, stream>>>(
             z, r, block_diagonal, v->get_hessian_ids(), v->get_active_state(),
             num_threads);
-    // cudaDeviceSynchronize();
   }
 
   template <typename F>
   void visit_flag_active_vertices(F *f, const uint8_t level) {
     launch_kernel_flag_active(
         f, level, std::make_index_sequence<F::get_num_vertices()>{});
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(0);
   }
 };
 } // namespace graphite

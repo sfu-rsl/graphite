@@ -34,11 +34,9 @@ public:
   virtual void visit_b(GraphVisitor<T, S> &visitor, T *b,
                        const T *jacobian_scales) = 0;
   virtual void visit_Jv(GraphVisitor<T, S> &visitor, T *out, T *in,
-                        const T *jacobian_scales, cudaStream_t *streams,
-                        size_t num_streams) = 0;
+                        const T *jacobian_scales, StreamPool &streams) = 0;
   virtual void visit_Jtv(GraphVisitor<T, S> &visitor, T *out, T *in,
-                         const T *jacobian_scales, cudaStream_t *streams,
-                         size_t num_streams) = 0;
+                         const T *jacobian_scales, StreamPool &streams) = 0;
 
   virtual void visit_flag_active_vertices(GraphVisitor<T, S> &visitor,
                                           const uint8_t level) = 0;
@@ -181,17 +179,13 @@ public:
   }
 
   void visit_Jv(GraphVisitor<T, S> &visitor, T *out, T *in,
-                const T *jacobian_scales, cudaStream_t *streams,
-                size_t num_streams) override {
-    visitor.template compute_Jv(this, out, in, jacobian_scales, streams,
-                                num_streams);
+                const T *jacobian_scales, StreamPool &streams) override {
+    visitor.template compute_Jv(this, out, in, jacobian_scales, streams);
   }
 
   void visit_Jtv(GraphVisitor<T, S> &visitor, T *out, T *in,
-                 const T *jacobian_scales, cudaStream_t *streams,
-                 size_t num_streams) override {
-    visitor.template compute_Jtv(this, out, in, jacobian_scales, streams,
-                                 num_streams);
+                 const T *jacobian_scales, StreamPool &streams) override {
+    visitor.template compute_Jtv(this, out, in, jacobian_scales, streams);
   }
 
   void visit_flag_active_vertices(GraphVisitor<T, S> &visitor,
@@ -246,19 +240,6 @@ public:
     chi2_vec.reserve(size);
     residuals.reserve(size * error_dim);
     active.reserve(size);
-
-    // Prefetch everything
-    /*
-    int cuda_device = cudaCpuDeviceId;
-    constexpr cudaStream_t stream = 0;
-    // prefetch_vector_on_device_async(device_ids, cuda_device, stream);
-    prefetch_vector_on_device_async(device_obs, cuda_device, stream);
-    prefetch_vector_on_device_async(precision_matrices, cuda_device, stream);
-    prefetch_vector_on_device_async(data, cuda_device, stream);
-    prefetch_vector_on_device_async(loss, cuda_device, stream);
-    prefetch_vector_on_device_async(chi2_vec, cuda_device, stream);
-    cudaDeviceSynchronize();
-    */
   }
 
   void remove_factor(const size_t id) {
@@ -416,23 +397,9 @@ public:
   }
 
   void to_device() override {
-
-    // device_ids = host_ids;
-    // device_obs = host_obs;
     chi2_vec.resize(internal_count());
     chi2_derivative.resize(internal_count());
 
-    // prefetch everything
-    // int cuda_device = 0;
-    // constexpr cudaStream_t stream = 0;
-    // cudaGetDevice(&cuda_device);
-    // prefetch_vector_on_device_async(device_ids, cuda_device, stream);
-    // prefetch_vector_on_device_async(device_obs, cuda_device, stream);
-    // prefetch_vector_on_device_async(chi2_vec, cuda_device, stream);
-    // prefetch_vector_on_device_async(data, cuda_device, stream);
-    // prefetch_vector_on_device_async(loss, cuda_device, stream);
-    // std::cout << "Prefetching factor data to device" << std::endl;
-    // cudaDeviceSynchronize();
     // Resize and reset residuals
     residuals.resize(error_dim * internal_count());
     thrust::fill(residuals.begin(), residuals.end(), 0);

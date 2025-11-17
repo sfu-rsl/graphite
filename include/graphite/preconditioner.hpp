@@ -18,7 +18,7 @@ public:
              size_t dimension, T mu) = 0;
 
   virtual void apply(GraphVisitor<T, S> &visitor, T *z, const T *r,
-                     cudaStream_t *streams, size_t num_streams) = 0;
+                     StreamPool &streams) = 0;
 };
 
 template <typename T, typename S>
@@ -37,7 +37,7 @@ public:
   }
 
   void apply(GraphVisitor<T, S> &visitor, T *z, const T *r,
-             cudaStream_t *streams, size_t num_streams) override {
+             StreamPool &streams) override {
     cudaMemcpy(z, r, dimension * sizeof(T), cudaMemcpyDeviceToDevice);
   }
 };
@@ -109,7 +109,7 @@ public:
         desc->visit_block_diagonal(visitor, block_diagonals, jacobian_scales);
       }
     }
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(0);
 
     // Invert the blocks
 
@@ -175,16 +175,7 @@ public:
             "double types.");
       }
 
-      cudaDeviceSynchronize();
-
-      // Check for errors in inversion
-      // thrust::host_vector<int> info_host = info;
-      // for (size_t i = 0; i < num_blocks; ++i) {
-      //   if (info_host[i] != 0) {
-      //     std::cerr << "Error in matrix inversion for block " << i
-      //               << ": info = " << info_host[i] << std::endl;
-      //   }
-      // }
+      cudaStreamSynchronize(0);
 
       // Copy back
       if constexpr (is_low_precision<S>::value) {
@@ -197,11 +188,11 @@ public:
       }
     }
 
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(0);
   }
 
   void apply(GraphVisitor<T, S> &visitor, T *z, const T *r,
-             cudaStream_t *streams, size_t num_streams) override {
+             StreamPool &streams) override {
     // Apply the preconditioner
     size_t i = 0;
     if constexpr (is_low_precision<S>::value) {
@@ -210,21 +201,19 @@ public:
         const auto d = desc->dimension();
         P *blocks = hp_diagonals[desc].data().get();
         desc->visit_apply_block_jacobi(visitor, z, r, blocks,
-                                       streams[i % num_streams]);
+                                       streams.select(i));
         i++;
       }
     } else {
       for (auto &desc : *vds) {
         const auto d = desc->dimension();
         S *blocks = block_diagonals[desc].data().get();
-        // std::cout << "bd size: " << block_diagonals[desc].size() <<
-        // std::endl;
         desc->visit_apply_block_jacobi(visitor, z, r, blocks,
-                                       streams[i % num_streams]);
+                                       streams.select(i));
         i++;
       }
     }
-    cudaDeviceSynchronize();
+    streams.sync_n(i);
   }
 };
 

@@ -145,14 +145,14 @@ public:
                         desc->get_active_state(),
                         [] __device__(uint8_t state) { return state & 0x7F; });
     }
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(0);
     // For each factor descriptor
     // Go through each vertex descriptor and set the state MSB to 1 if the
     // constraint is active
     for (auto &desc : factor_descriptors) {
       desc->visit_flag_active_vertices(visitor, level);
     }
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(0);
     // For each vertex descriptor, MSB of the active state is XOR'd with 1
     // (0->1, 1->0)
     for (auto &desc : vertex_descriptors) {
@@ -161,7 +161,7 @@ public:
                         desc->get_active_state(),
                         [] __device__(uint8_t state) { return state ^ 0x80; });
     }
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(0);
   }
 
   bool build_structure() {
@@ -177,7 +177,7 @@ public:
     for (auto &factor : factor_descriptors) {
       factor->visit_error(visitor); // TODO: Make non-autodiff version
     }
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(0);
   }
 
   T chi2() {
@@ -200,8 +200,7 @@ public:
         factor->visit_jacobians(visitor, streams);
       }
     }
-
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(0);
 
     // Compute chi2
     chi2();
@@ -214,7 +213,7 @@ public:
         factor->visit_scalar_diagonal(visitor, jacobian_scales.data().get(),
                                       nullptr);
       }
-      cudaDeviceSynchronize();
+      cudaStreamSynchronize(0);
 
       thrust::transform(
           thrust::device, jacobian_scales.begin(), jacobian_scales.end(),
@@ -233,7 +232,7 @@ public:
     for (auto &factor : factor_descriptors) {
       factor->scale_jacobians(visitor, jacobian_scales.data().get());
     }
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(0);
 
     // Calculate b=J^T * r
     thrust::fill(b.begin(), b.end(), 0);
@@ -241,7 +240,7 @@ public:
       fd->visit_b(visitor, b.data().get(), jacobian_scales.data().get());
     }
 
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(0);
   }
 
   void apply_step(const T *delta_x, StreamPool &streams) {
@@ -251,7 +250,7 @@ public:
                          streams.select(i));
       i++;
     }
-    cudaDeviceSynchronize();
+    streams.sync_n(i);
   }
 
   void backup_parameters() {
@@ -260,7 +259,7 @@ public:
       desc->backup_parameters();
     }
 
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(0);
   }
 
   void revert_parameters() {
@@ -269,7 +268,7 @@ public:
       desc->restore_parameters();
     }
 
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(0);
   }
 
   void to_host() {

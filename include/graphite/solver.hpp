@@ -83,14 +83,14 @@ public:
           visitor, diag.data().get(),
           graph->get_jacobian_scales().data().get());
     }
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(0);
 
     // Check for negative values in diag and print an error if found
     T min_diag = static_cast<T>(1.0e-6);
     T max_diag = static_cast<T>(1.0e32);
     clamp(dim_h, min_diag, max_diag, diag.data().get());
 
-    cudaDeviceSynchronize();
+    cudaStreamSynchronize(0);
 
     // Rescale r
     y.resize(dim_h);
@@ -106,8 +106,7 @@ public:
     z.resize(dim_h);
 
     thrust::fill(z.begin(), z.end(), 0.0);
-    preconditioner->apply(visitor, z.data().get(), y.data().get(),
-                          streams.streams, streams.num_streams);
+    preconditioner->apply(visitor, z.data().get(), y.data().get(), streams);
 
     p.resize(dim_h);
     thrust::copy(z.begin(), z.end(), p.begin()); // p = z
@@ -134,8 +133,7 @@ public:
       for (size_t i = 0; i < factor_descriptors.size(); i++) {
         factor_descriptors[i]->visit_Jv(
             visitor, v1_ptr, p.data().get(),
-            graph->get_jacobian_scales().data().get(), streams.streams,
-            streams.num_streams);
+            graph->get_jacobian_scales().data().get(), streams);
         v1_ptr += factor_descriptors[i]->get_residual_size();
       }
       // auto t_jv_end = std::chrono::steady_clock::now();
@@ -144,24 +142,15 @@ public:
       //           t_jv_start).count()
       //           << " seconds" << std::endl;
 
-      // thrust::host_vector<T> h_v1 = v1;
-      // for (size_t i = 0; i < h_v1.size(); i++) {
-      //   std::cout << h_v1[i] << " ";
-      // }
-      // std::cout << std::endl;
-      // cudaDeviceSynchronize();
-
       // 3. Compute v2 = J^T v1
       thrust::fill(v2.begin(), v2.end(), 0.0);
       v1_ptr = v1.data().get(); // reset
       for (size_t i = 0; i < factor_descriptors.size(); i++) {
         factor_descriptors[i]->visit_Jtv(
             visitor, v2.data().get(), v1_ptr,
-            graph->get_jacobian_scales().data().get(), streams.streams,
-            streams.num_streams);
+            graph->get_jacobian_scales().data().get(), streams);
         v1_ptr += factor_descriptors[i]->get_residual_size();
       }
-      // cudaDeviceSynchronize();
       // Add damping factor
       // v2 += damping_factor*diag(H)*p
       damp_by_factor(dim_h, v2.data().get(), damping_factor, diag.data().get(),
@@ -176,7 +165,7 @@ public:
 
       // 6. r -= alpha * v2
       axpy(dim_h, r.data().get(), -alpha, v2.data().get(), r.data().get());
-      cudaDeviceSynchronize();
+      cudaStreamSynchronize(0);
 
       rnorm = (T)thrust::inner_product(thrust::device, r.begin(), r.end(),
                                        r.begin(), static_cast<T>(0.0));
@@ -186,8 +175,7 @@ public:
 
       // Apply preconditioner again
       thrust::fill(z.begin(), z.end(), 0.0);
-      preconditioner->apply(visitor, z.data().get(), y.data().get(),
-                            streams.streams, streams.num_streams);
+      preconditioner->apply(visitor, z.data().get(), y.data().get(), streams);
       T rz_new = thrust::inner_product(r.begin(), r.end(), z.begin(),
                                        static_cast<T>(0.0));
 
@@ -210,7 +198,7 @@ public:
 
       // 9. Update p
       axpy(dim_h, p.data().get(), beta, p.data().get(), z.data().get());
-      cudaDeviceSynchronize();
+      cudaStreamSynchronize(0);
 
       if (std::abs(static_cast<T>(rz_new)) < tol) {
         // std::cout << "Converged after " << k + 1
