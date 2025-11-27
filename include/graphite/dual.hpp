@@ -80,6 +80,10 @@ template <typename T, typename D> struct Dual {
     return DT(std::cos(x.real), -x.dual * std::sin(x.real));
   }
 
+  __host__ __device__ friend DT atan(const DT &x) {
+    return DT(std::atan(x.real), x.dual / (1 + x.real * x.real));
+  }
+
   __host__ __device__ friend DT exp(const DT &x) {
     T exp_real = std::exp(x.real);
     return DT(exp_real, x.dual * exp_real);
@@ -92,6 +96,13 @@ template <typename T, typename D> struct Dual {
   __host__ __device__ friend DT sqrt(const DT &x) {
     T sqrt_real = std::sqrt(x.real);
     return DT(sqrt_real, x.dual / (2 * sqrt_real));
+  }
+
+  __host__ __device__ friend DT abs(const DT &x) {
+    if (x.real < T(0.0)) {
+      return -x;
+    }
+    return x;
   }
 
   __host__ __device__ bool operator<(const DT &other) const {
