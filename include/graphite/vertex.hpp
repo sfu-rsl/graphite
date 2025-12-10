@@ -35,7 +35,7 @@ __global__ void backup_state_kernel(VertexType **vertices, State *dst,
 
   const size_t vertex_id = get_thread_id();
 
-  if (vertex_id >= num_vertices || is_inactive(active_state, vertex_id))
+  if (vertex_id >= num_vertices || !is_vertex_active(active_state, vertex_id))
     return;
   if constexpr (has_type_alias_State<Traits>::value) {
     dst[vertex_id] = Traits::get_state(*vertices[vertex_id]);
@@ -51,7 +51,7 @@ __global__ void set_state_kernel(VertexType **vertices, const State *src,
 
   const size_t vertex_id = get_thread_id();
 
-  if (vertex_id >= num_vertices || is_inactive(active_state, vertex_id))
+  if (vertex_id >= num_vertices || !is_vertex_active(active_state, vertex_id))
     return;
 
   if constexpr (has_type_alias_State<Traits>::value) {
@@ -255,7 +255,7 @@ public:
 
   bool is_active(const size_t id) const override {
     const auto local_id = global_to_local_map.at(id);
-    return is_vertex_active(active_state[local_id]);
+    return is_vertex_active(active_state.data().get(), local_id);
   }
 
   uint8_t *get_active_state() const override {

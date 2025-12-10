@@ -12,11 +12,6 @@ __device__ size_t get_thread_id() {
          static_cast<size_t>(threadIdx.x);
 }
 
-__device__ bool is_inactive(const uint8_t *active_state,
-                            const size_t vertex_id) {
-  return active_state[vertex_id] > 0;
-}
-
 template <typename T, typename P, size_t E>
 __device__ T compute_chi2(const T *residuals, const P *pmat,
                           const size_t factor_id) {
@@ -73,7 +68,7 @@ flag_active_vertices_kernel(const size_t *ids, uint8_t *v_active,
     return;
   }
 
-  if (is_active(f_active[factor_id], level)) {
+  if (is_factor_active(f_active[factor_id], level)) {
     // TODO: Investigate if this can cause a bug - do we need to use atomicOr?
     const auto vertex_id = ids[factor_id * N + I];
     v_active[vertex_id] |= 0x80; // Set MSB to 1
@@ -87,7 +82,7 @@ apply_update_kernel(V **vertices, const T *delta_x, const T *jacobian_scales,
                     const size_t num_threads) {
   const size_t vertex_id = get_thread_id();
 
-  if (vertex_id >= num_threads || is_inactive(active_state, vertex_id)) {
+  if (vertex_id >= num_threads || !is_vertex_active(active_state, vertex_id)) {
     return;
   }
 
@@ -117,7 +112,7 @@ __global__ void augment_hessian_diagonal_kernel(S *diagonal_blocks, const S mu,
   constexpr auto block_size = D * D;
 
   const auto vertex_id = idx;
-  if (is_inactive(active_state, vertex_id)) {
+  if (!is_vertex_active(active_state, vertex_id)) {
     return;
   }
 
@@ -141,7 +136,7 @@ __global__ void apply_block_jacobi_kernel(T *z, const T *r, S *block_diagonal,
   const size_t idx = get_thread_id();
   const auto local_vertex_id = idx / D;
 
-  if (idx >= num_threads || is_inactive(active_state, local_vertex_id)) {
+  if (idx >= num_threads || !is_vertex_active(active_state, local_vertex_id)) {
     return;
   }
 
@@ -225,7 +220,7 @@ __global__ void compute_error_kernel_autodiff(
 
   // This should write one Jacobian column per dimension per vertex for each
   // factor We only need a Jacobian if the vertex is not fixed
-  if (is_inactive(active_state, vertex_id)) {
+  if (!is_vertex_active(active_state, vertex_id)) {
     return;
   }
 
@@ -306,7 +301,7 @@ __global__ void compute_jacobian_kernel(
   constexpr auto vertex_sizes = F::get_vertex_sizes();
   const auto factor_id = active_ids[idx];
   const size_t vertex_id = ids[factor_id * N + I];
-  if (is_inactive(active_state, vertex_id)) {
+  if (!is_vertex_active(active_state, vertex_id)) {
     return;
   }
 
@@ -365,7 +360,7 @@ __global__ void compute_b_kernel(T *b, const T *error, const size_t *active_ids,
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_inactive(active_state, local_id)) {
+  if (!is_vertex_active(active_state, local_id)) {
     return;
   }
   const auto jacobian_offset = factor_id * jacobian_size;
@@ -434,7 +429,7 @@ compute_b_dynamic_kernel(T *b, const T *error, const size_t *active_ids,
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_inactive(active_state, local_id)) {
+  if (!is_vertex_active(active_state, local_id)) {
     return;
   }
   const auto jacobian_offset = factor_id * jacobian_size;
@@ -505,7 +500,7 @@ __global__ void compute_Jv_kernel(T *y, const T *x, const size_t *active_ids,
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_inactive(active_state, local_id)) {
+  if (!is_vertex_active(active_state, local_id)) {
     return;
   }
   const auto jacobian_offset = factor_id * jacobian_size;
@@ -557,7 +552,7 @@ compute_Jv_dynamic_kernel(T *y, T *x, size_t *ids, const size_t *hessian_ids,
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_inactive(active_state, local_id)) {
+  if (!is_vertex_active(active_state, local_id)) {
     return;
   }
   const auto jacobian_offset = factor_id * jacobian_size;
@@ -657,7 +652,7 @@ __global__ void compute_Jv_dynamic_autodiff(
     const T scale = jacobian_scales[hess_col + column];
     // T product = 0.0;
     // Each thread block stores a complete Jacobian row in shared memory
-    if (!is_inactive(active_state, vertex_id)) {
+    if (is_vertex_active(active_state, vertex_id)) {
       using G = std::conditional_t<is_low_precision<S>::value, T, S>;
       Dual<T, G> error[E];
       compute_Jcol_ad<T, G, I, N, M, E, F, VT>(
@@ -681,7 +676,7 @@ __global__ void compute_Jv_dynamic_autodiff(
   if (factor_id < num_factors) {
 
     const auto vertex_id = ids[factor_id * N + I];
-    if (!is_inactive(active_state, vertex_id)) {
+    if (is_vertex_active(active_state, vertex_id)) {
       // const auto hess_col = hessian_ids[vertex_id];
       // const T *x_start = x + hess_col;
 
@@ -744,7 +739,7 @@ compute_Jv_dynamic_manual(T *y, T *x, const M *obs, const T *jacobian_scales,
     // const T scale = jacobian_scales[hess_col + column];
     // T product = 0.0;
     // Each thread block stores a complete Jacobian row in shared memory
-    if (!is_inactive(active_state, vertex_id)) {
+    if (is_vertex_active(active_state, vertex_id)) {
       using G = std::conditional_t<is_low_precision<S>::value, T, S>;
       // Dual<T, G> error[E];
       constexpr auto jacobian_size = E * D;
@@ -781,7 +776,7 @@ compute_Jv_dynamic_manual(T *y, T *x, const M *obs, const T *jacobian_scales,
   if (factor_id < num_factors) {
 
     const auto vertex_id = ids[factor_id * N + I];
-    if (!is_inactive(active_state, vertex_id)) {
+    if (is_vertex_active(active_state, vertex_id)) {
       // const auto hess_col = hessian_ids[vertex_id];
       // const T *x_start = x + hess_col;
 
@@ -823,7 +818,7 @@ __global__ void compute_Jv_dynamic_manual2(
     const T *x_start = x + hess_col;
 
     // Each thread block stores a complete Jacobian row in shared memory
-    if (!is_inactive(active_state, vertex_id)) {
+    if (is_vertex_active(active_state, vertex_id)) {
       // using G = std::conditional_t<is_low_precision<S>::value, T, S>;
       using G = T;
       // Dual<T, G> error[E];
@@ -876,7 +871,7 @@ __global__ void compute_JtPv_kernel(T *y, const T *x, const size_t *active_ids,
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_inactive(active_state, local_id)) {
+  if (!is_vertex_active(active_state, local_id)) {
     return;
   }
   const auto jacobian_offset = factor_id * jacobian_size;
@@ -981,7 +976,7 @@ __global__ void compute_JtPv_dynamic_kernel(
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_inactive(active_state, local_id)) {
+  if (!is_vertex_active(active_state, local_id)) {
     return;
   }
   const auto error_offset = factor_id * E;
@@ -1057,7 +1052,7 @@ __global__ void compute_hessian_diagonal_kernel(
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_inactive(active_state, local_id)) {
+  if (!is_vertex_active(active_state, local_id)) {
     return;
   }
   const auto jacobian_offset = factor_id * jacobian_size;
@@ -1161,7 +1156,7 @@ __global__ void compute_hessian_diagonal_dynamic_kernel(
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_inactive(active_state, local_id)) {
+  if (!is_vertex_active(active_state, local_id)) {
     return;
   }
 
@@ -1232,7 +1227,7 @@ scale_jacobians_kernel(T *jacs, const highp *jacobian_scales,
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_inactive(active_state, local_id)) {
+  if (!is_vertex_active(active_state, local_id)) {
     return;
   }
 
@@ -1269,7 +1264,7 @@ __global__ void compute_hessian_scalar_diagonal_kernel(
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_inactive(active_state, local_id)) {
+  if (!is_vertex_active(active_state, local_id)) {
     return;
   }
   const auto jacobian_offset = factor_id * jacobian_size;
@@ -1331,7 +1326,7 @@ __global__ void compute_hessian_scalar_diagonal_dynamic_kernel(
   const size_t local_id =
       ids[factor_id * N +
           I]; // N is the number of vertices involved in the factor
-  if (is_inactive(active_state, local_id)) {
+  if (!is_vertex_active(active_state, local_id)) {
     return;
   }
 
