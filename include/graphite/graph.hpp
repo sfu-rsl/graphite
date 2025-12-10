@@ -8,28 +8,6 @@
 
 namespace graphite {
 
-// template<typename T> class Solver;
-
-class BlockCoordinates {
-public:
-  size_t row;
-  size_t col;
-};
-
-template <typename T> class HessianBlocks {
-public:
-  std::pair<size_t, size_t> dimensions;
-  size_t num_blocks;
-  thrust::device_vector<T> data;
-  thrust::device_vector<BlockCoordinates> block_coordinates;
-
-  void resize(size_t num_blocks, size_t rows, size_t cols) {
-    dimensions = {rows, cols};
-    this->num_blocks = num_blocks;
-    data.resize(rows * cols * num_blocks);
-    block_coordinates.resize(num_blocks);
-  }
-};
 
 template <typename T, typename S> class Graph {
 
