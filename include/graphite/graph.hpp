@@ -71,11 +71,13 @@ public:
 
     // Assign Hessian columns to local indices
     hessian_column = 0;
+    size_t hessian_block_index = 0;
     for (const auto &entry : global_to_local_combined) {
       if (vertex_descriptors[entry.second.first]->is_active(entry.first)) {
         vertex_descriptors[entry.second.first]->set_hessian_column(
-            entry.first, hessian_column);
+            entry.first, hessian_column, hessian_block_index);
         hessian_column += vertex_descriptors[entry.second.first]->dimension();
+        hessian_block_index++;
       }
     }
 

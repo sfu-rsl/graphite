@@ -86,7 +86,7 @@ public:
 
   virtual const std::unordered_map<size_t, size_t> &get_global_map() const = 0;
   virtual const size_t *get_hessian_ids() const = 0;
-  virtual void set_hessian_column(size_t global_id, size_t hessian_column) = 0;
+  virtual void set_hessian_column(const size_t global_id, const size_t hessian_column, const size_t block_index) = 0;
   virtual bool is_fixed(const size_t id) const = 0;
   virtual bool is_active(const size_t id) const = 0;
   virtual uint8_t *get_active_state() const = 0;
@@ -113,6 +113,7 @@ public:
   std::vector<size_t> local_to_global_map;
   thrust::host_vector<size_t> local_to_hessian_offsets;
   thrust::device_vector<size_t> hessian_ids;
+  thrust::universal_vector<size_t> block_ids;
   uninitialized_vector<uint8_t> active_state;
 
   static constexpr size_t dim = Traits::dimension;
@@ -178,6 +179,7 @@ public:
     global_to_local_map.reserve(size);
     local_to_global_map.reserve(size);
     local_to_hessian_offsets.reserve(size);
+    block_ids.reserve(size);
     active_state.reserve(size);
   }
 
@@ -197,7 +199,7 @@ public:
     // Swap the vertex to be removed with the last vertex
     std::swap(x_host[local_id], x_host[last_index]);
     std::swap(local_to_hessian_offsets[local_id],
-              local_to_hessian_offsets[last_index]);
+              local_to_hessian_offsets[last_index]); // TODO: Probably shouldn't be modifying this - could be empty and is rebuilt frequently
 
     // Update the global_to_local_map for the swapped vertex
     const auto last_global_id = local_to_global_map[last_index];
@@ -215,6 +217,7 @@ public:
     local_to_hessian_offsets.pop_back();
     global_to_local_map.erase(id);
     local_to_global_map.pop_back();
+    block_ids.pop_back();
   }
 
   void replace_vertex(const size_t id, VertexType *vertex) {
@@ -237,6 +240,7 @@ public:
     global_to_local_map.insert({id, local_id});
     local_to_global_map.push_back(id);
     local_to_hessian_offsets.push_back(0); // Initialize to 0
+    block_ids.push_back(0);              // Initialize to 0
 
     // Update fixed mask
     active_state.push_back(static_cast<uint8_t>(fixed));
@@ -291,9 +295,10 @@ public:
     return hessian_ids.data().get();
   }
 
-  void set_hessian_column(size_t global_id, size_t hessian_column) {
-    local_to_hessian_offsets[global_to_local_map.at(global_id)] =
-        hessian_column;
+  void set_hessian_column(const size_t global_id, const size_t hessian_column, const size_t block_index) {
+    const auto local_id = global_to_local_map.at(global_id);
+    local_to_hessian_offsets[local_id] = hessian_column;
+    block_ids[local_id] = block_index;
   }
 };
 

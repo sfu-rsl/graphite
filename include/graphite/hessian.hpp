@@ -85,6 +85,74 @@ namespace graphite {
         thrust::unified_vector<size_t> hessian_counts;
         // First value is the number of blocks (upper bound guess), second is the pointer to the count value
         std::unordered_map<BlockDimension, std::pair<size_t, size_t*>> hessian_count_map;
+
+        // Returns coordinates of upper triangular filled-in Hessian blocks
+        std::vector<BlockCoordinates> get_block_coordinates(Graph<T, S>* graph) {
+           // For a constraint to contribute to the Hessian,
+           // the constraint must be active, and both variables must be active (non-fixed),
+           // and the block must reside in the upper triangular part of the Hessian (i.e., row index <= column index)
+           thrust::device_vector<BlockCoordinates> block_coords;
+           auto & f_desc = graph->get_factor_descriptors();
+           for (auto & f: f_desc) {
+                const size_t num_vertices = f->get_num_vertices();
+                const auto & active_factors = f->active_indices;
+                const auto device_ids = f->device_ids.data().get();
+                for (size_t i = 0; i < num_vertices; i++) {
+                    const auto vi_active = f->vertex_descriptors[i]->active_state.data().get();
+                    const vi_block_ids = f->vertex_descriptors[i]->block_ids.data().get();
+                    for (size_t j = i; j < num_vertices; j++) {
+                        const auto vj_active = f->vertex_descriptors[j]->active_state.data.get();
+                        const vj_block_ids = f->vertex_descriptors[j]->block_ids.data().get();
+                        // Iterate over active factors and generate block coordinates
+                        thrust::transform_if(
+                            thrust::device,
+                            active_factors.begin(),
+                            active_factors.end(),
+                            block_coords.begin(),
+                            [=] __device__ (size_t factor_idx) {
+                                const size_t vi_id = device_ids[factor_idx * num_vertices + i];
+                                const size_t vj_id = device_ids[factor_idx * num_vertices + j];
+
+                                const auto block_i = vi_block_ids[vi_id];
+                                const auto block_j = vj_block_ids[vj_id];
+                                return BlockCoordinates{block_i, block_j};
+                            },
+                            [] __device__ (const size_t & factor_idx) {
+                                const auto vi_id = device_ids[factor_idx * num_vertices + i];
+                                const auto vj_id = device_ids[factor_idx * num_vertices + j];
+                                return (is_vertex_active(vi_active, vi_id) && is_vertex_active(vj_active, vj_id));
+                            }
+                        );
+                    }
+                }
+            }
+
+            thrust::sort(thrust::device, block_coords.begin(), block_coords.end(),
+                [] __device__ (const BlockCoordinates & a, const BlockCoordinates & b) {
+                    // sort 2D coordinate
+                    if (a.row == b.row) {
+                        return a.col < b.col;
+                    }
+                    return a.row < b.row;
+                }
+            );
+
+            // Remove duplicates
+            auto end_it = thrust::unique(thrust::device, block_coords.begin(), block_coords.end(),
+                [] __device__ (const BlockCoordinates & a, const BlockCoordinates & b) {
+                    return (a.row == b.row) && (a.col == b.col);
+                }
+            );
+
+            // Resize the vector to remove duplicates
+            block_coords.resize(end_it - block_coords.begin());
+
+
+            // Copy to host and convert to std::vector
+            std::vector<BlockCoordinates> host_block_coords(block_coords.size());
+            thrust::copy(thrust::device, block_coords.begin(), block_coords.end(), host_block_coords.begin());
+            return host_block_coords;
+        }
         
         public:
 
@@ -98,6 +166,7 @@ namespace graphite {
             // First we need to count how many Hessian blocks we have
             // We'll create a set of Hessian block coordinates by iterating over descriptors
             // Ignore blocks not in the upper triangular part
+            const auto block_coords = get_block_coordinates(graph);
 
             // Then we need to allocate memory for each block
             // We can iterate the set and figure out the total memory,
@@ -119,20 +188,6 @@ namespace graphite {
             // // Only need to count the upper triangular part
             // // Note: constraint must be active and both variables must be
             // // active (non-fixed) for the Hessian block to be counted
-            // hessian_counts.clear();
-            // hessian_count_map.clear();
-            // // size_t total_count = 0;
-            // for (auto & f: f->get_factor_descriptors()) {
-            //     for (auto & vi: f->vertex_descriptors) {
-            //         const size_t dim_i = vi->dimension();
-            //         for (auto & vj: f->vertex_descriptors) {
-            //             const size_t dim_j = vj->dimension();
-            //             const auto active_count = f->active_count();
-            //             // total_count += active_count;
-            //             hessian_count_map[{dim_i, dim_j}].first += active_count;
-            //         }
-            //     }
-            // }
             
 
             // // Allocate memory for counting
