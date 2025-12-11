@@ -30,6 +30,82 @@ namespace std {
 
 namespace graphite {
 
+    template <typename T, typename S>
+    __global__ void compute_hessian_block_kernel(
+        const size_t i,
+        const size_t j,
+        const size_t dim_i,
+        const size_t dim_j,
+        const size_t dim_e,
+        const size_t num_vertices,
+        const size_t* active_factors,
+        const size_t num_active_factors,
+        const size_t* ids,
+        const size_t* block_offsets,
+        const uint8_t* vi_active,
+        const uint8_t* vj_active,
+        const S* jacobian_i,
+        const S* jacobian_j,
+        const S* precision,
+        const S* chi2_derivative,
+        S* hessian,
+    ) {
+        // TODO: simpify and optimize this kernel
+        const auto idx = get_thread_id();
+
+        const auto block_id = idx / (dim_i * dim_j);
+
+        if (block_id >= num_active_factors) {
+            return;
+        }
+
+        const auto factor_idx = active_factors[block_id];
+
+        const size_t vi_id = ids[factor_idx * num_vertices + i];
+        const size_t vj_id = ids[factor_idx * num_vertices + j];
+
+        if (is_vertex_active(vi_active, vi_id) && is_vertex_active(vj_active, vj_id)) {
+
+
+            const size_t block_size = dim_i * dim_j;
+            const size_t offset = idx % block_size;
+            // Hessian may be rectangular
+            // output blocks are all column major
+            const size_t row = offset % dim_i;
+            const size_t col = offset / dim_i;
+
+            const auto jacobian_i_offset = factor_idx * dim_e * dim_i;
+            const auto jacobian_j_offset = factor_idx * dim_e * dim_j;
+            const auto precision_offset = factor_idx * dim_e * dim_e;
+
+            const auto J = jacobian_j + jacobian_j_offset;
+            const auto Jt = jacobian_i + jacobian_i_offset;
+            const auto p = precision + precision_offset;
+
+            // Each thread computes one element of the Hessian block
+            using highp = T;
+            highp value = 0;
+            // #pragma unroll
+            for (int i = 0; i < E; i++) { // p row
+                highp pj = 0;
+                // #pragma unroll
+                for (int j = 0; j < E; j++) { // p col
+                    pj += (highp)p[i * E + j] * (highp)J[j];
+                }
+                value += (highp)Jt[i] * pj;
+            }
+
+            value *= (highp)chi2_derivative[factor_idx];
+
+            const auto offset = block_offsets[block_id] + (row + col * dim_i);
+            S lp_value = static_cast<S>(value);
+            atomicAdd(hessian + offset, lp_value);
+        }
+
+
+    }
+
+
     template <typename T> class HessianBlocks {
         public:
         std::pair<size_t, size_t> dimensions;
@@ -152,6 +228,89 @@ namespace graphite {
 
         void compute_hessian_blocks(Graph<T, S>* graph) {
             thrust::fill(thrust::device, d_hessian.begin(), d_hessian.end(), static_cast<S>(0.0));
+
+            thrust::host_vector<size_t> h_block_offsets;
+            thrust::device_vector<size_t> d_block_offsets;
+
+            auto & f_desc = graph->get_factor_descriptors();
+            for (auto & f: f_desc) {
+                    const size_t num_vertices = f->get_num_vertices();
+                    const auto & active_factors = f->active_indices;
+                    const auto device_ids = f->device_ids.data().get();
+                    const auto host_ids = f->host_ids.data().get();
+                    for (size_t i = 0; i < num_vertices; i++) {
+                        const auto vi_active = f->vertex_descriptors[i]->active_state.data().get();
+                        const vi_block_ids = f->vertex_descriptors[i]->block_ids.data().get();
+                        for (size_t j = i; j < num_vertices; j++) {
+                            const auto vj_active = f->vertex_descriptors[j]->active_state.data.get();
+                            const vj_block_ids = f->vertex_descriptors[j]->block_ids.data().get();
+                            // Iterate over active factors and generate block coordinates
+                            h_block_offsets.clear();
+                            h_block_offsets.reserve(active_factors.size());
+                            for (const auto & factor_idx : active_factors) {
+                                // TODO: Build this in the GPU using a GPU hash map
+                                const auto vi_id = host_ids[factor_idx * num_vertices + i];
+                                const auto vj_id = host_ids[factor_idx * num_vertices + j];
+
+                                if (is_vertex_active(vi_active, vi_id) && is_vertex_active(vj_active, vj_id)) {
+                                    const auto block_i = vi_block_ids[vi_id];
+                                    const auto block_j = vj_block_ids[vj_id];
+                                    BlockCoordinates coordinates{block_i, block_j};
+
+                                    auto it = block_indices.find(coordinates);
+                                    if (it != block_indices.end()) {
+                                        const size_t block_offset = it->second;
+                                        h_block_offsets.push_back(block_offset);
+                                    }
+                                    else {
+                                        // TODO: this should actually be an error
+                                        // but also impossible
+                                        h_block_offsets.push_back(0);
+                                    }
+                                }
+                                else {
+                                    h_block_offsets.push_back(0); // need it to be same size as active_factors
+                                }
+                            }
+
+                            d_block_offsets = h_block_offsets;
+
+                            // now launch a kernel to compute the Hessian blocks
+
+                            const auto dim_i = f->vertex_descriptors[i]->dimension();
+                            const auto dim_j = f->vertex_descriptors[j]->dimension();
+                            const auto dim_e = f->jacobians[i].dimensions.first, // this should give you error dim E
+                            const size_t block_dim = dim_i * dim_j;
+                            const size_t num_threads = active_factors.size()*block_dim;
+                            const size_t threads_per_block = 256;
+                            const size_t num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
+
+                            compute_hessian_block_kernel<T, S><<<num_blocks, block_dim>>>(
+                                i,
+                                j,
+                                dim_i,
+                                dim_j,
+                                dim_e,
+                                num_vertices,
+                                active_factors.data().get(),
+                                active_factors.size(),
+                                device_ids,
+                                d_block_offsets.data().get(),
+                                vi_active,
+                                vj_active,
+                                f->jacobians[i].data.data().get(),
+                                f->jacobians[j].data.data().get(),
+                                f->precision_matrices.data().get(),
+                                f->chi2_derivative.data().get(),
+                                d_hessian.data().get()
+                            );
+
+                            cudaStreamSynchronize(0);
+ 
+                        }
+                    }
+                }
+
 
         }
 
