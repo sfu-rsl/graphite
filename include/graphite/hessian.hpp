@@ -80,11 +80,7 @@ namespace graphite {
 
     template <typename T, typename S>
     class Hessian {
-
         private:
-        thrust::unified_vector<size_t> hessian_counts;
-        // First value is the number of blocks (upper bound guess), second is the pointer to the count value
-        std::unordered_map<BlockDimension, std::pair<size_t, size_t*>> hessian_count_map;
 
         // Returns coordinates of upper triangular filled-in Hessian blocks
         std::vector<BlockCoordinates> get_block_coordinates(Graph<T, S>* graph) {
@@ -153,7 +149,22 @@ namespace graphite {
             thrust::copy(thrust::device, block_coords.begin(), block_coords.end(), host_block_coords.begin());
             return host_block_coords;
         }
-        
+
+        void compute_hessian_blocks(Graph<T, S>* graph) {
+            thrust::fill(thrust::device, d_hessian.begin(), d_hessian.end(), static_cast<S>(0.0));
+
+        }
+
+        void build_indices(Graph<T, S>* graph) {
+
+        }
+
+
+        // Data
+        std::unordered_map<BlockCoordinates, size_t> block_indices;
+        thrust::device_vector<S> d_hessian;
+
+
         public:
 
         Hessian() = default;
@@ -171,17 +182,24 @@ namespace graphite {
             // Then we need to allocate memory for each block
             // We can iterate the set and figure out the total memory,
             // then allocate a big chunk and assign pointers accordingly
+            // TODO: Maybe we can use an GPU exclusive scan instead?
+            size_t num_values = 0;
+            for (const auto & coord : block_coords) {
+                block_indices[coord] = num_values;
+                num_values += graph->get_variable_dimension(coord.row) * graph->get_variable_dimension(coord.col);
+            }
+            d_hessian.resize(num_values);
 
             // Then for each GPU block, need to calculate the Hessian block values
             // for each descriptor combination in a constraint, we basically need a factor ID, each jacobian pointer for each vertex descriptor,
             // the precision matrix data pointer, and the output location (idx or pointer)
+            compute_hessian_blocks(graph);
 
             // We need to end up with a block CSC-style representation
             // where we can iterate down the blocks in each block columnn
             // and retrieve the data pointer for each block for the purpose of
             // constructing a scalar CSC-style representation.
-
-
+            build_indices(graph);
 
             // Old - can't use without GPU hash map
             // // 1. First, need to count how many Hessian blocks we have
@@ -213,6 +231,8 @@ namespace graphite {
 
 
         }
+
+        // Need functions for applying damping factor and recalculating Hessian with same structure
 
 
     };

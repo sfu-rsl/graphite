@@ -18,11 +18,15 @@ private:
   thrust::device_vector<T> b;
   thrust::device_vector<T> jacobian_scales;
   size_t hessian_column;
+  std::vector<size_t> hessian_offsets;
 
 public:
   Graph() {}
 
-  size_t get_hessian_dimension() { return hessian_column; }
+  size_t get_hessian_dimension() const { return hessian_column; }
+  size_t get_variable_dimension(const size_t block_index) const {
+    return hessian_offsets[block_index+1]-hessian_offsets[block_index];
+  }
 
   thrust::device_vector<T> &get_b() { return b; }
 
@@ -72,14 +76,17 @@ public:
     // Assign Hessian columns to local indices
     hessian_column = 0;
     size_t hessian_block_index = 0;
+    hessian_offsets.clear();
     for (const auto &entry : global_to_local_combined) {
       if (vertex_descriptors[entry.second.first]->is_active(entry.first)) {
         vertex_descriptors[entry.second.first]->set_hessian_column(
             entry.first, hessian_column, hessian_block_index);
+        hessian_offsets.push_back(hessian_column);
         hessian_column += vertex_descriptors[entry.second.first]->dimension();
         hessian_block_index++;
       }
     }
+    hessian_offsets.push_back(hessian_column);
 
     // Copy vertex values to device
     for (auto &desc : vertex_descriptors) {
