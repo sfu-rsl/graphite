@@ -27,6 +27,9 @@ public:
   size_t get_variable_dimension(const size_t block_index) const {
     return hessian_offsets[block_index+1]-hessian_offsets[block_index];
   }
+  size_t get_num_block_columns() const {
+    return hessian_offsets.size() - 1;
+  }
 
   thrust::device_vector<T> &get_b() { return b; }
 

@@ -201,11 +201,11 @@ namespace graphite {
 
             thrust::sort(thrust::device, block_coords.begin(), block_coords.end(),
                 [] __device__ (const BlockCoordinates & a, const BlockCoordinates & b) {
-                    // sort 2D coordinate
-                    if (a.row == b.row) {
-                        return a.col < b.col;
+                    // sort so that we get blocks in column-major order (e.g consecutive indices in same column)
+                    if (a.col == b.col) {
+                        return a.row < b.row;
                     }
-                    return a.row < b.row;
+                    return a.col < b.col;
                 }
             );
 
@@ -314,14 +314,49 @@ namespace graphite {
 
         }
 
-        void build_indices(Graph<T, S>* graph) {
+        // Block coords must be unique and in column-major order
+        // Build block-csc style indices on the host that we can access on GPU for quickly
+        // constructing a scalar CSC-style Hessian matrix (upper triangle only)
 
+        void build_indices(Graph<T, S>* graph, const std::vector<BlockCoordinates>& block_coords) {
+            const auto num_columns = graph->num_block_columns();
+            thrust::host_vector<size_t> col_pointers(num_columns + 1);
+            thrust::host_vector<size_t> row_indices(block_coords.size());
+            thrust::host_vector<size_t> offsets(block_coords.size());
+            thrust::fill(thrust::host, col_pointers.begin(), col_pointers.end(), 0);
+            size_t current_col = 0;
+            for (size_t i = 0; i < block_coords.size(); i++) {
+                const auto & coord = block_coords[i];
+
+                col_pointers[coord.col + 1]++;
+                row_indices[i] = coord.row;
+                offsets[i] = coord.offset;
+                i++;
+            }
+
+
+            thrust::exclusive_scan(
+                thrust::device,
+                d_col_pointers.begin(),
+                d_col_pointers.end(),
+                d_col_pointers.begin()
+            );
+
+
+            // Transfer to device
+            d_col_pointers = col_pointers;
+            d_row_indices = row_indices;
+            d_offsets = offsets;
+ 
         }
 
 
         // Data
         std::unordered_map<BlockCoordinates, size_t> block_indices;
         thrust::device_vector<S> d_hessian;
+        thrust::device_vector<size_t> d_col_pointers;
+        thrust::device_vector<size_t> d_row_indices;
+        thrust::device_vector<size_t> d_offsets;
 
 
         public:
@@ -358,36 +393,7 @@ namespace graphite {
             // where we can iterate down the blocks in each block columnn
             // and retrieve the data pointer for each block for the purpose of
             // constructing a scalar CSC-style representation.
-            build_indices(graph);
-
-            // Old - can't use without GPU hash map
-            // // 1. First, need to count how many Hessian blocks we have
-            // // Only need to count the upper triangular part
-            // // Note: constraint must be active and both variables must be
-            // // active (non-fixed) for the Hessian block to be counted
-            
-
-            // // Allocate memory for counting
-            // hessian_counts.resize(hessian_count_map.size());
-            // thrust::fill(thrust::device, hessian_counts.begin(), hessian_counts.end(), 0);
-
-            // // Now actually count the blocks
-
-
-            // // 2. Allocate space for Hessian blocks based on count
-
-            // // Create GPU hash table per Hessian block size
-            // // where the key is the Hessian block index (i,j)
-            // // and the value is the pointer to the Hessian block
-
-
-            // // 3. Compute the Hessian blocks:
-            // // For each constraint
-            // // For each variable in a constraint
-            // // For the other variables including itself
-            // // Compute J_i^T * Sigma^{-1} * J_j (where j can equal i)
-
-
+            build_indices(graph, block_coords);
 
         }
 
