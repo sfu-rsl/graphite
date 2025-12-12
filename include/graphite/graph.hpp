@@ -31,6 +31,10 @@ public:
     return hessian_offsets.size() - 1;
   }
 
+  const std::vector<size_t> & get_offset_vector() const {
+    return hessian_offsets;
+  }
+
   thrust::device_vector<T> &get_b() { return b; }
 
   std::vector<BaseVertexDescriptor<T, S> *> &get_vertex_descriptors() {

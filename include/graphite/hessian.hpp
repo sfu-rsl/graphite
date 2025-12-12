@@ -347,9 +347,120 @@ namespace graphite {
             d_col_pointers = col_pointers;
             d_row_indices = row_indices;
             d_offsets = offsets;
+            d_hessian_offsets = graph->get_offset_vector();
  
         }
 
+
+        void backup_diagonal(Graph<T, S>* graph, streams &streams) {
+            d_prev_diagonal.resize(graph->get_hessian_dimension());
+            
+            auto diag = d_prev_diagonal.data().get(); 
+            const auto h_offsets = d_hessian_offsets.data().get();
+            const auto p_col = d_col_pointers.data().get();
+            const auto r_idx = d_row_indices.data().get();
+            const auto block_locations = d_offsets.data().get();
+            const auto h = d_hessian.data().get();
+
+            thrust::for_each(
+                thrust::device,
+                thrust::make_counting_iterator<size_t>(0),
+                thrust::make_counting_iterator<size_t>(graph->get_num_block_columns()),
+                [=] __device__ (size_t block_col) {
+                    const size_t hessian_col = h_offsets[block_col];
+                    const size_t dim = h_offsets[block_col + 1] - hessian_col;
+
+                    // find diagonal block in column where row == col
+                    const auto start = p_col[block_col];
+                    const auto end = p_col[block_col + 1];
+
+                    for (size_t b = start; b < end; b++) {
+                        if (r_idx[b] == block_col) {
+                            // found diagonal block, copy elements
+                            const auto block = h + block_locations[b];
+                            for (size_t i = 0; i < dim; i++) {
+                                diag[hessian_col + i] = block[i * dim + i];
+                            }
+                            break;
+                        }
+                    }
+                }
+            );
+        }
+
+        void restore_diagonal(Graph<T, S>* graph, streams &streams) {
+            d_prev_diagonal.resize(graph->get_hessian_dimension());
+            
+            const auto diag = d_prev_diagonal.data().get(); 
+            const auto h_offsets = d_hessian_offsets.data().get();
+            const auto p_col = d_col_pointers.data().get();
+            const auto r_idx = d_row_indices.data().get();
+            const auto block_locations = d_offsets.data().get();
+            auto h = d_hessian.data().get();
+
+            thrust::for_each(
+                thrust::device,
+                thrust::make_counting_iterator<size_t>(0),
+                thrust::make_counting_iterator<size_t>(graph->get_num_block_columns()),
+                [=] __device__ (size_t block_col) {
+                    const size_t hessian_col = h_offsets[block_col];
+                    const size_t dim = h_offsets[block_col + 1] - hessian_col;
+
+                    // find diagonal block in column where row == col
+                    const auto start = p_col[block_col];
+                    const auto end = p_col[block_col + 1];
+
+                    for (size_t b = start; b < end; b++) {
+                        if (r_idx[b] == block_col) {
+                            // found diagonal block, copy elements
+                            const auto block = h + block_locations[b];
+                            for (size_t i = 0; i < dim; i++) {
+                                block[i * dim + i] = diag[hessian_col + i];
+                            }
+                            break;
+                        }
+                    }
+                }
+            );
+        }
+        
+
+        void backup_diagonal_and_apply_damping(Graph<T, S>* graph, T damping_factor, streams &streams) {
+            d_prev_diagonal.resize(graph->get_hessian_dimension());
+            
+            auto diag = d_prev_diagonal.data().get(); 
+            const auto h_offsets = d_hessian_offsets.data().get();
+            const auto p_col = d_col_pointers.data().get();
+            const auto r_idx = d_row_indices.data().get();
+            const auto block_locations = d_offsets.data().get();
+            auto h = d_hessian.data().get();
+
+            thrust::for_each(
+                thrust::device,
+                thrust::make_counting_iterator<size_t>(0),
+                thrust::make_counting_iterator<size_t>(graph->get_num_block_columns()),
+                [=] __device__ (size_t block_col) {
+                    const size_t hessian_col = h_offsets[block_col];
+                    const size_t dim = h_offsets[block_col + 1] - hessian_col;
+
+                    // find diagonal block in column where row == col
+                    const auto start = p_col[block_col];
+                    const auto end = p_col[block_col + 1];
+
+                    for (size_t b = start; b < end; b++) {
+                        if (r_idx[b] == block_col) {
+                            // found diagonal block, backup then apply damping
+                            const auto block = h + block_locations[b];
+                            for (size_t i = 0; i < dim; i++) {
+                                diag[hessian_col + i] = block[i * dim + i];
+                                block[i*dim + i] = (S)((double)block[i*dim + i] * (1.0 + (double)damping_factor));
+                            }
+                            break;
+                        }
+                    }
+                }
+            );
+        }
 
         // Data
         std::unordered_map<BlockCoordinates, size_t> block_indices;
@@ -357,6 +468,8 @@ namespace graphite {
         thrust::device_vector<size_t> d_col_pointers;
         thrust::device_vector<size_t> d_row_indices;
         thrust::device_vector<size_t> d_offsets;
+        thrust::device_vector<S> d_prev_diagonal;
+        thrust::device_vector<size_t> d_hessian_offsets;
 
 
         public:
@@ -397,7 +510,7 @@ namespace graphite {
 
         }
 
-        // Need functions for applying damping factor and recalculating Hessian with same structure
+
 
 
     };
