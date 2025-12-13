@@ -90,6 +90,7 @@ public:
   virtual bool is_fixed(const size_t id) const = 0;
   virtual bool is_active(const size_t id) const = 0;
   virtual uint8_t *get_active_state() const = 0;
+  virtual const size_t* get_block_ids() const = 0;
 };
 
 template <typename T, typename S, typename VTraits>
@@ -264,6 +265,10 @@ public:
 
   uint8_t *get_active_state() const override {
     return active_state.data().get();
+  }
+
+  const size_t *get_block_ids() const override {
+    return block_ids.data().get();
   }
 
   VertexType *get_vertex(const size_t id) {
