@@ -4,6 +4,9 @@
 #include <utility>
 #include <unordered_map>
 #include <thrust/universal_vector.h>
+#include <graphite/utils.hpp>
+#include <thrust/sort.h>
+#include <thrust/unique.h>
 
 
 namespace graphite {
@@ -22,8 +25,12 @@ namespace std {
         size_t operator()(const graphite::BlockCoordinates& bc) const {
             // Combine row and col into a single hash value
             // Requires C++ 20
-            return std::hash<std::pair<size_t, size_t>>{}(
-                std::make_pair(bc.row, bc.col));
+            // return std::hash<std::pair<size_t, size_t>>{}(
+            //     std::make_pair(bc.row, bc.col));
+            size_t seed = 0;
+            graphite::hash_combine(seed, bc.row);
+            graphite::hash_combine(seed, bc.col);
+            return seed;
         }
     };
 }
@@ -48,7 +55,7 @@ namespace graphite {
         const S* jacobian_j,
         const S* precision,
         const S* chi2_derivative,
-        S* hessian,
+        S* hessian
     ) {
         // TODO: simpify and optimize this kernel
         const auto idx = get_thread_id();
@@ -86,20 +93,20 @@ namespace graphite {
             using highp = T;
             highp value = 0;
             // #pragma unroll
-            for (int i = 0; i < E; i++) { // p row
+            for (int i = 0; i < dim_e; i++) { // p row
                 highp pj = 0;
                 // #pragma unroll
-                for (int j = 0; j < E; j++) { // p col
-                    pj += (highp)p[i * E + j] * (highp)J[j];
+                for (int j = 0; j < dim_e; j++) { // p col
+                    pj += (highp)p[i * dim_e + j] * (highp)J[j];
                 }
                 value += (highp)Jt[i] * pj;
             }
 
             value *= (highp)chi2_derivative[factor_idx];
 
-            const auto offset = block_offsets[block_id] + (row + col * dim_i);
+            auto block = hessian + (block_offsets[block_id] + (row + col * dim_i));
             S lp_value = static_cast<S>(value);
-            atomicAdd(hessian + offset, lp_value);
+            atomicAdd(block, lp_value);
         }
 
 
@@ -130,33 +137,9 @@ namespace graphite {
         
     };
 
-    class MulItem {
-        public:
-        size_t factor_id; // used to look up each Jacobian per vertex descriptor
-        size_t output_id; // used to find the location of the output Hessian block
-    };
-
-    // Create one list per combination of vertex descriptors per factor
-    class MulList {
-        private:
-        thrust::unified_vector<MulItem> items;
-        public:
-        void add_item(const MulItem& item) {
-            items.push_back(item);
-        }
-
-        void clear() {
-            items.clear();
-        }
-
-        size_t size() const {
-            return items.size();
-        }
-    };
-
     template <typename T, typename S>
     class Hessian {
-        private:
+        public:
 
         // Returns coordinates of upper triangular filled-in Hessian blocks
         std::vector<BlockCoordinates> get_block_coordinates(Graph<T, S>* graph) {
@@ -171,10 +154,10 @@ namespace graphite {
                 const auto device_ids = f->device_ids.data().get();
                 for (size_t i = 0; i < num_vertices; i++) {
                     const auto vi_active = f->vertex_descriptors[i]->active_state.data().get();
-                    const vi_block_ids = f->vertex_descriptors[i]->block_ids.data().get();
+                    const auto vi_block_ids = f->vertex_descriptors[i]->block_ids.data().get();
                     for (size_t j = i; j < num_vertices; j++) {
                         const auto vj_active = f->vertex_descriptors[j]->active_state.data.get();
-                        const vj_block_ids = f->vertex_descriptors[j]->block_ids.data().get();
+                        const auto vj_block_ids = f->vertex_descriptors[j]->block_ids.data().get();
                         // Iterate over active factors and generate block coordinates
                         thrust::transform_if(
                             thrust::device,
@@ -189,7 +172,7 @@ namespace graphite {
                                 const auto block_j = vj_block_ids[vj_id];
                                 return BlockCoordinates{block_i, block_j};
                             },
-                            [] __device__ (const size_t & factor_idx) {
+                            [=] __device__ (const size_t & factor_idx) {
                                 const auto vi_id = device_ids[factor_idx * num_vertices + i];
                                 const auto vj_id = device_ids[factor_idx * num_vertices + j];
                                 return (is_vertex_active(vi_active, vi_id) && is_vertex_active(vj_active, vj_id));
@@ -240,10 +223,10 @@ namespace graphite {
                     const auto host_ids = f->host_ids.data().get();
                     for (size_t i = 0; i < num_vertices; i++) {
                         const auto vi_active = f->vertex_descriptors[i]->active_state.data().get();
-                        const vi_block_ids = f->vertex_descriptors[i]->block_ids.data().get();
+                        const auto vi_block_ids = f->vertex_descriptors[i]->block_ids.data().get();
                         for (size_t j = i; j < num_vertices; j++) {
                             const auto vj_active = f->vertex_descriptors[j]->active_state.data.get();
-                            const vj_block_ids = f->vertex_descriptors[j]->block_ids.data().get();
+                            const auto vj_block_ids = f->vertex_descriptors[j]->block_ids.data().get();
                             // Iterate over active factors and generate block coordinates
                             h_block_offsets.clear();
                             h_block_offsets.reserve(active_factors.size());
@@ -279,7 +262,7 @@ namespace graphite {
 
                             const auto dim_i = f->vertex_descriptors[i]->dimension();
                             const auto dim_j = f->vertex_descriptors[j]->dimension();
-                            const auto dim_e = f->jacobians[i].dimensions.first, // this should give you error dim E
+                            const auto dim_e = f->jacobians[i].dimensions.first; // this should give you error dim E
                             const size_t block_dim = dim_i * dim_j;
                             const size_t num_threads = active_factors.size()*block_dim;
                             const size_t threads_per_block = 256;
@@ -330,8 +313,7 @@ namespace graphite {
 
                 col_pointers[coord.col + 1]++;
                 row_indices[i] = coord.row;
-                offsets[i] = coord.offset;
-                i++;
+                offsets[i] = block_indices[coord];
             }
 
 
@@ -352,7 +334,7 @@ namespace graphite {
         }
 
 
-        void backup_diagonal(Graph<T, S>* graph, streams &streams) {
+        void backup_diagonal(Graph<T, S>* graph, StreamPool &streams) {
             d_prev_diagonal.resize(graph->get_hessian_dimension());
             
             auto diag = d_prev_diagonal.data().get(); 
@@ -388,7 +370,7 @@ namespace graphite {
             );
         }
 
-        void restore_diagonal(Graph<T, S>* graph, streams &streams) {
+        void restore_diagonal(Graph<T, S>* graph, StreamPool &streams) {
             d_prev_diagonal.resize(graph->get_hessian_dimension());
             
             const auto diag = d_prev_diagonal.data().get(); 
@@ -425,7 +407,7 @@ namespace graphite {
         }
         
 
-        void backup_diagonal_and_apply_damping(Graph<T, S>* graph, T damping_factor, streams &streams) {
+        void backup_diagonal_and_apply_damping(Graph<T, S>* graph, T damping_factor, StreamPool &streams) {
             d_prev_diagonal.resize(graph->get_hessian_dimension());
             
             auto diag = d_prev_diagonal.data().get(); 
@@ -477,7 +459,7 @@ namespace graphite {
         Hessian() = default;
 
 
-        void build(Graph<T, S>* graph, T damping_factor, streams &streams) {
+        void build(Graph<T, S>* graph, T damping_factor, StreamPool &streams) {
             // Implementation for building the Hessian matrix
             
             // Assume we don't have a GPU hash map.
@@ -509,10 +491,6 @@ namespace graphite {
             build_indices(graph, block_coords);
 
         }
-
-
-
-
     };
 
 }
