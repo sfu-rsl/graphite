@@ -95,4 +95,22 @@ public:
   void release(H handle) { handles.push_back(handle); }
 };
 
+
+// Based on method from Boost
+// https://www.boost.org/doc/libs/latest/libs/container_hash/doc/html/hash.html#ref_hash_combine
+
+size_t mix(size_t x) {
+  x ^= x >> 32;
+  x *= 0xe9846af9b1a615d;
+  x ^= x >> 32;
+  x *= 0xe9846af9b1a615d;
+  x ^= x >> 28;
+  return x;
+}
+
+template<typename T>
+void hash_combine(size_t & seed, T const& v) {
+  seed = mix(seed + 0x9e3779b9 + std::hash<T>{}(v));
+}
+
 } // namespace graphite
