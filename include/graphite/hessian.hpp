@@ -56,7 +56,7 @@ namespace graphite {
                 f->get_hessian_block_coordinates(block_coords);
            }
 
-            std::cout << "Sorting and removing duplicate block coordinates..." << std::endl;
+            // std::cout << "Sorting and removing duplicate block coordinates..." << std::endl;
             thrust::sort(thrust::device, block_coords.begin(), block_coords.end(),
                 [] __device__ (const BlockCoordinates & a, const BlockCoordinates & b) {
                     // sort so that we get blocks in column-major order (e.g consecutive indices in same column)
@@ -84,7 +84,7 @@ namespace graphite {
             return host_block_coords;
         }
 
-        void compute_hessian_blocks(Graph<T, S>* graph) {
+        void compute_hessian_blocks(Graph<T, S>* graph, StreamPool &streams) {
             thrust::fill(thrust::device, d_hessian.begin(), d_hessian.end(), static_cast<S>(0.0));
 
             thrust::host_vector<size_t> h_block_offsets;
@@ -92,7 +92,7 @@ namespace graphite {
 
             auto & f_desc = graph->get_factor_descriptors();
             for (auto & f: f_desc) {
-                f->compute_hessian_blocks(block_indices, d_hessian, h_block_offsets, d_block_offsets);
+                f->compute_hessian_blocks(block_indices, d_hessian, h_block_offsets, d_block_offsets, streams);
             }
 
 
@@ -293,7 +293,7 @@ namespace graphite {
             // the precision matrix data pointer, and the output location (idx or pointer)
             // std::cout << "Computing Hessian blocks..." << std::endl;
             // auto t4 = std::chrono::steady_clock::now();
-            compute_hessian_blocks(graph);
+            compute_hessian_blocks(graph, streams);
             // auto t5 = std::chrono::steady_clock::now();
             // std::cout << "Time to compute Hessian blocks: "
             //           << std::chrono::duration<double>(t5 - t4).count() << " seconds" << std::endl;
