@@ -8,6 +8,7 @@
 #include <memory>
 #include <thrust/execution_policy.h>
 #include <thrust/inner_product.h>
+#include <graphite/hessian.hpp>
 
 namespace graphite {
 
@@ -48,6 +49,15 @@ public:
   // Assumes that x is already initialized
   virtual bool solve(Graph<T, S> *graph, T *x, T damping_factor,
                      StreamPool &streams) override {
+
+    std::cout << "Computing hessian test" << std::endl;
+    auto  th0 = std::chrono::steady_clock::now();
+    auto hessian = Hessian<T, S>();
+    hessian.build(graph, damping_factor, streams);
+    auto th1 = std::chrono::steady_clock::now();
+    std::cout << "Time to compute Hessian: "
+              << std::chrono::duration<double>(th1 - th0).count()
+              << " seconds" << std::endl;
 
     auto &vertex_descriptors = graph->get_vertex_descriptors();
     auto &factor_descriptors = graph->get_factor_descriptors();

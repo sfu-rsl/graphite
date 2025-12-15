@@ -268,32 +268,46 @@ namespace graphite {
             // We'll create a set of Hessian block coordinates by iterating over descriptors
             // Ignore blocks not in the upper triangular part
             std::cout << "Getting Hessian block coordinates..." << std::endl;
+            auto t0 = std::chrono::steady_clock::now();
             const auto block_coords = get_block_coordinates(graph);
-
+            auto t1 = std::chrono::steady_clock::now();
+            std::cout << "Time to get block coordinates: "
+                      << std::chrono::duration<double>(t1 - t0).count() << " seconds" << std::endl;
             // Then we need to allocate memory for each block
             // We can iterate the set and figure out the total memory,
             // then allocate a big chunk and assign pointers accordingly
             // TODO: Maybe we can use an GPU exclusive scan instead?
             std::cout << "Allocating Hessian blocks..." << std::endl;
+            auto t2 = std::chrono::steady_clock::now();
             size_t num_values = 0;
             for (const auto & coord : block_coords) {
                 block_indices[coord] = num_values;
                 num_values += graph->get_variable_dimension(coord.row) * graph->get_variable_dimension(coord.col);
             }
             d_hessian.resize(num_values);
-
+            auto t3 = std::chrono::steady_clock::now();
+            std::cout << "Time to allocate Hessian blocks: "
+                      << std::chrono::duration<double>(t3 - t2).count() << " seconds" << std::endl;
             // Then for each GPU block, need to calculate the Hessian block values
             // for each descriptor combination in a constraint, we basically need a factor ID, each jacobian pointer for each vertex descriptor,
             // the precision matrix data pointer, and the output location (idx or pointer)
             std::cout << "Computing Hessian blocks..." << std::endl;
+            auto t4 = std::chrono::steady_clock::now();
             compute_hessian_blocks(graph);
+            auto t5 = std::chrono::steady_clock::now();
+            std::cout << "Time to compute Hessian blocks: "
+                      << std::chrono::duration<double>(t5 - t4).count() << " seconds" << std::endl;
 
             // We need to end up with a block CSC-style representation
             // where we can iterate down the blocks in each block columnn
             // and retrieve the data pointer for each block for the purpose of
             // constructing a scalar CSC-style representation.
             std::cout << "Building Hessian indices..." << std::endl;
+            auto t6 = std::chrono::steady_clock::now();
             build_indices(graph, block_coords);
+            auto t7 = std::chrono::steady_clock::now();
+            std::cout << "Time to build Hessian indices: "
+                      << std::chrono::duration<double>(t7 - t6).count() << " seconds" << std::endl;
 
         }
     };
