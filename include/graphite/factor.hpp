@@ -640,18 +640,19 @@ public:
                         thrust::device_vector<size_t>& d_block_offsets) override {
 
       const size_t num_vertices = get_num_vertices();
-      const auto & active_factors = active_indices;
+      const auto & d_active_factors = active_indices;
+      thrust::host_vector<size_t> h_active_factors = active_indices;
       const auto d_ids = device_ids.data().get();
       const auto h_ids = &host_ids[0];
-      double kernel_time = 0.0;
-      double setup_time = 0.0;
+      // double kernel_time = 0.0;
+      // double setup_time = 0.0;
       const cudaStream_t stream = 0; // default stream
 
       size_t mul_count = 0;
       // Determine max number of multiplications based on active factors
       for (size_t i = 0; i < num_vertices; i++) {
           for (size_t j = i; j < num_vertices; j++) {
-              mul_count += active_factors.size();
+              mul_count += d_active_factors.size();
           }
       }
       h_block_offsets.resize(mul_count);
@@ -668,11 +669,9 @@ public:
               const auto vj_active = vertex_descriptors[j]->get_active_state();
               const auto vj_block_ids = vertex_descriptors[j]->get_block_ids();
               // Iterate over active factors and generate block coordinates
-              // h_block_offsets.clear();
-              // h_block_offsets.reserve(active_factors.size());
               const auto start_idx = write_idx;
-              auto start_setup = std::chrono::steady_clock::now();
-              for (const auto & factor_idx : active_factors) {
+              // auto start_setup = std::chrono::steady_clock::now();
+              for (const auto & factor_idx : h_active_factors) {
                   // TODO: Build this in the GPU using a GPU hash map
                   const auto vi_id = h_ids[factor_idx * num_vertices + i];
                   const auto vj_id = h_ids[factor_idx * num_vertices + j];
@@ -685,24 +684,19 @@ public:
                       auto it = block_indices.find(coordinates);
                       if (it != block_indices.end()) {
                           const size_t block_offset = it->second;
-                          // h_block_offsets.push_back(block_offset);
                           h_block_offsets[write_idx++] = block_offset;
                       }
                       else {
-                          // TODO: this should actually be an error
-                          // but also impossible
-                          // h_block_offsets.push_back(0);
+                          // TODO: this should actually be an error, but also impossible
                           h_block_offsets[write_idx++] = 0;
                       }
                   }
                   else {
-                      // h_block_offsets.push_back(0); // need it to be same size as active_factors
                       h_block_offsets[write_idx++] = 0;
                   }
               }
 
               // Copy only the part we just built
-              // d_block_offsets = h_block_offsets;
               const size_t num_elements = write_idx - start_idx;
               cudaMemcpyAsync(d_block_offsets.data().get() + start_idx,
                               h_block_offsets.data() + start_idx,
@@ -710,19 +704,21 @@ public:
                               cudaMemcpyHostToDevice,
                               stream);
 
-              auto end_setup = std::chrono::steady_clock::now();
-              setup_time += std::chrono::duration<double>(end_setup - start_setup).count();
+              // auto end_setup = std::chrono::steady_clock::now();
+              // setup_time += std::chrono::duration<double>(end_setup - start_setup).count();
+              // std::cout << "Hessian block computation setup time for (" << i << ", " << j << "): " << std::chrono::duration<double>(end_setup - start_setup).count() << " seconds" << std::endl;
+              // std::cout << "Number of pairs were written: " << num_elements << std::endl;
               // now launch a kernel to compute the Hessian blocks
 
               const auto dim_i = vertex_descriptors[i]->dimension();
               const auto dim_j = vertex_descriptors[j]->dimension();
               const auto dim_e = jacobians[i].dimensions.first; // this should give you error dim E
               const size_t block_dim = dim_i * dim_j;
-              const size_t num_threads = active_factors.size()*block_dim;
+              const size_t num_threads = d_active_factors.size()*block_dim;
               const size_t threads_per_block = 256;
               const size_t num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
               
-              auto start_kernel = std::chrono::steady_clock::now();
+              // auto start_kernel = std::chrono::steady_clock::now();
               compute_hessian_block_kernel<T, S><<<num_blocks, block_dim, 0, stream>>>(
                   i,
                   j,
@@ -730,8 +726,8 @@ public:
                   dim_j,
                   dim_e,
                   num_vertices,
-                  active_factors.data().get(),
-                  active_factors.size(),
+                  d_active_factors.data().get(),
+                  d_active_factors.size(),
                   d_ids,
                   d_block_offsets.data().get() + start_idx,
                   vi_active,
@@ -744,18 +740,18 @@ public:
               );
 
               // cudaStreamSynchronize(stream);
-              auto end_kernel = std::chrono::steady_clock::now();
-              kernel_time += std::chrono::duration<double>(end_kernel - start_kernel).count();
+              // auto end_kernel = std::chrono::steady_clock::now();
+              // kernel_time += std::chrono::duration<double>(end_kernel - start_kernel).count();
 
           }
       }
 
-      std::cout << "Hessian block computation setup time: " << setup_time << " seconds" << std::endl;
-      std::cout << "Hessian block computation kernel time: " << kernel_time << " seconds" << std::endl;
-      auto t_sync_start = std::chrono::steady_clock::now();
+      // std::cout << "Hessian block computation setup time: " << setup_time << " seconds" << std::endl;
+      // std::cout << "Hessian block computation kernel time: " << kernel_time << " seconds" << std::endl;
+      // auto t_sync_start = std::chrono::steady_clock::now();
       cudaStreamSynchronize(stream);
-      auto t_sync_end = std::chrono::steady_clock::now();
-      std::cout << "Hessian block computation sync time: " << std::chrono::duration<double>(t_sync_end - t_sync_start).count() << " seconds" << std::endl;
+      // auto t_sync_end = std::chrono::steady_clock::now();
+      // std::cout << "Hessian block computation sync time: " << std::chrono::duration<double>(t_sync_end - t_sync_start).count() << " seconds" << std::endl;
   }
 };
 
