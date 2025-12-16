@@ -15,7 +15,15 @@
 namespace graphite {
 
 
+    template <typename T>
+    class CSRMatrix {
+        public:
 
+        thrust::device_vector<size_t> d_row_pointers;
+        thrust::device_vector<size_t> d_col_indices;
+        thrust::device_vector<T> d_values;
+
+    };
 
     template <typename T> class HessianBlocks {
         public:
@@ -125,12 +133,31 @@ namespace graphite {
                 d_col_pointers.begin()
             );
 
-
             // Transfer to device
             d_col_pointers = col_pointers;
             d_row_indices = row_indices;
             d_offsets = offsets;
             d_hessian_offsets = graph->get_offset_vector();
+
+            // Also need a map of scalar column to block column for constructing CSR matrices
+            scalar_to_block_map.resize(graph->get_hessian_dimension());
+            auto p_map = scalar_to_block_map.data().get();
+            const auto bc_offset = d_hessian_offsets.data().get();
+            thrust::for_each(
+                thrust::device,
+                thrust::make_counting_iterator<size_t>(0),
+                thrust::make_counting_iterator<size_t>(graph->get_num_block_columns()),
+                [=] __device__ (size_t block_column) {
+                    const size_t hessian_col = bc_offset[block_column];
+                    const auto dim = bc_offset[block_column + 1] - hessian_col;
+
+                    for (size_t i = 0; i < dim; i++) {
+                        p_map[hessian_col + i] = block_column;
+                    }
+                    
+                }
+            );
+
  
         }
 
@@ -253,6 +280,7 @@ namespace graphite {
         thrust::device_vector<size_t> d_offsets;
         thrust::device_vector<S> d_prev_diagonal;
         thrust::device_vector<size_t> d_hessian_offsets;
+        thrust::device_vector<size_t> scalar_to_block_map;
 
 
         public:
@@ -310,6 +338,154 @@ namespace graphite {
             //           << std::chrono::duration<double>(t7 - t6).count() << " seconds" << std::endl;
 
         }
+
+
+        void build_csr_matrix(Graph<T, S>* graph, CSRMatrix<S> & matrix) {
+
+            update_csr_structure(graph, matrix);
+            update_csr_values(graph, matrix);
+        }
+
+        void update_csr_structure(Graph<T, S>* graph, CSRMatrix<S> & matrix) {
+            
+            // const auto nnz = d_hessian.size(); // this is an upper bound, since it stores all values of blocks on the diagonal
+            const auto hessian_dim = graph->get_hessian_dimension();
+            matrix.d_row_pointers.resize(hessian_dim + 1);
+            thrust::fill(thrust::device, matrix.d_row_pointers.begin(), matrix.d_row_pointers.end(), 0);
+
+            // Now we count how many values in each column.
+            // Note that we're using a block CSC variant (each block is column major)
+            // and we can use this to construct a triangular CSR matrix because
+            // the Hessian is symmetric.
+
+            // Iterate through each block column
+
+            const auto h = d_hessian.data().get();
+            const auto p_col = d_col_pointers.data().get();
+            const auto r_idx = d_row_indices.data().get();
+            const auto block_locations = d_offsets.data().get();
+            const auto hessian_offsets = d_hessian_offsets.data().get(); // this is scalar offset
+            const auto s2b_map = scalar_to_block_map.data().get();
+            
+            auto scalar_row_ptrs = matrix.d_row_pointers.data().get();
+
+
+            thrust::for_each(
+                thrust::device,
+                thrust::make_counting_iterator<size_t>(0),
+                thrust::make_counting_iterator<size_t>(hessian_dim),
+                [=] __device__ (const size_t hessian_col) {
+                    const auto block_col = s2b_map[hessian_col];
+                    const size_t ncols = hessian_offsets[block_col + 1] - hessian_col;
+
+                    // find diagonal block in column where row == col
+                    const auto start = p_col[block_col];
+                    const auto end = p_col[block_col + 1];
+                    const size_t num_values = 0; // values in upper triangle scalar column
+                    // Iterate through each block in the column
+                    for (size_t b = start; b < end; b++) {
+
+                        // stop if col == row
+                        const auto block_row = r_idx[b];
+                        const auto nrows = hessian_offsets[block_row + 1] - hessian_offsets[block_row];
+
+                        auto scalar_row = hessian_offsets[block_row];
+
+                        for (size_t r = 0; r < nrows; r++) {
+                            if (scalar_row + r <= hessian_col) {
+                                // only count upper triangle
+                                num_values++;
+                            }
+                        }
+
+                        if (block_row >= block_col) {
+                            // reached diagonal block, stop
+                            break;
+                        }
+
+                    }
+                    scalar_row_ptrs[hessian_col] = num_values;
+                }
+            );
+
+            // Now sum up everything
+            thrust::exclusive_scan(
+                thrust::device,
+                matrix.d_row_pointers.begin(),
+                matrix.d_row_pointers.end(),
+                matrix.d_row_pointers.begin()
+            );
+
+            // Now we need to iterate through columns again and populate 
+            // the column indices and values
+            const size_t nnz = matrix.d_row_pointers[hessian_dim]; // expensive! we're accessing device memory
+            matrix.d_col_indices.resize(nnz);
+            matrix.d_values.resize(nnz);
+
+        }
+
+        void update_csr_values(Graph<T, S>* graph, CSRMatrix<S> & matrix) {
+
+            const auto hessian_dim = graph->get_hessian_dimension();
+            const auto h = d_hessian.data().get();
+            const auto p_col = d_col_pointers.data().get();
+            const auto r_idx = d_row_indices.data().get();
+            const auto block_locations = d_offsets.data().get();
+            const auto hessian_offsets = d_hessian_offsets.data().get(); // this is scalar offset
+            const auto s2b_map = scalar_to_block_map.data().get();
+            
+            auto scalar_row_ptrs = matrix.d_row_pointers.data().get();
+
+            auto p_col_indices = matrix.d_col_indices.data().get();
+            auto p_values = matrix.d_values.data().get();
+
+            thrust::for_each(
+                thrust::device,
+                thrust::make_counting_iterator<size_t>(0),
+                thrust::make_counting_iterator<size_t>(hessian_dim),
+                [=] __device__ (const size_t hessian_col) {
+                    const auto block_col = s2b_map[hessian_col];
+                    const size_t ncols = hessian_offsets[block_col + 1] - hessian_col;
+
+                    // find diagonal block in column where row == col
+                    const auto start = p_col[block_col];
+                    const auto end = p_col[block_col + 1];
+                    const size_t num_values = 0; // values in upper triangle scalar column
+                    size_t write_idx = scalar_row_ptrs[hessian_col];
+                    // Iterate through each block in the column
+                    for (size_t b = start; b < end; b++) {
+
+                        // stop if col == row
+                        const auto block_row = r_idx[b];
+                        const auto nrows = hessian_offsets[block_row + 1] - hessian_offsets[block_row];
+
+                        auto scalar_row = hessian_offsets[block_row];
+
+                        const auto col_in_block = hessian_col - hessian_offsets[block_col];
+
+                        const auto block = h + block_locations[b] + col_in_block * nrows;
+
+                        for (size_t r = 0; r < nrows; r++) {
+                            if (scalar_row + r <= hessian_col) {
+                                // only write out upper triangle
+                                p_col_indices[write_idx] = scalar_row + r;
+                                p_values[write_idx] = block[r];
+                                write_idx++;
+                            }
+                        }
+
+                        if (block_row >= block_col) {
+                            // reached diagonal block, stop
+                            break;
+                        }
+
+                    }                
+                }
+            );
+
+        }
     };
+
+
 
 }
