@@ -53,7 +53,8 @@ public:
     std::cout << "Computing hessian test" << std::endl;
     auto  th0 = std::chrono::steady_clock::now();
     auto hessian = Hessian<T, S>();
-    hessian.build(graph, damping_factor, streams);
+    hessian.build_structure(graph, streams);
+    hessian.update_values(graph, streams);
     auto th1 = std::chrono::steady_clock::now();
     std::cout << "Time to compute Hessian: "
               << std::chrono::duration<double>(th1 - th0).count()

@@ -92,19 +92,6 @@ namespace graphite {
             return host_block_coords;
         }
 
-        void compute_hessian_blocks(Graph<T, S>* graph, StreamPool &streams) {
-            thrust::fill(thrust::device, d_hessian.begin(), d_hessian.end(), static_cast<S>(0.0));
-
-            thrust::host_vector<size_t> h_block_offsets;
-            thrust::device_vector<size_t> d_block_offsets;
-
-            auto & f_desc = graph->get_factor_descriptors();
-            for (auto & f: f_desc) {
-                f->compute_hessian_blocks(block_indices, d_hessian, h_block_offsets, d_block_offsets, streams);
-            }
-
-
-        }
 
         // Block coords must be unique and in column-major order
         // Build block-csc style indices on the host that we can access on GPU for quickly
@@ -282,13 +269,17 @@ namespace graphite {
         thrust::device_vector<size_t> d_hessian_offsets;
         thrust::device_vector<size_t> scalar_to_block_map;
 
+        // For calculating Hessian blocks
+        thrust::host_vector<size_t> h_block_offsets;
+        thrust::device_vector<size_t> d_block_offsets;
+
 
         public:
 
         Hessian() = default;
 
 
-        void build(Graph<T, S>* graph, T damping_factor, StreamPool &streams) {
+        void build_structure(Graph<T, S>* graph, StreamPool &streams) {
             // Implementation for building the Hessian matrix
             
             // Assume we don't have a GPU hash map.
@@ -321,7 +312,7 @@ namespace graphite {
             // the precision matrix data pointer, and the output location (idx or pointer)
             // std::cout << "Computing Hessian blocks..." << std::endl;
             // auto t4 = std::chrono::steady_clock::now();
-            compute_hessian_blocks(graph, streams);
+            // compute_hessian_blocks(graph, streams);
             // auto t5 = std::chrono::steady_clock::now();
             // std::cout << "Time to compute Hessian blocks: "
             //           << std::chrono::duration<double>(t5 - t4).count() << " seconds" << std::endl;
@@ -339,14 +330,20 @@ namespace graphite {
 
         }
 
+        void update_values(Graph<T, S>* graph, StreamPool& streams) {
+            thrust::fill(thrust::device, d_hessian.begin(), d_hessian.end(), static_cast<S>(0.0));
 
-        void build_csr_matrix(Graph<T, S>* graph, CSRMatrix<S> & matrix) {
+            h_block_offsets.clear();
+            d_block_offsets.clear();
 
-            update_csr_structure(graph, matrix);
-            update_csr_values(graph, matrix);
+
+            auto & f_desc = graph->get_factor_descriptors();
+            for (auto & f: f_desc) {
+                f->compute_hessian_blocks(block_indices, d_hessian, h_block_offsets, d_block_offsets, streams);
+            }
         }
 
-        void update_csr_structure(Graph<T, S>* graph, CSRMatrix<S> & matrix) {
+        void build_csr_structure(Graph<T, S>* graph, CSRMatrix<S> & matrix) {
             
             // const auto nnz = d_hessian.size(); // this is an upper bound, since it stores all values of blocks on the diagonal
             const auto hessian_dim = graph->get_hessian_dimension();
@@ -396,6 +393,9 @@ namespace graphite {
                                 // only count upper triangle
                                 num_values++;
                             }
+                            else {
+                                break;
+                            }
                         }
 
                         if (block_row >= block_col) {
@@ -422,6 +422,56 @@ namespace graphite {
             matrix.d_col_indices.resize(nnz);
             matrix.d_values.resize(nnz);
 
+
+            auto p_col_indices = matrix.d_col_indices.data().get();
+
+            // Update indices
+            thrust::for_each(
+                thrust::device,
+                thrust::make_counting_iterator<size_t>(0),
+                thrust::make_counting_iterator<size_t>(hessian_dim),
+                [=] __device__ (const size_t hessian_col) {
+                    const auto block_col = s2b_map[hessian_col];
+                    const size_t ncols = hessian_offsets[block_col + 1] - hessian_col;
+
+                    // find diagonal block in column where row == col
+                    const auto start = p_col[block_col];
+                    const auto end = p_col[block_col + 1];
+                    const size_t num_values = 0; // values in upper triangle scalar column
+                    size_t write_idx = scalar_row_ptrs[hessian_col];
+                    // Iterate through each block in the column
+                    for (size_t b = start; b < end; b++) {
+
+                        // stop if col == row
+                        const auto block_row = r_idx[b];
+                        const auto nrows = hessian_offsets[block_row + 1] - hessian_offsets[block_row];
+
+                        auto scalar_row = hessian_offsets[block_row];
+
+                        const auto col_in_block = hessian_col - hessian_offsets[block_col];
+
+
+                        for (size_t r = 0; r < nrows; r++) {
+                            if (scalar_row + r <= hessian_col) {
+                                // only write out upper triangle
+                                p_col_indices[write_idx] = scalar_row + r;
+                                write_idx++;
+                            }
+                            else {
+                                break;
+                            }
+                        }
+
+                        if (block_row >= block_col) {
+                            // reached diagonal block, stop
+                            break;
+                        }
+
+                    }                
+                }
+            );
+
+
         }
 
         void update_csr_values(Graph<T, S>* graph, CSRMatrix<S> & matrix) {
@@ -436,7 +486,6 @@ namespace graphite {
             
             auto scalar_row_ptrs = matrix.d_row_pointers.data().get();
 
-            auto p_col_indices = matrix.d_col_indices.data().get();
             auto p_values = matrix.d_values.data().get();
 
             thrust::for_each(
@@ -468,9 +517,11 @@ namespace graphite {
                         for (size_t r = 0; r < nrows; r++) {
                             if (scalar_row + r <= hessian_col) {
                                 // only write out upper triangle
-                                p_col_indices[write_idx] = scalar_row + r;
                                 p_values[write_idx] = block[r];
                                 write_idx++;
+                            }
+                            else {
+                                break;
                             }
                         }
 
