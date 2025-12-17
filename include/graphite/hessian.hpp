@@ -15,12 +15,12 @@
 namespace graphite {
 
 
-    template <typename T>
+    template <typename T, typename I>
     class CSRMatrix {
         public:
 
-        thrust::device_vector<size_t> d_row_pointers;
-        thrust::device_vector<size_t> d_col_indices;
+        thrust::device_vector<I> d_row_pointers;
+        thrust::device_vector<I> d_col_indices;
         thrust::device_vector<T> d_values;
 
     };
@@ -107,11 +107,19 @@ namespace graphite {
             for (size_t i = 0; i < block_coords.size(); i++) {
                 const auto & coord = block_coords[i];
 
-                col_pointers[coord.col + 1]++;
+                col_pointers[coord.col]++;
                 row_indices[i] = coord.row;
                 offsets[i] = block_indices[coord];
             }
 
+
+
+
+            // Transfer to device
+            d_col_pointers = col_pointers;
+            d_row_indices = row_indices;
+            d_offsets = offsets;
+            d_hessian_offsets = graph->get_offset_vector();
 
             thrust::exclusive_scan(
                 thrust::device,
@@ -120,15 +128,9 @@ namespace graphite {
                 d_col_pointers.begin()
             );
 
-            // Transfer to device
-            d_col_pointers = col_pointers;
-            d_row_indices = row_indices;
-            d_offsets = offsets;
-            d_hessian_offsets = graph->get_offset_vector();
-
             // Also need a map of scalar column to block column for constructing CSR matrices
             scalar_to_block_map.resize(graph->get_hessian_dimension());
-            auto p_map = scalar_to_block_map.data().get();
+            auto s2b_map = scalar_to_block_map.data().get();
             const auto bc_offset = d_hessian_offsets.data().get();
             thrust::for_each(
                 thrust::device,
@@ -139,11 +141,34 @@ namespace graphite {
                     const auto dim = bc_offset[block_column + 1] - hessian_col;
 
                     for (size_t i = 0; i < dim; i++) {
-                        p_map[hessian_col + i] = block_column;
+                        s2b_map[hessian_col + i] = block_column;
                     }
                     
                 }
             );
+
+            // thrust::host_vector<size_t> h_s2b = scalar_to_block_map;
+            // std::cout << "Scalar to block column map: ";
+            // for (size_t i = 0; i < h_s2b.size(); i++) {
+            //     std::cout << h_s2b[i] << " ";
+            // }
+            // std::cout << std::endl;
+
+            // // Print block column pointers
+            // thrust::host_vector<size_t> h_col_ptrs = d_col_pointers;
+            // std::cout << "Hessian block column pointers: ";
+            // for (size_t i = 0; i < h_col_ptrs.size(); i++) {
+            //     std::cout << h_col_ptrs[i] << " ";
+            // }
+            // std::cout << std::endl;
+
+            // // Print block row indices
+            // thrust::host_vector<size_t> h_row_idxs = d_row_indices;
+            // std::cout << "Hessian block row indices: ";
+            // for (size_t i = 0; i < h_row_idxs.size(); i++) {
+            //     std::cout << h_row_idxs[i] << " ";
+            // }
+            // std::cout << std::endl;
 
  
         }
@@ -222,14 +247,14 @@ namespace graphite {
         }
         
 
-        void backup_diagonal_and_apply_damping(Graph<T, S>* graph, T damping_factor, StreamPool &streams) {
-            d_prev_diagonal.resize(graph->get_hessian_dimension());
+        void apply_damping(Graph<T, S>* graph, T damping_factor, StreamPool &streams) {
+            // d_prev_diagonal.resize(graph->get_hessian_dimension());
             
-            auto diag = d_prev_diagonal.data().get(); 
+            // auto diag = d_prev_diagonal.data().get(); 
             const auto h_offsets = d_hessian_offsets.data().get();
             const auto p_col = d_col_pointers.data().get();
             const auto r_idx = d_row_indices.data().get();
-            const auto block_locations = d_offsets.data().get();
+            auto block_locations = d_offsets.data().get();
             auto h = d_hessian.data().get();
 
             thrust::for_each(
@@ -247,9 +272,9 @@ namespace graphite {
                     for (size_t b = start; b < end; b++) {
                         if (r_idx[b] == block_col) {
                             // found diagonal block, backup then apply damping
-                            const auto block = h + block_locations[b];
+                            auto block = h + block_locations[b];
                             for (size_t i = 0; i < dim; i++) {
-                                diag[hessian_col + i] = block[i * dim + i];
+                                // diag[hessian_col + i] = block[i * dim + i];
                                 block[i*dim + i] = (S)((double)block[i*dim + i] * (1.0 + (double)damping_factor));
                             }
                             break;
@@ -333,17 +358,19 @@ namespace graphite {
         void update_values(Graph<T, S>* graph, StreamPool& streams) {
             thrust::fill(thrust::device, d_hessian.begin(), d_hessian.end(), static_cast<S>(0.0));
 
-            h_block_offsets.clear();
-            d_block_offsets.clear();
+
 
 
             auto & f_desc = graph->get_factor_descriptors();
             for (auto & f: f_desc) {
+                h_block_offsets.clear();
+                d_block_offsets.clear();
                 f->compute_hessian_blocks(block_indices, d_hessian, h_block_offsets, d_block_offsets, streams);
             }
         }
 
-        void build_csr_structure(Graph<T, S>* graph, CSRMatrix<S> & matrix) {
+        template <typename I>
+        void build_csr_structure(Graph<T, S>* graph, CSRMatrix<S, I> & matrix) {
             
             // const auto nnz = d_hessian.size(); // this is an upper bound, since it stores all values of blocks on the diagonal
             const auto hessian_dim = graph->get_hessian_dimension();
@@ -366,6 +393,8 @@ namespace graphite {
             
             auto scalar_row_ptrs = matrix.d_row_pointers.data().get();
 
+            // std::cout << "Hessian dimension: " << hessian_dim << std::endl;
+            // std::cout << "Stored hessian non-zeroes: " << d_hessian.size() << std::endl;
 
             thrust::for_each(
                 thrust::device,
@@ -378,7 +407,7 @@ namespace graphite {
                     // find diagonal block in column where row == col
                     const auto start = p_col[block_col];
                     const auto end = p_col[block_col + 1];
-                    const size_t num_values = 0; // values in upper triangle scalar column
+                    size_t num_values = 0; // values in upper triangle scalar column
                     // Iterate through each block in the column
                     for (size_t b = start; b < end; b++) {
 
@@ -415,6 +444,14 @@ namespace graphite {
                 matrix.d_row_pointers.end(),
                 matrix.d_row_pointers.begin()
             );
+
+            // // debug
+            // thrust::host_vector<I> h_row_ptrs = matrix.d_row_pointers;
+            // std::cout << "Hessian CSR row pointers: ";
+            // for (size_t i = 0; i < h_row_ptrs.size(); i++) {
+            //     std::cout << h_row_ptrs[i] << " ";
+            // }
+            // std::cout << std::endl;
 
             // Now we need to iterate through columns again and populate 
             // the column indices and values
@@ -471,10 +508,33 @@ namespace graphite {
                 }
             );
 
+            // std::cout << "Hessian CSR column indices: ";
+            // thrust::host_vector<I> h_col_idxs = matrix.d_col_indices;
+            // for (size_t i = 0; i < h_col_idxs.size(); i++) {
+            //     std::cout << h_col_idxs[i] << " ";
+            // }
+            // std::cout << std::endl;
+
+            // std::cout << "Raw Hessian data: ";
+            // thrust::host_vector<S> h_hessian = d_hessian;
+            // for (size_t i = 0; i < h_hessian.size(); i++)
+            // {
+            //     std::cout << h_hessian[i] << " ";
+            // }
+            // std::cout << std::endl;
+
+            // std::cout << "Raw Hessian offsets: ";
+            // thrust::host_vector<size_t> h_offsets = d_offsets;
+            // for (size_t i = 0; i < h_offsets.size(); i++)
+            // {
+            //     std::cout << h_offsets[i] << " ";
+            // }
+            // std::cout << std::endl;
 
         }
 
-        void update_csr_values(Graph<T, S>* graph, CSRMatrix<S> & matrix) {
+        template <typename I>
+        void update_csr_values(Graph<T, S>* graph, CSRMatrix<S, I> & matrix) {
 
             const auto hessian_dim = graph->get_hessian_dimension();
             const auto h = d_hessian.data().get();
@@ -533,6 +593,13 @@ namespace graphite {
                     }                
                 }
             );
+
+            // std::cout << "Hessian CSR values: ";
+            // thrust::host_vector<S> h_values = matrix.d_values;
+            // for (size_t i = 0; i < h_values.size(); i++) {
+            //     std::cout << h_values[i] << " ";
+            // }
+            // std::cout << std::endl;
 
         }
     };

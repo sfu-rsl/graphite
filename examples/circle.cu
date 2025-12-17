@@ -7,6 +7,7 @@
 #include <numeric>
 #include <random>
 #include <vector>
+#include <graphite/linear_solver.hpp>
 
 namespace graphite {
 
@@ -78,8 +79,10 @@ int main(void) {
   initialize_cuda();
 
   // Create graph
-  using FP = float;
-  using SP = float;
+  using FP = double;
+  using SP = double;
+  // using FP = float;
+  // using SP = float;
   Graph<FP, SP> graph;
 
   const size_t num_vertices = 5;
@@ -134,8 +137,9 @@ int main(void) {
   // factor_desc.set_active(2, 0x1);
 
   // Configure solver
-  graphite::IdentityPreconditioner<FP, SP> preconditioner;
-  graphite::PCGSolver<FP, SP> solver(50, 1e-20, 10.0, &preconditioner);
+  // graphite::IdentityPreconditioner<FP, SP> preconditioner;
+  // graphite::PCGSolver<FP, SP> solver(50, 1e-20, 10.0, &preconditioner);
+  graphite::EigenLDLTSolver<FP, SP> solver;
 
   // Optimize
   constexpr size_t iterations = 100;

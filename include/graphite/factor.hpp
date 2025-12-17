@@ -720,9 +720,9 @@ public:
               const size_t num_threads = d_active_factors.size()*block_dim;
               const size_t threads_per_block = 256;
               const size_t num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
-              
+
               // auto start_kernel = std::chrono::steady_clock::now();
-              compute_hessian_block_kernel<T, S><<<num_blocks, block_dim, 0, stream>>>(
+              compute_hessian_block_kernel<T, S><<<num_blocks, threads_per_block, 0, stream>>>(
                   i,
                   j,
                   dim_i,
