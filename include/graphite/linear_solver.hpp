@@ -87,8 +87,8 @@ class EigenLDLTSolver : public Solver<T, S> {
     thrust::copy(thrust::device, graph->get_b().begin(), graph->get_b().end(), h_b.data());
     thrust::copy(thrust::device, x, x + dim, h_x.data());
 
-    auto map_b = Eigen::Map<Eigen::MatrixXd>(h_b.data(), dim, 1);
-    auto map_x = Eigen::Map<Eigen::MatrixXd>(h_x.data(), dim, 1);
+    auto map_b = Eigen::Map<Eigen::Matrix<S, Eigen::Dynamic, Eigen::Dynamic>>(h_b.data(), dim, 1);
+    auto map_x = Eigen::Map<Eigen::Matrix<S, Eigen::Dynamic, Eigen::Dynamic>>(h_x.data(), dim, 1);
     // std::cout << "Solving!" << std::endl;
     map_x = decomp.solve(map_b);
     // std::cout << "Copying back solution!" << std::endl;

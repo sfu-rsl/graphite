@@ -79,10 +79,8 @@ int main(void) {
   initialize_cuda();
 
   // Create graph
-  using FP = double;
-  using SP = double;
-  // using FP = float;
-  // using SP = float;
+  using FP = float;
+  using SP = float;
   Graph<FP, SP> graph;
 
   const size_t num_vertices = 5;
