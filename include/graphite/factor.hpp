@@ -16,8 +16,8 @@ namespace graphite {
 
 template <typename T, typename S>
 __global__ void compute_hessian_block_kernel(
-    const size_t i,
-    const size_t j,
+    const size_t vi,
+    const size_t vj,
     const size_t dim_i,
     const size_t dim_j,
     const size_t dim_e,
@@ -45,8 +45,8 @@ __global__ void compute_hessian_block_kernel(
 
     const auto factor_idx = active_factors[block_id];
 
-    const size_t vi_id = ids[factor_idx * num_vertices + i];
-    const size_t vj_id = ids[factor_idx * num_vertices + j];
+    const size_t vi_id = ids[factor_idx * num_vertices + vi];
+    const size_t vj_id = ids[factor_idx * num_vertices + vj];
 
     if (is_vertex_active(vi_active, vi_id) && is_vertex_active(vj_active, vj_id)) {
 
@@ -62,8 +62,8 @@ __global__ void compute_hessian_block_kernel(
         const auto jacobian_j_offset = factor_idx * dim_e * dim_j;
         const auto precision_offset = factor_idx * dim_e * dim_e;
 
-        const auto J = jacobian_j + jacobian_j_offset;
-        const auto Jt = jacobian_i + jacobian_i_offset;
+        const auto J = jacobian_j + jacobian_j_offset + col*dim_e;
+        const auto Jt = jacobian_i + jacobian_i_offset + row*dim_e;
         const auto p = precision + precision_offset;
 
         // Each thread computes one element of the Hessian block
@@ -691,6 +691,7 @@ public:
                       else {
                           // TODO: this should actually be an error, but also impossible
                           h_block_offsets[write_idx++] = 0;
+                          std::cerr << "Error: Hessian block coordinate not found!" << std::endl;
                       }
                   }
                   else {
@@ -715,7 +716,7 @@ public:
 
               const auto dim_i = vertex_descriptors[i]->dimension();
               const auto dim_j = vertex_descriptors[j]->dimension();
-              const auto dim_e = jacobians[i].dimensions.first; // this should give you error dim E
+              const auto dim_e = error_dim; // this should give you error dim E
               const size_t block_dim = dim_i * dim_j;
               const size_t num_threads = d_active_factors.size()*block_dim;
               const size_t threads_per_block = 256;

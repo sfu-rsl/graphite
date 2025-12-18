@@ -323,6 +323,7 @@ namespace graphite {
             // std::cout << "Allocating Hessian blocks..." << std::endl;
             // auto t2 = std::chrono::steady_clock::now();
             size_t num_values = 0;
+            block_indices.clear();
             for (const auto & coord : block_coords) {
                 block_indices[coord] = num_values;
                 num_values += graph->get_variable_dimension(coord.row) * graph->get_variable_dimension(coord.col);

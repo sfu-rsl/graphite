@@ -27,7 +27,7 @@ class EigenLDLTSolver : public Solver<T, S> {
   // thrust::host_vector<S> h_values;
 
   Hessian<T, S> H;
-  CSRMatrix<S, int32_t> d_matrix;
+  CSRMatrix<S, Index> d_matrix;
 
   thrust::host_vector<S> h_x;
   thrust::host_vector<S> h_b;

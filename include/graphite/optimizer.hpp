@@ -123,10 +123,10 @@ bool levenberg_marquardt(Graph<T, S> *graph,
   for (size_t i = 0; i < num_iterations && run; i++) {
 
     start = std::chrono::steady_clock::now();
-    solver->set_damping_factor(graph, static_cast<T>(mu), *streams);
 
     T chi2 = graph->chi2();
 
+    solver->set_damping_factor(graph, static_cast<T>(mu), *streams);
     bool solve_ok = solver->solve(graph, delta_x.data().get(), *streams);
 
     graph->backup_parameters();
@@ -260,12 +260,12 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
   for (size_t i = 0; i < num_iterations && run; i++) {
 
     start = std::chrono::steady_clock::now();
-    solver->set_damping_factor(graph, static_cast<T>(mu), *streams);
 
     T chi2 = graph->chi2();
     T initial_chi2 = chi2;
     T end_chi2 = initial_chi2;
 
+    solver->set_damping_factor(graph, static_cast<T>(mu), *streams);
     bool solve_ok = solver->solve(graph, delta_x.data().get(), *streams);
 
     graph->backup_parameters();
