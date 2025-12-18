@@ -7,7 +7,7 @@
 #include <numeric>
 #include <random>
 #include <vector>
-#include <graphite/linear_solver.hpp>
+#include <graphite/eigen_solver.hpp>
 
 namespace graphite {
 
