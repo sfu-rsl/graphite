@@ -80,6 +80,9 @@ bool levenberg_marquardt(Graph<T, S> *graph,
   T mu = static_cast<T>(options->initial_damping);
   T nu = 2;
 
+  auto solver = options->solver;
+  auto streams = options->streams;
+
   if (!graph->initialize_optimization(options->optimization_level)) {
     return false;
   }
@@ -88,9 +91,13 @@ bool levenberg_marquardt(Graph<T, S> *graph,
     return false;
   }
 
-  auto streams = options->streams;
+  solver->update_structure(graph, *streams);
+
 
   graph->linearize(*streams);
+
+  // Initialize solver values
+  solver->update_values(graph, *streams);
 
   thrust::device_vector<T> delta_x(graph->get_hessian_dimension());
 
@@ -116,11 +123,11 @@ bool levenberg_marquardt(Graph<T, S> *graph,
   for (size_t i = 0; i < num_iterations && run; i++) {
 
     start = std::chrono::steady_clock::now();
+    
+    solver->set_damping_factor(graph, static_cast<T>(mu), *streams);
     T chi2 = graph->chi2();
 
-    auto solver = options->solver;
-    bool solve_ok = solver->solve(graph, delta_x.data().get(),
-                                  static_cast<T>(mu), *streams);
+    bool solve_ok = solver->solve(graph, delta_x.data().get(), *streams);
 
     graph->backup_parameters();
     graph->apply_step(delta_x.data().get(), *streams);
@@ -145,6 +152,7 @@ bool levenberg_marquardt(Graph<T, S> *graph,
       nu = 2;
       // Relinearize since step is accepted
       graph->linearize(*streams);
+      solver->update_values(graph, *streams);
       // std::cout << "Good step" << std::endl;
       // std::cout << "rho: " << rho << std::endl;
     } else {

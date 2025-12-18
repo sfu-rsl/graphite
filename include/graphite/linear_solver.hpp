@@ -19,7 +19,6 @@ class EigenLDLTSolver : public Solver<T, S> {
   Decomp<decomp_method> decomp;
 
   Eigen::SparseMatrix<S, Eigen::ColMajor> matrix;
-  bool first_iter;
 
   using Index = typename Eigen::SparseMatrix<S, Eigen::ColMajor>::StorageIndex;
 
@@ -30,9 +29,11 @@ class EigenLDLTSolver : public Solver<T, S> {
   Hessian<T, S> H;
   CSRMatrix<S, int32_t> d_matrix;
 
+  thrust::host_vector<S> h_x;
+  thrust::host_vector<S> h_b;
 
-
-  void fill_matrix_structure(size_t dim) {
+  void fill_matrix_structure() {
+    const auto dim = d_matrix.d_row_pointers.size() - 1;
     matrix.resize(dim, dim);
     matrix.resizeNonZeros(d_matrix.d_values.size());
 
@@ -41,6 +42,9 @@ class EigenLDLTSolver : public Solver<T, S> {
 
     thrust::copy(thrust::device, d_matrix.d_row_pointers.begin(), d_matrix.d_row_pointers.end(), h_ptrs);
     thrust::copy(thrust::device, d_matrix.d_col_indices.begin(), d_matrix.d_col_indices.end(), h_indices);
+
+    h_x.resize(dim);
+    h_b.resize(dim);
   }
 
   void fill_matrix_values() {
@@ -49,30 +53,32 @@ class EigenLDLTSolver : public Solver<T, S> {
   }
 
  public:
-  EigenLDLTSolver()
-      : first_iter(true) {}
+  EigenLDLTSolver() {}
 
-  virtual bool solve(Graph<T, S> *graph, T *x, T damping_factor,
-                     StreamPool &streams) override {
-
-    // Block Hessian
+  virtual void update_structure(Graph<T, S> *graph, StreamPool &streams) override {
     H.build_structure(graph, streams);
-    H.update_values(graph, streams);
-    H.apply_damping(graph, damping_factor, streams);
-    // CSR
     H.build_csr_structure(graph, d_matrix);
+    fill_matrix_structure(); // for CPU matrix
+    decomp.analyzePattern(matrix);
+  }
+
+  virtual void update_values(Graph<T, S> *graph, StreamPool &streams) override {
+    H.update_values(graph, streams);
     H.update_csr_values(graph, d_matrix);
+    fill_matrix_values(); // for CPU matrix
+  }
+
+  virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor, StreamPool &streams) override {
+    H.apply_damping(graph, damping_factor, streams);
+    H.update_csr_values(graph, d_matrix);
+    fill_matrix_values(); // TODO: Use a more lightweight method to just update diagonal
+  }
+
+  virtual bool solve(Graph<T, S> *graph, T *x, StreamPool &streams) override {
     
     auto dim = graph->get_hessian_dimension();
-    fill_matrix_structure(dim);
-    fill_matrix_values();
     // std::cout << "Printing system matrix:" << std::endl;
     // std::cout << matrix << std::endl;
-
-    if (first_iter) {
-      decomp.analyzePattern(matrix);
-      first_iter = false;
-    } 
 
     decomp.factorize(matrix);
     if (decomp.info() != Eigen::Success) {
@@ -81,8 +87,9 @@ class EigenLDLTSolver : public Solver<T, S> {
     }
 
     // std::cout << "LDLT success!" << std::endl;
-    thrust::host_vector<S> h_x(dim);
-    thrust::host_vector<S> h_b(dim);
+    // Not sure if zeroing is required
+    thrust::fill(thrust::device, x, x + dim, static_cast<T>(0.0));
+
     // std::cout << "Copying b and x to host" << std::endl;
     thrust::copy(thrust::device, graph->get_b().begin(), graph->get_b().end(), h_b.data());
     thrust::copy(thrust::device, x, x + dim, h_x.data());

@@ -248,9 +248,8 @@ namespace graphite {
         
 
         void apply_damping(Graph<T, S>* graph, T damping_factor, StreamPool &streams) {
-            // d_prev_diagonal.resize(graph->get_hessian_dimension());
-            
-            // auto diag = d_prev_diagonal.data().get(); 
+            // Assume diagonal was already backed up when recomputing Hessian values
+            auto diag = d_prev_diagonal.data().get(); 
             const auto h_offsets = d_hessian_offsets.data().get();
             const auto p_col = d_col_pointers.data().get();
             const auto r_idx = d_row_indices.data().get();
@@ -274,8 +273,8 @@ namespace graphite {
                             // found diagonal block, backup then apply damping
                             auto block = h + block_locations[b];
                             for (size_t i = 0; i < dim; i++) {
-                                // diag[hessian_col + i] = block[i * dim + i];
-                                block[i*dim + i] = (S)((double)block[i*dim + i] * (1.0 + (double)damping_factor));
+                                const auto h_diag = diag[hessian_col + i];
+                                block[i*dim + i] = (S)((double)h_diag * (1.0 + (double)damping_factor));
                             }
                             break;
                         }
@@ -367,6 +366,9 @@ namespace graphite {
                 d_block_offsets.clear();
                 f->compute_hessian_blocks(block_indices, d_hessian, h_block_offsets, d_block_offsets, streams);
             }
+
+            // Back up diagonal for damping purposes
+            backup_diagonal(graph, streams);
         }
 
         template <typename I>

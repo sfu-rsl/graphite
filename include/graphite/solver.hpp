@@ -16,8 +16,13 @@ template <typename T, typename S> class Solver {
 public:
   virtual ~Solver() = default;
 
-  virtual bool solve(Graph<T, S> *graph, T *delta_x, T damping_factor,
-                     StreamPool &streams) = 0;
+  virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor, StreamPool &streams) = 0;
+
+  virtual void update_structure(Graph<T, S> *graph, StreamPool &streams) = 0;
+
+  virtual void update_values(Graph<T, S> *graph, StreamPool &streams) = 0;
+
+  virtual bool solve(Graph<T, S> *graph, T *delta_x, StreamPool &streams) = 0;
 };
 
 template <typename T, typename S> class PCGSolver : public Solver<T, S> {
@@ -37,17 +42,26 @@ private:
   size_t max_iter;
   T tol;
   T rejection_ratio;
+  T damping_factor;
 
   Preconditioner<T, S> *preconditioner;
 
 public:
   PCGSolver(size_t max_iter, T tol, T rejection_ratio,
             Preconditioner<T, S> *preconditioner)
-      : max_iter(max_iter), tol(tol), rejection_ratio(rejection_ratio),
+      : max_iter(max_iter), tol(tol), rejection_ratio(rejection_ratio), damping_factor(0),
         preconditioner(preconditioner) {}
 
+  virtual void update_structure(Graph<T, S> *graph, StreamPool &streams) override {}
+
+  virtual void update_values(Graph<T, S> *graph, StreamPool &streams) override {}
+
+  virtual void set_damping_factor(Graph<T, S>* graph, T damping_factor, StreamPool &streams) override {
+    this->damping_factor = damping_factor;
+  }
+
   // Assumes that x is already initialized
-  virtual bool solve(Graph<T, S> *graph, T *x, T damping_factor,
+  virtual bool solve(Graph<T, S> *graph, T *x,
                      StreamPool &streams) override {
 
 
