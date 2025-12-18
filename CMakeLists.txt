@@ -28,12 +28,17 @@ option(BUILD_EXAMPLES "Build example applications" ON)
 if(BUILD_EXAMPLES)
   message(STATUS "Configured to build example applications")
   find_package(Eigen3 3.1 REQUIRED)
-  
+  find_package(cudss 0.7.0 REQUIRED)
+
   add_executable(circle examples/circle.cu)
-  target_link_libraries(circle graphite Eigen3::Eigen)
+  target_link_libraries(circle graphite Eigen3::Eigen cudss)
+
+# add_compile_options(-fsanitize=address)
+# add_link_options(-fsanitize=address)
+
 
   add_executable(bal examples/bal.cu)
-  target_link_libraries(bal graphite Eigen3::Eigen)
+  target_link_libraries(bal graphite Eigen3::Eigen cudss)
 endif()
 
 
