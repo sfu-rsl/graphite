@@ -18,12 +18,13 @@ endif()
 
 # Libraries
 find_package(CUDAToolkit REQUIRED)
-add_library(graphite INTERFACE)
-target_include_directories(graphite INTERFACE include)
-target_link_libraries(graphite INTERFACE CUDA::cublas)
-# add_library(graphite src/eigen_solver.cpp)
-# target_include_directories(graphite PUBLIC include)
-# target_link_libraries(graphite PUBLIC CUDA::cublas)
+find_package(Eigen3 3.1 REQUIRED)
+# add_library(graphite INTERFACE)
+# target_include_directories(graphite INTERFACE include)
+# target_link_libraries(graphite INTERFACE CUDA::cublas)
+add_library(graphite src/eigen_solver.cpp)
+target_include_directories(graphite PUBLIC include)
+target_link_libraries(graphite PUBLIC CUDA::cublas Eigen3::Eigen)
 
 
 # Examples
@@ -31,18 +32,17 @@ option(BUILD_EXAMPLES "Build example applications" ON)
 
 if(BUILD_EXAMPLES)
   message(STATUS "Configured to build example applications")
-  find_package(Eigen3 3.1 REQUIRED)
   find_package(cudss 0.7.0 REQUIRED)
 
-  add_executable(circle examples/circle.cu src/eigen_solver.cpp)
-  target_link_libraries(circle graphite Eigen3::Eigen cudss)
+  add_executable(circle examples/circle.cu)
+  target_link_libraries(circle graphite cudss)
 
 # add_compile_options(-fsanitize=address)
 # add_link_options(-fsanitize=address)
 
 
-  add_executable(bal examples/bal.cu src/eigen_solver.cpp)
-  target_link_libraries(bal graphite Eigen3::Eigen cudss)
+  add_executable(bal examples/bal.cu)
+  target_link_libraries(bal graphite cudss)
 endif()
 
 
