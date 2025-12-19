@@ -758,6 +758,36 @@ public:
       // auto t_sync_end = std::chrono::steady_clock::now();
       // std::cout << "Hessian block computation sync time: " << std::chrono::duration<double>(t_sync_end - t_sync_start).count() << " seconds" << std::endl;
   }
+
+  void clear() {
+    global_ids.clear();
+    global_to_local_map.clear();
+    local_to_global_map.clear();
+
+    hm.clear();
+
+    // bool _store_jacobians;
+    _active_count = 0;
+
+
+    host_ids.clear();
+    device_ids.clear();
+    device_obs.clear();
+    residuals.clear();
+    precision_matrices.clear();
+    data.clear();
+
+    chi2_vec.clear();
+    chi2_derivative.clear();
+    loss.clear();
+
+    active.clear();
+    device_active.clear();
+    active_indices.clear();
+
+    // std::array<JacobianStorage<S>, N> jacobians;
+    // std::array<S, Traits::dimension * Traits::dimension> default_precision_matrix;
+  }
 };
 
 } // namespace graphite

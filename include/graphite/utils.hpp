@@ -93,6 +93,11 @@ public:
   }
 
   void release(H handle) { handles.push_back(handle); }
+
+  void clear() {
+    handles.clear();
+    last_handle = 0;
+  }
 };
 
 

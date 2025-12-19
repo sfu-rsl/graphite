@@ -270,6 +270,15 @@ public:
       desc->to_host();
     }
   }
+
+  void clear() {
+    vertex_descriptors.clear();
+    factor_descriptors.clear();
+    b.clear();
+    jacobian_scales.clear();
+    hessian_column = 0;
+    hessian_offsets.clear();
+  }
 };
 
 } // namespace graphite

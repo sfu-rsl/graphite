@@ -305,6 +305,19 @@ public:
     local_to_hessian_offsets[local_id] = hessian_column;
     block_ids[local_id] = block_index;
   }
+
+  void clear() {
+    x_device.clear();
+    x_host.clear();
+    backup_state.clear();
+
+    global_to_local_map.clear();
+    local_to_global_map.clear();
+    local_to_hessian_offsets.clear();
+    hessian_ids.clear();
+    block_ids.clear();
+    active_state.clear();
+  }
 };
 
 } // namespace graphite
