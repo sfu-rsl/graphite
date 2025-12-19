@@ -1,30 +1,18 @@
 #pragma once
-#include <Eigen/Sparse>
-#include <Eigen/SparseCholesky>
+#include <graphite/eigen_solver_interface.hpp>
 #include <graphite/solver.hpp>
-// Interface for Linear Solvers
-namespace graphite {
 
-template <class Method>
-class Decomp : public Method {
- public:
-};
+namespace graphite {
 
 template <typename T, typename S>
 class EigenLDLTSolver : public Solver<T, S> {
  private:
-  using decomp_method =
-      Eigen::SimplicialLDLT<Eigen::SparseMatrix<S, Eigen::ColMajor>,
-                            Eigen::Upper>;
-  Decomp<decomp_method> decomp;
+  EigenLDLTWrapper<S> solver;
 
   Eigen::SparseMatrix<S, Eigen::ColMajor> matrix;
 
   using Index = typename Eigen::SparseMatrix<S, Eigen::ColMajor>::StorageIndex;
 
-  // thrust::host_vector<Index> h_ptrs;
-  // thrust::host_vector<size_t> h_indices;
-  // thrust::host_vector<S> h_values;
 
   Hessian<T, S> H;
   CSRMatrix<S, Index> d_matrix;
@@ -53,13 +41,13 @@ class EigenLDLTSolver : public Solver<T, S> {
   }
 
  public:
-  EigenLDLTSolver() {}
+  EigenLDLTSolver(): solver() {}
 
   virtual void update_structure(Graph<T, S> *graph, StreamPool &streams) override {
     H.build_structure(graph, streams);
     H.build_csr_structure(graph, d_matrix);
     fill_matrix_structure(); // for CPU matrix
-    decomp.analyzePattern(matrix);
+    solver.analyze_pattern(matrix);
   }
 
   virtual void update_values(Graph<T, S> *graph, StreamPool &streams) override {
@@ -80,8 +68,7 @@ class EigenLDLTSolver : public Solver<T, S> {
     // std::cout << "Printing system matrix:" << std::endl;
     // std::cout << matrix << std::endl;
 
-    decomp.factorize(matrix);
-    if (decomp.info() != Eigen::Success) {
+    if (!solver.factorize(matrix)) {
       std::cerr << "LDLT matrix decomposition failed!";
       return false;
     }
@@ -94,10 +81,10 @@ class EigenLDLTSolver : public Solver<T, S> {
     thrust::copy(thrust::device, graph->get_b().begin(), graph->get_b().end(), h_b.data());
     thrust::copy(thrust::device, x, x + dim, h_x.data());
 
-    auto map_b = Eigen::Map<Eigen::Matrix<S, Eigen::Dynamic, Eigen::Dynamic>>(h_b.data(), dim, 1);
-    auto map_x = Eigen::Map<Eigen::Matrix<S, Eigen::Dynamic, Eigen::Dynamic>>(h_x.data(), dim, 1);
+    auto map_b = VecMap<S>(h_b.data(), dim, 1);
+    auto map_x = VecMap<S>(h_x.data(), dim, 1);
     // std::cout << "Solving!" << std::endl;
-    map_x = decomp.solve(map_b);
+    solver.solve(map_b, map_x);
     // std::cout << "Copying back solution!" << std::endl;
     // Copy x back to device
     thrust::copy(thrust::device, h_x.begin(), h_x.end(), x);
