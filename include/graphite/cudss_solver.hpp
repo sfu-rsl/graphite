@@ -5,7 +5,18 @@
 // Interface for Linear Solvers
 namespace graphite {
 
+template <typename T>
+cudaDataType_t get_cuda_data_type();
 
+template <>
+inline cudaDataType_t get_cuda_data_type<double>() {
+  return CUDA_R_64F;
+}
+
+template <>
+inline cudaDataType_t get_cuda_data_type<float>() {
+  return CUDA_R_32F;
+}
 
 template <typename T, typename S>
 class cudssSolver : public Solver<T, S> {
@@ -35,7 +46,7 @@ class cudssSolver : public Solver<T, S> {
 
     cudssMatrixCreateCsr(&m_A, dim, dim, nnz, d_matrix.d_row_pointers.data().get(), nullptr, 
                           d_matrix.d_col_indices.data().get(), d_matrix.d_values.data().get(),
-                          CUDA_R_32I, CUDA_R_64F, matrix_type, view_type, index_base);
+                          CUDA_R_32I, get_cuda_data_type<S>(), matrix_type, view_type, index_base);
 
 
   }
@@ -68,8 +79,6 @@ class cudssSolver : public Solver<T, S> {
     m_A = NULL;
     factorization_failed = false;
     
-    static_assert(std::is_same<T, double>::value, "cudssSolver only supports double precision.");
-    static_assert(std::is_same<S, double>::value, "cudssSolver only supports double precision.");
     cudaStreamCreate(&stream);
     cudssCreate(&handle);
     cudssSetStream(handle, stream);
@@ -77,6 +86,8 @@ class cudssSolver : public Solver<T, S> {
     cudssConfigCreate(&solver_config);
     int enable_hybrid_exec_mode = use_hybrid_execution ? 1 : 0;
     cudssConfigSet(solver_config, CUDSS_CONFIG_HYBRID_EXECUTE_MODE, &enable_hybrid_exec_mode, sizeof(enable_hybrid_exec_mode));
+    cudssAlgType_t reordering_alg = CUDSS_ALG_DEFAULT;
+    cudssConfigSet(solver_config, CUDSS_CONFIG_REORDERING_ALG, &reordering_alg, sizeof(reordering_alg));
     cudssDataCreate(handle, &solver_data);
 
   }
@@ -115,15 +126,14 @@ class cudssSolver : public Solver<T, S> {
     auto & b = graph->get_b();
     int ldb = dim;
     int ldx = dim;
-    cudssMatrixCreateDn(&m_b, dim, 1, ldb, b.data().get(), CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR);
+    cudssMatrixCreateDn(&m_b, dim, 1, ldb, b.data().get(), get_cuda_data_type<T>(), CUDSS_LAYOUT_COL_MAJOR);
 
     if (m_x != NULL) {
       cudssMatrixDestroy(m_x);
       m_x = NULL;
     }
     solver_x.resize(b.size());
-    cudssMatrixCreateDn(&m_x, dim, 1, ldx, solver_x.data().get(), CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR);
-
+    cudssMatrixCreateDn(&m_x, dim, 1, ldx, solver_x.data().get(), get_cuda_data_type<T>(), CUDSS_LAYOUT_COL_MAJOR);
 
     // Factorize
     auto status = cudssExecute(handle, CUDSS_PHASE_ANALYSIS, solver_config, solver_data, m_A, m_x, m_b);
