@@ -103,7 +103,7 @@ namespace graphite {
             thrust::host_vector<size_t> row_indices(block_coords.size());
             thrust::host_vector<size_t> offsets(block_coords.size());
             thrust::fill(thrust::host, col_pointers.begin(), col_pointers.end(), 0);
-            size_t current_col = 0;
+
             for (size_t i = 0; i < block_coords.size(); i++) {
                 const auto & coord = block_coords[i];
 
@@ -405,7 +405,6 @@ namespace graphite {
                 thrust::make_counting_iterator<size_t>(hessian_dim),
                 [=] __device__ (const size_t hessian_col) {
                     const auto block_col = s2b_map[hessian_col];
-                    const size_t ncols = hessian_offsets[block_col + 1] - hessian_col;
 
                     // find diagonal block in column where row == col
                     const auto start = p_col[block_col];
@@ -472,12 +471,10 @@ namespace graphite {
                 thrust::make_counting_iterator<size_t>(hessian_dim),
                 [=] __device__ (const size_t hessian_col) {
                     const auto block_col = s2b_map[hessian_col];
-                    const size_t ncols = hessian_offsets[block_col + 1] - hessian_col;
 
                     // find diagonal block in column where row == col
                     const auto start = p_col[block_col];
                     const auto end = p_col[block_col + 1];
-                    const size_t num_values = 0; // values in upper triangle scalar column
                     size_t write_idx = scalar_row_ptrs[hessian_col];
                     // Iterate through each block in the column
                     for (size_t b = start; b < end; b++) {
@@ -487,8 +484,6 @@ namespace graphite {
                         const auto nrows = hessian_offsets[block_row + 1] - hessian_offsets[block_row];
 
                         auto scalar_row = hessian_offsets[block_row];
-
-                        const auto col_in_block = hessian_col - hessian_offsets[block_col];
 
 
                         for (size_t r = 0; r < nrows; r++) {
@@ -557,12 +552,10 @@ namespace graphite {
                 thrust::make_counting_iterator<size_t>(hessian_dim),
                 [=] __device__ (const size_t hessian_col) {
                     const auto block_col = s2b_map[hessian_col];
-                    const size_t ncols = hessian_offsets[block_col + 1] - hessian_col;
 
                     // find diagonal block in column where row == col
                     const auto start = p_col[block_col];
                     const auto end = p_col[block_col + 1];
-                    const size_t num_values = 0; // values in upper triangle scalar column
                     size_t write_idx = scalar_row_ptrs[hessian_col];
                     // Iterate through each block in the column
                     for (size_t b = start; b < end; b++) {
