@@ -2075,7 +2075,6 @@ public:
   template <typename V>
   void apply_step(V *v, const T *delta_x, T *jacobian_scales,
                   cudaStream_t stream) {
-    const size_t num_parameters = v->count() * v->dimension();
     const size_t num_threads = v->count();
     const auto threads_per_block = 256;
     const auto num_blocks =

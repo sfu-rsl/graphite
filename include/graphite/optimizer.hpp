@@ -15,16 +15,30 @@ T compute_rho(Graph<T, S> *graph, thrust::device_vector<T> &delta_x,
   //  TODO: Don't store these in the graph
   auto &b = graph->get_b();
   T num = (chi2 - new_chi2);
-  T denom = mu * static_cast<T>(thrust::inner_product(
-                     delta_x.begin(), delta_x.end(), delta_x.begin(),
-                     static_cast<T>(0.0)));
-  denom += static_cast<T>(thrust::inner_product(
-      delta_x.begin(), delta_x.end(), b.begin(), static_cast<T>(0.0)));
+  T denom = 1.0;
   if (step_is_good) {
+
+  const auto n = delta_x.size();
+  const auto bb = b.data().get();
+  const auto dx = delta_x.data().get();
+
+  denom = thrust::transform_reduce(
+      thrust::make_counting_iterator<std::size_t>(0),
+      thrust::make_counting_iterator<std::size_t>(n),
+      [dx, bb, mu] __host__ __device__ (const std::size_t i) {
+          T x = dx[i];
+          return x * (mu * x + bb[i]);
+      },
+      T{0},
+      thrust::plus<T>{}
+  );
+
     denom += 1.0e-3;
-  } else {
-    denom = 1;
   }
+
+  // std::cout << "Scale (denom): " << denom << std::endl;
+  // std::cout << "Numerator: " << num << std::endl;
+  // std::cout << "Rho: " << (num / denom) << std::endl;
   return num / (denom);
 }
 
