@@ -516,7 +516,7 @@ namespace graphite {
                     // find diagonal block in column where row == col
                     const auto start = p_col[block_col];
                     const auto end = p_col[block_col + 1];
-                    size_t write_idx = scalar_row_ptrs[hessian_col];
+                    size_t write_idx = scalar_ptrs[hessian_col];
                     // Iterate through each block in the column
                     for (size_t b = start; b < end; b++) {
 
