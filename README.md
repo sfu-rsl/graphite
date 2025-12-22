@@ -6,9 +6,14 @@ Graphite is a GPU-accelerated graph optimization framework based on CUDA. It let
 
 For more details, refer to the [paper](https://arxiv.org/abs/2509.26581).
 
+Supported linear solvers:
+- Preconditioned Conjugate Gradients
+- Eigen LDLT
+- cuDSS
+
 ## Building
 
-You need a recent version of the CUDA Toolkit (e.g. >= 12.0), and Eigen3 if you are building examples. Graphite can be built using CMake. A Dockerfile for development is also included, which can be used to create a devcontainer for VS Code (requires the NVIDIA Container Toolkit).
+You need a recent version of the CUDA Toolkit (e.g. >= 12.0) and Eigen3. Graphite can be built using CMake. A Dockerfile for development is also included, which can be used to create a devcontainer for VS Code (requires the NVIDIA Container Toolkit).
 
 ## Examples
 
@@ -20,3 +25,7 @@ See the [examples](examples) folder. There are two examples:
 ## License
 
 Graphite is released under the [MIT License](LICENSE.md).
+
+## Contributing
+
+If you would like to contribute features, bug fixes, code improvements, or tests, please open an issue or discussion first. Questions about usage are better suited for discussion.
