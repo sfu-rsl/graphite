@@ -201,10 +201,11 @@ public:
 
     // Swap the vertex to be removed with the last vertex
     std::swap(x_host[local_id], x_host[last_index]);
-    std::swap(local_to_hessian_offsets[local_id],
-              local_to_hessian_offsets
-                  [last_index]); // TODO: Probably shouldn't be modifying this -
-                                 // could be empty and is rebuilt frequently
+
+    if (local_to_hessian_offsets.size() > 0) { // may not be initialized yet
+      std::swap(local_to_hessian_offsets[local_id],
+                local_to_hessian_offsets[last_index]);
+    }
 
     // Update the global_to_local_map for the swapped vertex
     const auto last_global_id = local_to_global_map[last_index];
@@ -237,9 +238,6 @@ public:
 
   void add_vertex(const size_t id, VertexType *vertex,
                   const bool fixed = false) {
-    // TODO: Find a better way to get the dimension
-    // const auto dim = dynamic_cast<Derived<T>*>(this)->dimension();
-    // x_host.insert(x_host.end(), value, value+dim);
     x_host.push_back(vertex);
     const auto local_id = x_host.size() - 1;
     global_to_local_map.insert({id, local_id});
@@ -276,8 +274,6 @@ public:
   }
 
   VertexType *get_vertex(const size_t id) {
-    // const auto local_id = global_to_local_map.at(id);
-    // return x_host[local_id];
     auto it = global_to_local_map.find(id);
     if (it != global_to_local_map.end()) {
       return x_host[it->second];
@@ -295,10 +291,7 @@ public:
     return global_to_local_map;
   }
 
-  size_t dimension() const override {
-    return dim;
-    // return Derived<T>::VertexType::dimension;
-  }
+  size_t dimension() const override { return dim; }
 
   const size_t *get_hessian_ids() const override {
     return hessian_ids.data().get();

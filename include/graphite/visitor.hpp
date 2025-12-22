@@ -1914,6 +1914,7 @@ public:
     size_t num_blocks =
         (num_threads + threads_per_block - 1) / threads_per_block;
 
+    thrust::fill(f->chi2_vec.begin(), f->chi2_vec.end(), static_cast<T>(0));
     compute_chi2_kernel<T, S, F::error_dim><<<num_blocks, threads_per_block>>>(
         f->chi2_vec.data().get(), f->chi2_derivative.data().get(),
         f->residuals.data().get(), num_threads,

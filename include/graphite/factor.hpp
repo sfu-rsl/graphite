@@ -406,20 +406,6 @@ public:
     return id; // only global within this class (it's just an external id)
   }
 
-  // TODO: Make this private later
-  constexpr static std::array<S, error_dim * error_dim>
-  get_default_precision_matrix() {
-    constexpr size_t E = error_dim;
-    return []() constexpr {
-      std::array<S, E *E> pmat = {};
-      for (size_t i = 0; i < E; i++) {
-        pmat[i * E + i] = static_cast<S>(1.0);
-      }
-      return pmat;
-    }
-    ();
-  }
-
   void set_active(size_t id, const uint8_t active_value) {
     if (global_to_local_map.find(id) == global_to_local_map.end()) {
       std::cerr << "Factor with id " << id << " not found." << std::endl;
@@ -744,6 +730,20 @@ public:
     for (size_t i = 0; i < N; i++) {
       jacobians[i].data.clear();
     }
+  }
+
+private:
+  constexpr static std::array<S, error_dim * error_dim>
+  get_default_precision_matrix() {
+    constexpr size_t E = error_dim;
+    return []() constexpr {
+      std::array<S, E *E> pmat = {};
+      for (size_t i = 0; i < E; i++) {
+        pmat[i * E + i] = static_cast<S>(1.0);
+      }
+      return pmat;
+    }
+    ();
   }
 };
 
