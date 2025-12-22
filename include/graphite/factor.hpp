@@ -623,6 +623,9 @@ public:
 
                     const auto block_i = vi_block_ids[vi_id];
                     const auto block_j = vj_block_ids[vj_id];
+                    if (block_i > block_j) {
+                        return BlockCoordinates{block_j, block_i};
+                    }
                     return BlockCoordinates{block_i, block_j};
                 },
                 [=] __device__ (const size_t & factor_idx) {
@@ -682,6 +685,9 @@ public:
                       const auto block_i = vi_block_ids[vi_id];
                       const auto block_j = vj_block_ids[vj_id];
                       BlockCoordinates coordinates{block_i, block_j};
+                      if (block_i > block_j) {
+                          coordinates = BlockCoordinates{block_j, block_i};
+                      }
 
                       auto it = block_indices.find(coordinates);
                       if (it != block_indices.end()) {
