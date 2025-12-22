@@ -5,10 +5,6 @@ if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
   set(CMAKE_CUDA_ARCHITECTURES 75 80 86 87 89 90 120)
 endif()
 
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
-  # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -O3")
-  # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -O3 --use_fast_math") # Use at your own peril
-endif()
 
 # Check WSL2
 message(STATUS "CMake ${CMAKE_VERSION}  kernel: ${CMAKE_HOST_SYSTEM_VERSION}")
@@ -19,12 +15,12 @@ endif()
 # Libraries
 find_package(CUDAToolkit REQUIRED)
 find_package(Eigen3 3.1 REQUIRED)
-# add_library(graphite INTERFACE)
-# target_include_directories(graphite INTERFACE include)
-# target_link_libraries(graphite INTERFACE CUDA::cublas)
+find_package(cudss 0.7.0 REQUIRED)
+
+# Setup graphite library
 add_library(graphite src/eigen_solver.cpp)
 target_include_directories(graphite PUBLIC include)
-target_link_libraries(graphite PUBLIC CUDA::cublas Eigen3::Eigen)
+target_link_libraries(graphite PUBLIC CUDA::cublas Eigen3::Eigen cudss)
 
 
 # Examples
@@ -32,17 +28,13 @@ option(BUILD_EXAMPLES "Build example applications" ON)
 
 if(BUILD_EXAMPLES)
   message(STATUS "Configured to build example applications")
-  find_package(cudss 0.7.0 REQUIRED)
 
   add_executable(circle examples/circle.cu)
-  target_link_libraries(circle graphite cudss)
-
-# add_compile_options(-fsanitize=address)
-# add_link_options(-fsanitize=address)
+  target_link_libraries(circle graphite)
 
 
   add_executable(bal examples/bal.cu)
-  target_link_libraries(bal graphite cudss)
+  target_link_libraries(bal graphite)
 endif()
 
 
