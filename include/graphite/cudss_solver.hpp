@@ -1,33 +1,23 @@
 #pragma once
-#include <graphite/solver.hpp>
 #include <cuda_runtime.h>
 #include <cudss.h>
+#include <graphite/solver.hpp>
 // Interface for Linear Solvers
 namespace graphite {
 
-template <typename T>
-cudaDataType_t get_cuda_data_type();
+template <typename T> cudaDataType_t get_cuda_data_type();
 
-template <>
-inline cudaDataType_t get_cuda_data_type<double>() {
+template <> inline cudaDataType_t get_cuda_data_type<double>() {
   return CUDA_R_64F;
 }
 
-template <>
-inline cudaDataType_t get_cuda_data_type<float>() {
+template <> inline cudaDataType_t get_cuda_data_type<float>() {
   return CUDA_R_32F;
 }
 
-template <typename T, typename S>
-class cudssSolver : public Solver<T, S> {
- private:
-
-
-  using StorageIndex = int32_t; 
-
-
-
-
+template <typename T, typename S> class cudssSolver : public Solver<T, S> {
+private:
+  using StorageIndex = int32_t;
 
   void fill_matrix_structure() {
     const auto dim = d_matrix.d_pointers.size() - 1;
@@ -41,12 +31,11 @@ class cudssSolver : public Solver<T, S> {
       m_A = NULL;
     }
 
-
-    cudssMatrixCreateCsr(&m_A, dim, dim, nnz, d_matrix.d_pointers.data().get(), nullptr, 
-                          d_matrix.d_indices.data().get(), d_matrix.d_values.data().get(),
-                          CUDA_R_32I, get_cuda_data_type<S>(), matrix_type, view_type, index_base);
-
-
+    cudssMatrixCreateCsr(&m_A, dim, dim, nnz, d_matrix.d_pointers.data().get(),
+                         nullptr, d_matrix.d_indices.data().get(),
+                         d_matrix.d_values.data().get(), CUDA_R_32I,
+                         get_cuda_data_type<S>(), matrix_type, view_type,
+                         index_base);
   }
 
   void fill_matrix_values() {
@@ -68,26 +57,26 @@ class cudssSolver : public Solver<T, S> {
 
   thrust::device_vector<T> solver_x;
 
-
- public:
+public:
   cudssSolver(bool use_hybrid_execution) {
     stream = NULL;
     m_x = NULL;
     m_b = NULL;
     m_A = NULL;
     factorization_failed = false;
-    
+
     cudaStreamCreate(&stream);
     cudssCreate(&handle);
     cudssSetStream(handle, stream);
 
     cudssConfigCreate(&solver_config);
     int enable_hybrid_exec_mode = use_hybrid_execution ? 1 : 0;
-    cudssConfigSet(solver_config, CUDSS_CONFIG_HYBRID_EXECUTE_MODE, &enable_hybrid_exec_mode, sizeof(enable_hybrid_exec_mode));
+    cudssConfigSet(solver_config, CUDSS_CONFIG_HYBRID_EXECUTE_MODE,
+                   &enable_hybrid_exec_mode, sizeof(enable_hybrid_exec_mode));
     cudssAlgType_t reordering_alg = CUDSS_ALG_DEFAULT;
-    cudssConfigSet(solver_config, CUDSS_CONFIG_REORDERING_ALG, &reordering_alg, sizeof(reordering_alg));
+    cudssConfigSet(solver_config, CUDSS_CONFIG_REORDERING_ALG, &reordering_alg,
+                   sizeof(reordering_alg));
     cudssDataCreate(handle, &solver_data);
-
   }
 
   ~cudssSolver() {
@@ -110,7 +99,8 @@ class cudssSolver : public Solver<T, S> {
     cudaStreamDestroy(stream);
   }
 
-  virtual void update_structure(Graph<T, S> *graph, StreamPool &streams) override {
+  virtual void update_structure(Graph<T, S> *graph,
+                                StreamPool &streams) override {
     H.build_structure(graph, streams);
     H.build_csc_structure(graph, d_matrix);
     fill_matrix_structure();
@@ -121,23 +111,27 @@ class cudssSolver : public Solver<T, S> {
       m_b = NULL;
     }
     const auto dim = graph->get_hessian_dimension();
-    auto & b = graph->get_b();
+    auto &b = graph->get_b();
     int ldb = dim;
     int ldx = dim;
-    cudssMatrixCreateDn(&m_b, dim, 1, ldb, b.data().get(), get_cuda_data_type<T>(), CUDSS_LAYOUT_COL_MAJOR);
+    cudssMatrixCreateDn(&m_b, dim, 1, ldb, b.data().get(),
+                        get_cuda_data_type<T>(), CUDSS_LAYOUT_COL_MAJOR);
 
     if (m_x != NULL) {
       cudssMatrixDestroy(m_x);
       m_x = NULL;
     }
     solver_x.resize(b.size());
-    cudssMatrixCreateDn(&m_x, dim, 1, ldx, solver_x.data().get(), get_cuda_data_type<T>(), CUDSS_LAYOUT_COL_MAJOR);
+    cudssMatrixCreateDn(&m_x, dim, 1, ldx, solver_x.data().get(),
+                        get_cuda_data_type<T>(), CUDSS_LAYOUT_COL_MAJOR);
 
     // Factorize
-    auto status = cudssExecute(handle, CUDSS_PHASE_ANALYSIS, solver_config, solver_data, m_A, m_x, m_b);
+    auto status = cudssExecute(handle, CUDSS_PHASE_ANALYSIS, solver_config,
+                               solver_data, m_A, m_x, m_b);
     if (status != CUDSS_STATUS_SUCCESS) {
       factorization_failed = true;
-      std::cerr << "cudss Analysis failed with error code: " << status << std::endl;
+      std::cerr << "cudss Analysis failed with error code: " << status
+                << std::endl;
     }
   }
 
@@ -147,10 +141,12 @@ class cudssSolver : public Solver<T, S> {
     fill_matrix_values(); // for CPU matrix
   }
 
-  virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor, StreamPool &streams) override {
+  virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor,
+                                  StreamPool &streams) override {
     H.apply_damping(graph, damping_factor, streams);
     H.update_csc_values(graph, d_matrix);
-    fill_matrix_values(); // TODO: Use a more lightweight method to just update diagonal
+    fill_matrix_values(); // TODO: Use a more lightweight method to just update
+                          // diagonal
   }
 
   virtual bool solve(Graph<T, S> *graph, T *x, StreamPool &streams) override {
@@ -158,7 +154,7 @@ class cudssSolver : public Solver<T, S> {
     if (factorization_failed) {
       return false;
     }
-    
+
     auto dim = graph->get_hessian_dimension();
 
     thrust::fill(thrust::device, x, x + dim, static_cast<T>(0.0));
@@ -170,17 +166,19 @@ class cudssSolver : public Solver<T, S> {
     cudssMatrixSetValues(m_b, graph->get_b().data().get());
     cudssMatrixSetValues(m_x, solver_x.data().get());
 
-
-
-    status = cudssExecute(handle, CUDSS_PHASE_FACTORIZATION, solver_config, solver_data, m_A, m_x, m_b);
+    status = cudssExecute(handle, CUDSS_PHASE_FACTORIZATION, solver_config,
+                          solver_data, m_A, m_x, m_b);
     if (status != CUDSS_STATUS_SUCCESS) {
-      std::cerr << "cudss Factorization failed with error code: " << status << std::endl;
+      std::cerr << "cudss Factorization failed with error code: " << status
+                << std::endl;
       return false;
     }
-    
-    status = cudssExecute(handle, CUDSS_PHASE_SOLVE, solver_config, solver_data, m_A, m_x, m_b);
+
+    status = cudssExecute(handle, CUDSS_PHASE_SOLVE, solver_config, solver_data,
+                          m_A, m_x, m_b);
     if (status != CUDSS_STATUS_SUCCESS) {
-      std::cerr << "cudss Solve failed with error code: " << status << std::endl;
+      std::cerr << "cudss Solve failed with error code: " << status
+                << std::endl;
       return false;
     }
 
@@ -190,4 +188,4 @@ class cudssSolver : public Solver<T, S> {
   }
 };
 
-}  // namespace graphite
+} // namespace graphite

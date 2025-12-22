@@ -86,11 +86,13 @@ public:
 
   virtual const std::unordered_map<size_t, size_t> &get_global_map() const = 0;
   virtual const size_t *get_hessian_ids() const = 0;
-  virtual void set_hessian_column(const size_t global_id, const size_t hessian_column, const size_t block_index) = 0;
+  virtual void set_hessian_column(const size_t global_id,
+                                  const size_t hessian_column,
+                                  const size_t block_index) = 0;
   virtual bool is_fixed(const size_t id) const = 0;
   virtual bool is_active(const size_t id) const = 0;
   virtual uint8_t *get_active_state() const = 0;
-  virtual const size_t* get_block_ids() const = 0;
+  virtual const size_t *get_block_ids() const = 0;
 };
 
 template <typename T, typename S, typename VTraits>
@@ -200,7 +202,9 @@ public:
     // Swap the vertex to be removed with the last vertex
     std::swap(x_host[local_id], x_host[last_index]);
     std::swap(local_to_hessian_offsets[local_id],
-              local_to_hessian_offsets[last_index]); // TODO: Probably shouldn't be modifying this - could be empty and is rebuilt frequently
+              local_to_hessian_offsets
+                  [last_index]); // TODO: Probably shouldn't be modifying this -
+                                 // could be empty and is rebuilt frequently
 
     // Update the global_to_local_map for the swapped vertex
     const auto last_global_id = local_to_global_map[last_index];
@@ -241,7 +245,7 @@ public:
     global_to_local_map.insert({id, local_id});
     local_to_global_map.push_back(id);
     local_to_hessian_offsets.push_back(0); // Initialize to 0
-    block_ids.push_back(0);              // Initialize to 0
+    block_ids.push_back(0);                // Initialize to 0
 
     // Update fixed mask
     active_state.push_back(static_cast<uint8_t>(fixed));
@@ -300,7 +304,8 @@ public:
     return hessian_ids.data().get();
   }
 
-  void set_hessian_column(const size_t global_id, const size_t hessian_column, const size_t block_index) {
+  void set_hessian_column(const size_t global_id, const size_t hessian_column,
+                          const size_t block_index) {
     const auto local_id = global_to_local_map.at(global_id);
     local_to_hessian_offsets[local_id] = hessian_column;
     block_ids[local_id] = block_index;

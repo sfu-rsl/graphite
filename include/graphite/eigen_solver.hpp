@@ -4,15 +4,13 @@
 
 namespace graphite {
 
-template <typename T, typename S>
-class EigenLDLTSolver : public Solver<T, S> {
- private:
+template <typename T, typename S> class EigenLDLTSolver : public Solver<T, S> {
+private:
   EigenLDLTWrapper<S> solver;
 
   Eigen::SparseMatrix<S, Eigen::ColMajor> matrix;
 
   using Index = typename Eigen::SparseMatrix<S, Eigen::ColMajor>::StorageIndex;
-
 
   Hessian<T, S> H;
   CSCMatrix<S, Index> d_matrix;
@@ -28,8 +26,10 @@ class EigenLDLTSolver : public Solver<T, S> {
     auto h_ptrs = matrix.outerIndexPtr();
     auto h_indices = matrix.innerIndexPtr();
 
-    thrust::copy(thrust::device, d_matrix.d_pointers.begin(), d_matrix.d_pointers.end(), h_ptrs);
-    thrust::copy(thrust::device, d_matrix.d_indices.begin(), d_matrix.d_indices.end(), h_indices);
+    thrust::copy(thrust::device, d_matrix.d_pointers.begin(),
+                 d_matrix.d_pointers.end(), h_ptrs);
+    thrust::copy(thrust::device, d_matrix.d_indices.begin(),
+                 d_matrix.d_indices.end(), h_indices);
 
     h_x.resize(dim);
     h_b.resize(dim);
@@ -37,13 +37,15 @@ class EigenLDLTSolver : public Solver<T, S> {
 
   void fill_matrix_values() {
     auto h_values = matrix.valuePtr();
-    thrust::copy(thrust::device, d_matrix.d_values.begin(), d_matrix.d_values.end(), h_values);
+    thrust::copy(thrust::device, d_matrix.d_values.begin(),
+                 d_matrix.d_values.end(), h_values);
   }
 
- public:
-  EigenLDLTSolver(): solver() {}
+public:
+  EigenLDLTSolver() : solver() {}
 
-  virtual void update_structure(Graph<T, S> *graph, StreamPool &streams) override {
+  virtual void update_structure(Graph<T, S> *graph,
+                                StreamPool &streams) override {
     H.build_structure(graph, streams);
     H.build_csc_structure(graph, d_matrix);
     fill_matrix_structure(); // for CPU matrix
@@ -56,14 +58,16 @@ class EigenLDLTSolver : public Solver<T, S> {
     fill_matrix_values(); // for CPU matrix
   }
 
-  virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor, StreamPool &streams) override {
+  virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor,
+                                  StreamPool &streams) override {
     H.apply_damping(graph, damping_factor, streams);
     H.update_csc_values(graph, d_matrix);
-    fill_matrix_values(); // TODO: Use a more lightweight method to just update diagonal
+    fill_matrix_values(); // TODO: Use a more lightweight method to just update
+                          // diagonal
   }
 
   virtual bool solve(Graph<T, S> *graph, T *x, StreamPool &streams) override {
-    
+
     auto dim = graph->get_hessian_dimension();
 
     if (!solver.factorize(matrix)) {
@@ -73,7 +77,8 @@ class EigenLDLTSolver : public Solver<T, S> {
 
     thrust::fill(thrust::device, x, x + dim, static_cast<T>(0.0));
 
-    thrust::copy(thrust::device, graph->get_b().begin(), graph->get_b().end(), h_b.data());
+    thrust::copy(thrust::device, graph->get_b().begin(), graph->get_b().end(),
+                 h_b.data());
     thrust::copy(thrust::device, x, x + dim, h_x.data());
 
     auto map_b = VecMap<S>(h_b.data(), dim, 1);
@@ -89,4 +94,4 @@ class EigenLDLTSolver : public Solver<T, S> {
   }
 };
 
-}  // namespace graphite
+} // namespace graphite

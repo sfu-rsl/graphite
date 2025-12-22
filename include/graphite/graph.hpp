@@ -8,7 +8,6 @@
 
 namespace graphite {
 
-
 template <typename T, typename S> class Graph {
 
 private:
@@ -25,13 +24,11 @@ public:
 
   size_t get_hessian_dimension() const { return hessian_column; }
   size_t get_variable_dimension(const size_t block_index) const {
-    return hessian_offsets[block_index+1]-hessian_offsets[block_index];
+    return hessian_offsets[block_index + 1] - hessian_offsets[block_index];
   }
-  size_t get_num_block_columns() const {
-    return hessian_offsets.size() - 1;
-  }
+  size_t get_num_block_columns() const { return hessian_offsets.size() - 1; }
 
-  const std::vector<size_t> & get_offset_vector() const {
+  const std::vector<size_t> &get_offset_vector() const {
     return hessian_offsets;
   }
 

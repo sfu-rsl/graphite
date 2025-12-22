@@ -8,14 +8,14 @@ namespace graphite {
 
 // For factors, ignores the MSB
 __host__ __device__ bool is_factor_active(const uint8_t active_val,
-                                   const uint8_t level) {
+                                          const uint8_t level) {
   constexpr uint8_t NOT_MSB = 0x7F; // 01111111
   return (active_val & NOT_MSB) <= level && ((active_val & 0x80) == 0);
 }
 
 // For vertex
 __host__ __device__ bool is_vertex_active(const uint8_t *active_state,
-                            const size_t vertex_id) {
+                                          const size_t vertex_id) {
   return !(active_state[vertex_id] > 0);
 }
 
@@ -25,9 +25,11 @@ size_t build_active_indices(const thrust::device_vector<uint8_t> &active,
                             const size_t count, const uint8_t level) {
 
   // Count active constraints
-  const size_t active_count = thrust::count_if(
-      thrust::device, active.begin(), active.end(),
-      [level] __device__(const uint8_t a) { return is_factor_active(a, level); });
+  const size_t active_count =
+      thrust::count_if(thrust::device, active.begin(), active.end(),
+                       [level] __device__(const uint8_t a) {
+                         return is_factor_active(a, level);
+                       });
 
   // Resize active indices to the number of active constraints
   active_indices.clear();

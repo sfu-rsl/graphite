@@ -18,20 +18,18 @@ T compute_rho(Graph<T, S> *graph, thrust::device_vector<T> &delta_x,
   T denom = 1.0;
   if (step_is_good) {
 
-  const auto n = delta_x.size();
-  const auto bb = b.data().get();
-  const auto dx = delta_x.data().get();
+    const auto n = delta_x.size();
+    const auto bb = b.data().get();
+    const auto dx = delta_x.data().get();
 
-  denom = thrust::transform_reduce(
-      thrust::make_counting_iterator<std::size_t>(0),
-      thrust::make_counting_iterator<std::size_t>(n),
-      [dx, bb, mu] __host__ __device__ (const std::size_t i) {
+    denom = thrust::transform_reduce(
+        thrust::make_counting_iterator<std::size_t>(0),
+        thrust::make_counting_iterator<std::size_t>(n),
+        [dx, bb, mu] __host__ __device__(const std::size_t i) {
           T x = dx[i];
           return x * (mu * x + bb[i]);
-      },
-      T{0},
-      thrust::plus<T>{}
-  );
+        },
+        T{0}, thrust::plus<T>{});
 
     denom += 1.0e-3;
   }
@@ -103,7 +101,6 @@ bool levenberg_marquardt(Graph<T, S> *graph,
   }
 
   solver->update_structure(graph, *streams);
-
 
   graph->linearize(*streams);
 
@@ -233,7 +230,6 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
 
   auto solver = options->solver;
   auto streams = options->streams;
-
 
   if (!graph->initialize_optimization(options->optimization_level)) {
     return false;

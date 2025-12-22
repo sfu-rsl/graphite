@@ -100,7 +100,6 @@ public:
   }
 };
 
-
 // Based on method from Boost
 // https://www.boost.org/doc/libs/latest/libs/container_hash/doc/html/hash.html#ref_hash_combine
 
@@ -113,8 +112,7 @@ size_t mix(size_t x) {
   return x;
 }
 
-template<typename T>
-void hash_combine(size_t & seed, T const& v) {
+template <typename T> void hash_combine(size_t &seed, T const &v) {
   seed = mix(seed + 0x9e3779b9 + std::hash<T>{}(v));
 }
 
