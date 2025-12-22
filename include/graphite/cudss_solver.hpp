@@ -30,7 +30,7 @@ class cudssSolver : public Solver<T, S> {
 
 
   void fill_matrix_structure() {
-    const auto dim = d_matrix.d_row_pointers.size() - 1;
+    const auto dim = d_matrix.d_pointers.size() - 1;
     const auto nnz = d_matrix.d_values.size();
     const cudssMatrixType_t matrix_type = CUDSS_MTYPE_SPD;
     // const cudssMatrixType_t matrix_type = CUDSS_MTYPE_SYMMETRIC;
@@ -44,8 +44,8 @@ class cudssSolver : public Solver<T, S> {
     }
 
 
-    cudssMatrixCreateCsr(&m_A, dim, dim, nnz, d_matrix.d_row_pointers.data().get(), nullptr, 
-                          d_matrix.d_col_indices.data().get(), d_matrix.d_values.data().get(),
+    cudssMatrixCreateCsr(&m_A, dim, dim, nnz, d_matrix.d_pointers.data().get(), nullptr, 
+                          d_matrix.d_indices.data().get(), d_matrix.d_values.data().get(),
                           CUDA_R_32I, get_cuda_data_type<S>(), matrix_type, view_type, index_base);
 
 
@@ -56,7 +56,7 @@ class cudssSolver : public Solver<T, S> {
   }
 
   Hessian<T, S> H;
-  CSRMatrix<S, StorageIndex> d_matrix;
+  CSCMatrix<S, StorageIndex> d_matrix;
 
   bool factorization_failed;
 
@@ -114,7 +114,7 @@ class cudssSolver : public Solver<T, S> {
 
   virtual void update_structure(Graph<T, S> *graph, StreamPool &streams) override {
     H.build_structure(graph, streams);
-    H.build_csr_structure(graph, d_matrix);
+    H.build_csc_structure(graph, d_matrix);
     fill_matrix_structure();
 
     // Create matrices for b and x
@@ -145,13 +145,13 @@ class cudssSolver : public Solver<T, S> {
 
   virtual void update_values(Graph<T, S> *graph, StreamPool &streams) override {
     H.update_values(graph, streams);
-    H.update_csr_values(graph, d_matrix);
+    H.update_csc_values(graph, d_matrix);
     fill_matrix_values(); // for CPU matrix
   }
 
   virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor, StreamPool &streams) override {
     H.apply_damping(graph, damping_factor, streams);
-    H.update_csr_values(graph, d_matrix);
+    H.update_csc_values(graph, d_matrix);
     fill_matrix_values(); // TODO: Use a more lightweight method to just update diagonal
   }
 

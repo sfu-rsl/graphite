@@ -15,21 +15,21 @@ class EigenLDLTSolver : public Solver<T, S> {
 
 
   Hessian<T, S> H;
-  CSRMatrix<S, Index> d_matrix;
+  CSCMatrix<S, Index> d_matrix;
 
   thrust::host_vector<S> h_x;
   thrust::host_vector<S> h_b;
 
   void fill_matrix_structure() {
-    const auto dim = d_matrix.d_row_pointers.size() - 1;
+    const auto dim = d_matrix.d_pointers.size() - 1;
     matrix.resize(dim, dim);
     matrix.resizeNonZeros(d_matrix.d_values.size());
 
     auto h_ptrs = matrix.outerIndexPtr();
     auto h_indices = matrix.innerIndexPtr();
 
-    thrust::copy(thrust::device, d_matrix.d_row_pointers.begin(), d_matrix.d_row_pointers.end(), h_ptrs);
-    thrust::copy(thrust::device, d_matrix.d_col_indices.begin(), d_matrix.d_col_indices.end(), h_indices);
+    thrust::copy(thrust::device, d_matrix.d_pointers.begin(), d_matrix.d_pointers.end(), h_ptrs);
+    thrust::copy(thrust::device, d_matrix.d_indices.begin(), d_matrix.d_indices.end(), h_indices);
 
     h_x.resize(dim);
     h_b.resize(dim);
@@ -45,20 +45,20 @@ class EigenLDLTSolver : public Solver<T, S> {
 
   virtual void update_structure(Graph<T, S> *graph, StreamPool &streams) override {
     H.build_structure(graph, streams);
-    H.build_csr_structure(graph, d_matrix);
+    H.build_csc_structure(graph, d_matrix);
     fill_matrix_structure(); // for CPU matrix
     solver.analyze_pattern(matrix);
   }
 
   virtual void update_values(Graph<T, S> *graph, StreamPool &streams) override {
     H.update_values(graph, streams);
-    H.update_csr_values(graph, d_matrix);
+    H.update_csc_values(graph, d_matrix);
     fill_matrix_values(); // for CPU matrix
   }
 
   virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor, StreamPool &streams) override {
     H.apply_damping(graph, damping_factor, streams);
-    H.update_csr_values(graph, d_matrix);
+    H.update_csc_values(graph, d_matrix);
     fill_matrix_values(); // TODO: Use a more lightweight method to just update diagonal
   }
 
