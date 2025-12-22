@@ -33,8 +33,6 @@ class cudssSolver : public Solver<T, S> {
     const auto dim = d_matrix.d_pointers.size() - 1;
     const auto nnz = d_matrix.d_values.size();
     const cudssMatrixType_t matrix_type = CUDSS_MTYPE_SPD;
-    // const cudssMatrixType_t matrix_type = CUDSS_MTYPE_SYMMETRIC;
-    // const cudssMatrixViewType_t view_type = CUDSS_MVIEW_UPPER;
     const cudssMatrixViewType_t view_type = CUDSS_MVIEW_LOWER;
     const cudssIndexBase_t index_base = CUDSS_BASE_ZERO;
 

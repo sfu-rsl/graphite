@@ -36,9 +36,6 @@ T compute_rho(Graph<T, S> *graph, thrust::device_vector<T> &delta_x,
     denom += 1.0e-3;
   }
 
-  // std::cout << "Scale (denom): " << denom << std::endl;
-  // std::cout << "Numerator: " << num << std::endl;
-  // std::cout << "Rho: " << (num / denom) << std::endl;
   return num / (denom);
 }
 

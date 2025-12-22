@@ -65,30 +65,25 @@ class EigenLDLTSolver : public Solver<T, S> {
   virtual bool solve(Graph<T, S> *graph, T *x, StreamPool &streams) override {
     
     auto dim = graph->get_hessian_dimension();
-    // std::cout << "Printing system matrix:" << std::endl;
-    // std::cout << matrix << std::endl;
 
     if (!solver.factorize(matrix)) {
       std::cerr << "LDLT matrix decomposition failed!";
       return false;
     }
 
-    // std::cout << "LDLT success!" << std::endl;
-    // Not sure if zeroing is required
     thrust::fill(thrust::device, x, x + dim, static_cast<T>(0.0));
 
-    // std::cout << "Copying b and x to host" << std::endl;
     thrust::copy(thrust::device, graph->get_b().begin(), graph->get_b().end(), h_b.data());
     thrust::copy(thrust::device, x, x + dim, h_x.data());
 
     auto map_b = VecMap<S>(h_b.data(), dim, 1);
     auto map_x = VecMap<S>(h_x.data(), dim, 1);
-    // std::cout << "Solving!" << std::endl;
-    solver.solve(map_b, map_x);
-    // std::cout << "Copying back solution!" << std::endl;
-    // Copy x back to device
+    if (!solver.solve(map_b, map_x)) {
+      std::cerr << "LDLT solve failed!";
+      return false;
+    }
+
     thrust::copy(thrust::device, h_x.begin(), h_x.end(), x);
-    // std::cout << "Solution copied back!" << std::endl;
 
     return true;
   }

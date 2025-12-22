@@ -649,9 +649,6 @@ public:
       thrust::host_vector<size_t> h_active_factors = active_indices;
       const auto d_ids = device_ids.data().get();
       const auto h_ids = &host_ids[0];
-      // double kernel_time = 0.0;
-      // double setup_time = 0.0;
-      // const cudaStream_t stream = 0; // default stream
 
       size_t mul_count = 0;
       // Determine max number of multiplications based on active factors
@@ -675,7 +672,6 @@ public:
               const auto vj_block_ids = vertex_descriptors[j]->get_block_ids();
               // Iterate over active factors and generate block coordinates
               const auto start_idx = write_idx;
-              // auto start_setup = std::chrono::steady_clock::now();
               for (const auto & factor_idx : h_active_factors) {
                   // TODO: Build this in the GPU using a GPU hash map
                   const auto vi_id = h_ids[factor_idx * num_vertices + i];
@@ -714,11 +710,6 @@ public:
                               cudaMemcpyHostToDevice,
                               stream);
 
-              // auto end_setup = std::chrono::steady_clock::now();
-              // setup_time += std::chrono::duration<double>(end_setup - start_setup).count();
-              // std::cout << "Hessian block computation setup time for (" << i << ", " << j << "): " << std::chrono::duration<double>(end_setup - start_setup).count() << " seconds" << std::endl;
-              // std::cout << "Number of pairs were written: " << num_elements << std::endl;
-              // now launch a kernel to compute the Hessian blocks
 
               const auto dim_i = vertex_descriptors[i]->dimension();
               const auto dim_j = vertex_descriptors[j]->dimension();
@@ -728,7 +719,6 @@ public:
               const size_t threads_per_block = 256;
               const size_t num_blocks = (num_threads + threads_per_block - 1) / threads_per_block;
 
-              // auto start_kernel = std::chrono::steady_clock::now();
               compute_hessian_block_kernel<T, S><<<num_blocks, threads_per_block, 0, stream>>>(
                   i,
                   j,
@@ -749,20 +739,11 @@ public:
                   d_hessian.data().get()
               );
 
-              // cudaStreamSynchronize(stream);
-              // auto end_kernel = std::chrono::steady_clock::now();
-              // kernel_time += std::chrono::duration<double>(end_kernel - start_kernel).count();
 
           }
       }
 
-      // std::cout << "Hessian block computation setup time: " << setup_time << " seconds" << std::endl;
-      // std::cout << "Hessian block computation kernel time: " << kernel_time << " seconds" << std::endl;
-      // auto t_sync_start = std::chrono::steady_clock::now();
-      // cudaStreamSynchronize(stream);
       streams.sync_all();
-      // auto t_sync_end = std::chrono::steady_clock::now();
-      // std::cout << "Hessian block computation sync time: " << std::chrono::duration<double>(t_sync_end - t_sync_start).count() << " seconds" << std::endl;
   }
 
   void clear() {
@@ -772,7 +753,6 @@ public:
 
     hm.clear();
 
-    // bool _store_jacobians;
     _active_count = 0;
 
 
@@ -791,8 +771,9 @@ public:
     device_active.clear();
     active_indices.clear();
 
-    // std::array<JacobianStorage<S>, N> jacobians;
-    // std::array<S, Traits::dimension * Traits::dimension> default_precision_matrix;
+    for (size_t i = 0; i < N; i++) {
+      jacobians[i].data.clear();
+    }
   }
 };
 
