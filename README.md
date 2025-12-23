@@ -13,7 +13,7 @@ Supported linear solvers:
 
 ## Building
 
-You need a recent version of the CUDA Toolkit (e.g. >= 12.0) and Eigen3. Graphite can be built using CMake. A Dockerfile for development is also included, which can be used to create a devcontainer for VS Code (requires the NVIDIA Container Toolkit).
+You need a recent version of the CUDA Toolkit (e.g. >= 12.0), Eigen3, and cuDSS 0.7.0. Graphite can be built using CMake. A Dockerfile for development is also included, which can be used to create a devcontainer for VS Code (requires the NVIDIA Container Toolkit).
 
 ## Examples
 
