@@ -1,6 +1,7 @@
 # FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04
 # FROM nvidia/cuda:12.6.3-runtime-ubuntu22.04
 FROM nvidia/cuda:12.8.1-runtime-ubuntu22.04
+# FROM nvidia/cuda:13.0.2-runtime-ubuntu22.04
 
 # FROM ubuntu:22.04
 
@@ -28,7 +29,8 @@ RUN apt-get -y install libopencv-dev libopencv-core-dev libeigen3-dev libboost-s
 
 # Install CUDA Toolkit
 # RUN apt-get -y install cuda-toolkit-12-6 cuda-gdb-12-6
-RUN apt update && apt-get -y install cuda-toolkit-12-8 cuda-gdb-12-8
+RUN apt update && apt-get -y install cuda-toolkit-12-8 cuda-gdb-12-8 cudss-cuda-12
+# RUN apt update && apt-get -y install cuda-toolkit-13-0 cuda-gdb-13-0 cudss
 
 # Install gdb
 # RUN apt update && apt-get -y install gdb

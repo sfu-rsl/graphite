@@ -8,29 +8,6 @@
 
 namespace graphite {
 
-// template<typename T> class Solver;
-
-class BlockCoordinates {
-public:
-  size_t row;
-  size_t col;
-};
-
-template <typename T> class HessianBlocks {
-public:
-  std::pair<size_t, size_t> dimensions;
-  size_t num_blocks;
-  thrust::device_vector<T> data;
-  thrust::device_vector<BlockCoordinates> block_coordinates;
-
-  void resize(size_t num_blocks, size_t rows, size_t cols) {
-    dimensions = {rows, cols};
-    this->num_blocks = num_blocks;
-    data.resize(rows * cols * num_blocks);
-    block_coordinates.resize(num_blocks);
-  }
-};
-
 template <typename T, typename S> class Graph {
 
 private:
@@ -40,11 +17,20 @@ private:
   thrust::device_vector<T> b;
   thrust::device_vector<T> jacobian_scales;
   size_t hessian_column;
+  std::vector<size_t> hessian_offsets;
 
 public:
   Graph() {}
 
-  size_t get_hessian_dimension() { return hessian_column; }
+  size_t get_hessian_dimension() const { return hessian_column; }
+  size_t get_variable_dimension(const size_t block_index) const {
+    return hessian_offsets[block_index + 1] - hessian_offsets[block_index];
+  }
+  size_t get_num_block_columns() const { return hessian_offsets.size() - 1; }
+
+  const std::vector<size_t> &get_offset_vector() const {
+    return hessian_offsets;
+  }
 
   thrust::device_vector<T> &get_b() { return b; }
 
@@ -93,13 +79,18 @@ public:
 
     // Assign Hessian columns to local indices
     hessian_column = 0;
+    size_t hessian_block_index = 0;
+    hessian_offsets.clear();
     for (const auto &entry : global_to_local_combined) {
-      if (!vertex_descriptors[entry.second.first]->is_active(entry.first)) {
+      if (vertex_descriptors[entry.second.first]->is_active(entry.first)) {
         vertex_descriptors[entry.second.first]->set_hessian_column(
-            entry.first, hessian_column);
+            entry.first, hessian_column, hessian_block_index);
+        hessian_offsets.push_back(hessian_column);
         hessian_column += vertex_descriptors[entry.second.first]->dimension();
+        hessian_block_index++;
       }
     }
+    hessian_offsets.push_back(hessian_column);
 
     // Copy vertex values to device
     for (auto &desc : vertex_descriptors) {
@@ -275,6 +266,15 @@ public:
     for (auto &desc : vertex_descriptors) {
       desc->to_host();
     }
+  }
+
+  void clear() {
+    vertex_descriptors.clear();
+    factor_descriptors.clear();
+    b.clear();
+    jacobian_scales.clear();
+    hessian_column = 0;
+    hessian_offsets.clear();
   }
 };
 

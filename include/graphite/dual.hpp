@@ -84,6 +84,10 @@ template <typename T, typename D> struct Dual {
     return DT(std::atan(x.real), x.dual / (1 + x.real * x.real));
   }
 
+  __host__ __device__ friend DT acos(const DT &x) {
+    return DT(std::acos(x.real), -x.dual / std::sqrt(1 - x.real * x.real));
+  }
+
   __host__ __device__ friend DT exp(const DT &x) {
     T exp_real = std::exp(x.real);
     return DT(exp_real, x.dual * exp_real);

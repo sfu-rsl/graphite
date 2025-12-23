@@ -78,8 +78,8 @@ int main(void) {
   initialize_cuda();
 
   // Create graph
-  using FP = float;
-  using SP = float;
+  using FP = double;
+  using SP = double;
   Graph<FP, SP> graph;
 
   const size_t num_vertices = 5;
@@ -128,10 +128,10 @@ int main(void) {
   }
 
   // Set the last vertex as fixed
-  // point_desc.set_fixed(num_vertices - 1 + id_offset, true);
+  point_desc.set_fixed(num_vertices - 1 + id_offset, true);
 
   // Disable third constraint for point 2
-  // factor_desc.set_active(2, 0x1);
+  factor_desc.set_active(2, 0x1);
 
   // Configure solver
   graphite::IdentityPreconditioner<FP, SP> preconditioner;
@@ -170,6 +170,8 @@ int main(void) {
     std::cout << "Optimized point " << vertex_id << "=(" << x << ", " << y
               << ") with radius=" << sqrt(x * x + y * y) << std::endl;
   }
+
+  std::cout << "points 2 and 4 should remain unchanged." << std::endl;
 
   return 0;
 }

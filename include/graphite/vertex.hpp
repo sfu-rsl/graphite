@@ -35,7 +35,7 @@ __global__ void backup_state_kernel(VertexType **vertices, State *dst,
 
   const size_t vertex_id = get_thread_id();
 
-  if (vertex_id >= num_vertices || is_inactive(active_state, vertex_id))
+  if (vertex_id >= num_vertices || !is_vertex_active(active_state, vertex_id))
     return;
   if constexpr (has_type_alias_State<Traits>::value) {
     dst[vertex_id] = Traits::get_state(*vertices[vertex_id]);
@@ -51,7 +51,7 @@ __global__ void set_state_kernel(VertexType **vertices, const State *src,
 
   const size_t vertex_id = get_thread_id();
 
-  if (vertex_id >= num_vertices || is_inactive(active_state, vertex_id))
+  if (vertex_id >= num_vertices || !is_vertex_active(active_state, vertex_id))
     return;
 
   if constexpr (has_type_alias_State<Traits>::value) {
@@ -86,10 +86,13 @@ public:
 
   virtual const std::unordered_map<size_t, size_t> &get_global_map() const = 0;
   virtual const size_t *get_hessian_ids() const = 0;
-  virtual void set_hessian_column(size_t global_id, size_t hessian_column) = 0;
+  virtual void set_hessian_column(const size_t global_id,
+                                  const size_t hessian_column,
+                                  const size_t block_index) = 0;
   virtual bool is_fixed(const size_t id) const = 0;
   virtual bool is_active(const size_t id) const = 0;
   virtual uint8_t *get_active_state() const = 0;
+  virtual const size_t *get_block_ids() const = 0;
 };
 
 template <typename T, typename S, typename VTraits>
@@ -113,6 +116,7 @@ public:
   std::vector<size_t> local_to_global_map;
   thrust::host_vector<size_t> local_to_hessian_offsets;
   thrust::device_vector<size_t> hessian_ids;
+  thrust::universal_vector<size_t> block_ids;
   uninitialized_vector<uint8_t> active_state;
 
   static constexpr size_t dim = Traits::dimension;
@@ -178,6 +182,7 @@ public:
     global_to_local_map.reserve(size);
     local_to_global_map.reserve(size);
     local_to_hessian_offsets.reserve(size);
+    block_ids.reserve(size);
     active_state.reserve(size);
   }
 
@@ -196,8 +201,11 @@ public:
 
     // Swap the vertex to be removed with the last vertex
     std::swap(x_host[local_id], x_host[last_index]);
-    std::swap(local_to_hessian_offsets[local_id],
-              local_to_hessian_offsets[last_index]);
+
+    if (local_to_hessian_offsets.size() > 0) { // may not be initialized yet
+      std::swap(local_to_hessian_offsets[local_id],
+                local_to_hessian_offsets[last_index]);
+    }
 
     // Update the global_to_local_map for the swapped vertex
     const auto last_global_id = local_to_global_map[last_index];
@@ -215,6 +223,7 @@ public:
     local_to_hessian_offsets.pop_back();
     global_to_local_map.erase(id);
     local_to_global_map.pop_back();
+    block_ids.pop_back();
   }
 
   void replace_vertex(const size_t id, VertexType *vertex) {
@@ -229,14 +238,12 @@ public:
 
   void add_vertex(const size_t id, VertexType *vertex,
                   const bool fixed = false) {
-    // TODO: Find a better way to get the dimension
-    // const auto dim = dynamic_cast<Derived<T>*>(this)->dimension();
-    // x_host.insert(x_host.end(), value, value+dim);
     x_host.push_back(vertex);
     const auto local_id = x_host.size() - 1;
     global_to_local_map.insert({id, local_id});
     local_to_global_map.push_back(id);
     local_to_hessian_offsets.push_back(0); // Initialize to 0
+    block_ids.push_back(0);                // Initialize to 0
 
     // Update fixed mask
     active_state.push_back(static_cast<uint8_t>(fixed));
@@ -255,16 +262,18 @@ public:
 
   bool is_active(const size_t id) const override {
     const auto local_id = global_to_local_map.at(id);
-    return is_vertex_active(active_state[local_id]);
+    return is_vertex_active(active_state.data().get(), local_id);
   }
 
   uint8_t *get_active_state() const override {
     return active_state.data().get();
   }
 
+  const size_t *get_block_ids() const override {
+    return block_ids.data().get();
+  }
+
   VertexType *get_vertex(const size_t id) {
-    // const auto local_id = global_to_local_map.at(id);
-    // return x_host[local_id];
     auto it = global_to_local_map.find(id);
     if (it != global_to_local_map.end()) {
       return x_host[it->second];
@@ -282,18 +291,30 @@ public:
     return global_to_local_map;
   }
 
-  size_t dimension() const override {
-    return dim;
-    // return Derived<T>::VertexType::dimension;
-  }
+  size_t dimension() const override { return dim; }
 
   const size_t *get_hessian_ids() const override {
     return hessian_ids.data().get();
   }
 
-  void set_hessian_column(size_t global_id, size_t hessian_column) {
-    local_to_hessian_offsets[global_to_local_map.at(global_id)] =
-        hessian_column;
+  void set_hessian_column(const size_t global_id, const size_t hessian_column,
+                          const size_t block_index) {
+    const auto local_id = global_to_local_map.at(global_id);
+    local_to_hessian_offsets[local_id] = hessian_column;
+    block_ids[local_id] = block_index;
+  }
+
+  void clear() {
+    x_device.clear();
+    x_host.clear();
+    backup_state.clear();
+
+    global_to_local_map.clear();
+    local_to_global_map.clear();
+    local_to_hessian_offsets.clear();
+    hessian_ids.clear();
+    block_ids.clear();
+    active_state.clear();
   }
 };
 

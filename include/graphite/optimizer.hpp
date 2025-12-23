@@ -15,16 +15,25 @@ T compute_rho(Graph<T, S> *graph, thrust::device_vector<T> &delta_x,
   //  TODO: Don't store these in the graph
   auto &b = graph->get_b();
   T num = (chi2 - new_chi2);
-  T denom = mu * static_cast<T>(thrust::inner_product(
-                     delta_x.begin(), delta_x.end(), delta_x.begin(),
-                     static_cast<T>(0.0)));
-  denom += static_cast<T>(thrust::inner_product(
-      delta_x.begin(), delta_x.end(), b.begin(), static_cast<T>(0.0)));
+  T denom = 1.0;
   if (step_is_good) {
+
+    const auto n = delta_x.size();
+    const auto bb = b.data().get();
+    const auto dx = delta_x.data().get();
+
+    denom = thrust::transform_reduce(
+        thrust::make_counting_iterator<std::size_t>(0),
+        thrust::make_counting_iterator<std::size_t>(n),
+        [dx, bb, mu] __host__ __device__(const std::size_t i) {
+          T x = dx[i];
+          return x * (mu * x + bb[i]);
+        },
+        T{0}, thrust::plus<T>{});
+
     denom += 1.0e-3;
-  } else {
-    denom = 1;
   }
+
   return num / (denom);
 }
 
@@ -80,6 +89,9 @@ bool levenberg_marquardt(Graph<T, S> *graph,
   T mu = static_cast<T>(options->initial_damping);
   T nu = 2;
 
+  auto solver = options->solver;
+  auto streams = options->streams;
+
   if (!graph->initialize_optimization(options->optimization_level)) {
     return false;
   }
@@ -88,9 +100,12 @@ bool levenberg_marquardt(Graph<T, S> *graph,
     return false;
   }
 
-  auto streams = options->streams;
+  solver->update_structure(graph, *streams);
 
   graph->linearize(*streams);
+
+  // Initialize solver values
+  solver->update_values(graph, *streams);
 
   thrust::device_vector<T> delta_x(graph->get_hessian_dimension());
 
@@ -116,11 +131,11 @@ bool levenberg_marquardt(Graph<T, S> *graph,
   for (size_t i = 0; i < num_iterations && run; i++) {
 
     start = std::chrono::steady_clock::now();
+
     T chi2 = graph->chi2();
 
-    auto solver = options->solver;
-    bool solve_ok = solver->solve(graph, delta_x.data().get(),
-                                  static_cast<T>(mu), *streams);
+    solver->set_damping_factor(graph, static_cast<T>(mu), *streams);
+    bool solve_ok = solver->solve(graph, delta_x.data().get(), *streams);
 
     graph->backup_parameters();
     graph->apply_step(delta_x.data().get(), *streams);
@@ -145,6 +160,7 @@ bool levenberg_marquardt(Graph<T, S> *graph,
       nu = 2;
       // Relinearize since step is accepted
       graph->linearize(*streams);
+      solver->update_values(graph, *streams);
       // std::cout << "Good step" << std::endl;
       // std::cout << "rho: " << rho << std::endl;
     } else {
@@ -212,6 +228,9 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
   T nu = 2;
   int num_bad = 0;
 
+  auto solver = options->solver;
+  auto streams = options->streams;
+
   if (!graph->initialize_optimization(options->optimization_level)) {
     return false;
   }
@@ -219,9 +238,10 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
   if (!graph->build_structure()) {
     return false;
   }
+  solver->update_structure(graph, *streams);
 
-  auto streams = options->streams;
   graph->linearize(*streams);
+  solver->update_values(graph, *streams);
 
   thrust::device_vector<T> delta_x(graph->get_hessian_dimension());
 
@@ -247,13 +267,13 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
   for (size_t i = 0; i < num_iterations && run; i++) {
 
     start = std::chrono::steady_clock::now();
+
     T chi2 = graph->chi2();
     T initial_chi2 = chi2;
     T end_chi2 = initial_chi2;
 
-    auto solver = options->solver;
-    bool solve_ok = solver->solve(graph, delta_x.data().get(),
-                                  static_cast<T>(mu), *streams);
+    solver->set_damping_factor(graph, static_cast<T>(mu), *streams);
+    bool solve_ok = solver->solve(graph, delta_x.data().get(), *streams);
 
     graph->backup_parameters();
     graph->apply_step(delta_x.data().get(), *streams);
@@ -277,6 +297,7 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
       nu = 2;
       // Relinearize since step is accepted
       graph->linearize(*streams);
+      solver->update_values(graph, *streams);
       end_chi2 = new_chi2;
       step_accepted = true;
       // std::cout << "Good step" << std::endl;
