@@ -16,11 +16,12 @@ namespace graphite {
 
 template <typename T, typename S>
 __global__ void compute_hessian_block_kernel(
-    const size_t vi, const size_t vj, const size_t dim_i, const size_t dim_j,
+    const size_t vi, const size_t vj, size_t dim_i, size_t dim_j,
     const size_t dim_e, const size_t num_vertices, const size_t *active_factors,
     const size_t num_active_factors, const size_t *ids,
     const size_t *block_offsets, const uint8_t *vi_active,
-    const uint8_t *vj_active, const S *jacobian_i, const S *jacobian_j,
+    const uint8_t *vj_active, const size_t *hessian_offset_i,
+    const size_t *hessian_offset_j, const S *jacobian_i, const S *jacobian_j,
     const S *precision, const S *chi2_derivative, S *hessian) {
   // TODO: simpify and optimize this kernel
   const auto idx = get_thread_id();
@@ -41,22 +42,32 @@ __global__ void compute_hessian_block_kernel(
 
     const size_t block_size = dim_i * dim_j;
     const size_t offset = idx % block_size;
-    // Hessian may be rectangular
+    // Hessian block may be rectangular
     // output blocks are all column major
+
+    const bool transposed = hessian_offset_i[vi_id] > hessian_offset_j[vj_id];
+
+    auto ji = factor_idx * dim_e * dim_i + jacobian_i;
+    auto jj = factor_idx * dim_e * dim_j + jacobian_j;
+    const auto precision_offset = factor_idx * dim_e * dim_e;
+    const auto p = precision + precision_offset;
+
+    if (transposed) {
+      cuda::std::swap(ji, jj);
+      cuda::std::swap(dim_i, dim_j);
+    }
+
     const size_t row = offset % dim_i;
     const size_t col = offset / dim_i;
-
-    const auto jacobian_i_offset = factor_idx * dim_e * dim_i;
-    const auto jacobian_j_offset = factor_idx * dim_e * dim_j;
-    const auto precision_offset = factor_idx * dim_e * dim_e;
-
-    const auto J = jacobian_j + jacobian_j_offset + col * dim_e;
-    const auto Jt = jacobian_i + jacobian_i_offset + row * dim_e;
-    const auto p = precision + precision_offset;
 
     // Each thread computes one element of the Hessian block
     using highp = T;
     highp value = 0;
+
+    // computes J_i^T * P * J_j
+
+    const auto J = jj + col * dim_e;
+    const auto Jt = ji + row * dim_e;
     // #pragma unroll
     for (int i = 0; i < dim_e; i++) { // p row
       highp pj = 0;
@@ -694,6 +705,8 @@ public:
                 i, j, dim_i, dim_j, dim_e, num_vertices,
                 d_active_factors.data().get(), d_active_factors.size(), d_ids,
                 d_block_offsets.data().get() + start_idx, vi_active, vj_active,
+                vertex_descriptors[i]->get_hessian_ids(),
+                vertex_descriptors[j]->get_hessian_ids(),
                 jacobians[i].data.data().get(), jacobians[j].data.data().get(),
                 precision_matrices.data().get(), chi2_derivative.data().get(),
                 d_hessian.data().get());
