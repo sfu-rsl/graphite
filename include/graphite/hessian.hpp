@@ -78,7 +78,7 @@ public:
 
     // Copy to host and convert to std::vector
     std::vector<BlockCoordinates> host_block_coords(block_coords.size());
-    thrust::copy(thrust::device, block_coords.begin(), block_coords.end(),
+    thrust::copy(block_coords.begin(), block_coords.end(),
                  host_block_coords.begin());
     return host_block_coords;
   }
