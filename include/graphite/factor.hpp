@@ -14,12 +14,11 @@
 
 namespace graphite {
 
-template <typename T, typename S>
+template <typename T, typename S, size_t N, size_t E>
 __global__ void compute_hessian_block_kernel(
     const size_t vi, const size_t vj, size_t dim_i, size_t dim_j,
-    const size_t dim_e, const size_t num_vertices, const size_t *active_factors,
-    const size_t num_active_factors, const size_t *ids,
-    const size_t *block_offsets, const uint8_t *vi_active,
+    const size_t *active_factors, const size_t num_active_factors,
+    const size_t *ids, const size_t *block_offsets, const uint8_t *vi_active,
     const uint8_t *vj_active, const size_t *hessian_offset_i,
     const size_t *hessian_offset_j, const S *jacobian_i, const S *jacobian_j,
     const S *precision, const S *chi2_derivative, S *hessian) {
@@ -34,8 +33,8 @@ __global__ void compute_hessian_block_kernel(
 
   const auto factor_idx = active_factors[block_id];
 
-  const size_t vi_id = ids[factor_idx * num_vertices + vi];
-  const size_t vj_id = ids[factor_idx * num_vertices + vj];
+  const size_t vi_id = ids[factor_idx * N + vi];
+  const size_t vj_id = ids[factor_idx * N + vj];
 
   if (is_vertex_active(vi_active, vi_id) &&
       is_vertex_active(vj_active, vj_id)) {
@@ -47,9 +46,9 @@ __global__ void compute_hessian_block_kernel(
 
     const bool transposed = hessian_offset_i[vi_id] > hessian_offset_j[vj_id];
 
-    auto ji = factor_idx * dim_e * dim_i + jacobian_i;
-    auto jj = factor_idx * dim_e * dim_j + jacobian_j;
-    const auto precision_offset = factor_idx * dim_e * dim_e;
+    auto ji = factor_idx * E * dim_i + jacobian_i;
+    auto jj = factor_idx * E * dim_j + jacobian_j;
+    const auto precision_offset = factor_idx * E * E;
     const auto p = precision + precision_offset;
 
     if (transposed) {
@@ -66,14 +65,14 @@ __global__ void compute_hessian_block_kernel(
 
     // computes J_i^T * P * J_j
 
-    const auto J = jj + col * dim_e;
-    const auto Jt = ji + row * dim_e;
-    // #pragma unroll
-    for (int i = 0; i < dim_e; i++) { // p row
+    const auto J = jj + col * E;
+    const auto Jt = ji + row * E;
+#pragma unroll
+    for (int i = 0; i < E; i++) { // p row
       highp pj = 0;
-      // #pragma unroll
-      for (int j = 0; j < dim_e; j++) { // p col
-        pj += (highp)p[i * dim_e + j] * (highp)J[j];
+#pragma unroll
+      for (int j = 0; j < E; j++) { // p col
+        pj += (highp)p[i * E + j] * (highp)J[j];
       }
       value += (highp)Jt[i] * pj;
     }
@@ -693,17 +692,16 @@ public:
 
         const auto dim_i = vertex_descriptors[i]->dimension();
         const auto dim_j = vertex_descriptors[j]->dimension();
-        const auto dim_e = error_dim; // this should give you error dim E
         const size_t block_dim = dim_i * dim_j;
         const size_t num_threads = d_active_factors.size() * block_dim;
         const size_t threads_per_block = 256;
         const size_t num_blocks =
             (num_threads + threads_per_block - 1) / threads_per_block;
 
-        compute_hessian_block_kernel<T, S>
+        compute_hessian_block_kernel<T, S, N, error_dim>
             <<<num_blocks, threads_per_block, 0, stream>>>(
-                i, j, dim_i, dim_j, dim_e, num_vertices,
-                d_active_factors.data().get(), d_active_factors.size(), d_ids,
+                i, j, dim_i, dim_j, d_active_factors.data().get(),
+                d_active_factors.size(), d_ids,
                 d_block_offsets.data().get() + start_idx, vi_active, vj_active,
                 vertex_descriptors[i]->get_hessian_ids(),
                 vertex_descriptors[j]->get_hessian_ids(),
