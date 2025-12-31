@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 project(gpu_least_squares_optimizer LANGUAGES CUDA CXX)
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --extended-lambda")
 
-if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES OR CMAKE_CUDA_ARCHITECTURES EQUAL 52) # Newer versions default to 52 which is incompatible
   if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
     set(CMAKE_CUDA_ARCHITECTURES native)
   else()
