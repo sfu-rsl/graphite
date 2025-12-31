@@ -1,10 +1,17 @@
+cmake_minimum_required(VERSION 3.21)
 project(gpu_least_squares_optimizer LANGUAGES CUDA CXX)
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --extended-lambda")
-cmake_minimum_required(VERSION 3.21)
-if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-  set(CMAKE_CUDA_ARCHITECTURES 75 80 86 87 89 90 120)
-endif()
 
+if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+  if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
+    set(CMAKE_CUDA_ARCHITECTURES native)
+  else()
+    set(CMAKE_CUDA_ARCHITECTURES 75 80 86 87 89 90 120)
+  endif()
+  message(STATUS "No CMAKE_CUDA_ARCHITECTURES specified, defaulting to: ${CMAKE_CUDA_ARCHITECTURES}")
+else()
+  message(STATUS "CMAKE_CUDA_ARCHITECTURES specified as: ${CMAKE_CUDA_ARCHITECTURES}")
+endif()
 
 # Check WSL2
 message(STATUS "CMake ${CMAKE_VERSION}  kernel: ${CMAKE_HOST_SYSTEM_VERSION}")
