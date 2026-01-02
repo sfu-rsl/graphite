@@ -5,7 +5,6 @@
 #include <graphite/utils.hpp>
 #include <thrust/sort.h>
 #include <thrust/unique.h>
-#include <thrust/universal_vector.h>
 #include <unordered_map>
 #include <utility>
 

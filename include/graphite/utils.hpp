@@ -2,6 +2,7 @@
 #include <array>
 #include <graphite/vector.hpp>
 #include <thrust/device_vector.h>
+#include <thrust/universal_vector.h>
 
 namespace graphite {
 

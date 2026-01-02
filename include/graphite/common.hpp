@@ -10,7 +10,6 @@
 #include <memory>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
-#include <thrust/universal_vector.h>
 
 #include <graphite/dual.hpp>
 
