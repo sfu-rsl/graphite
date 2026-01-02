@@ -148,17 +148,16 @@ public:
           const size_t dim = h_offsets[block_col + 1] - hessian_col;
 
           // find diagonal block in column where row == col
-          const auto start = p_col[block_col];
+          // const auto start = p_col[block_col];
           const auto end = p_col[block_col + 1];
 
-          for (size_t b = start; b < end; b++) {
-            if (r_idx[b] == block_col) {
-              // found diagonal block, copy elements
-              const auto block = h + block_locations[b];
-              for (size_t i = 0; i < dim; i++) {
-                diag[hessian_col + i] = block[i * dim + i];
-              }
-              break;
+          const auto b = end-1; // assume there is always a diagonal block and it is always last
+
+          if (r_idx[b] == block_col) {
+            // found diagonal block, copy elements
+            const auto block = h + block_locations[b];
+            for (size_t i = 0; i < dim; i++) {
+              diag[hessian_col + i] = block[i * dim + i];
             }
           }
         });
@@ -182,19 +181,17 @@ public:
           const size_t dim = h_offsets[block_col + 1] - hessian_col;
 
           // find diagonal block in column where row == col
-          const auto start = p_col[block_col];
+          // const auto start = p_col[block_col];
           const auto end = p_col[block_col + 1];
+          const auto b = end-1; // assume there is always a diagonal block and it is always last
 
-          for (size_t b = start; b < end; b++) {
-            if (r_idx[b] == block_col) {
-              // found diagonal block, backup then apply damping
-              auto block = h + block_locations[b];
-              for (size_t i = 0; i < dim; i++) {
-                const auto h_diag = diag[hessian_col + i];
-                block[i * dim + i] =
-                    (S)((double)h_diag * (1.0 + (double)damping_factor));
-              }
-              break;
+          if (r_idx[b] == block_col) {
+            // found diagonal block, backup then apply damping
+            auto block = h + block_locations[b];
+            for (size_t i = 0; i < dim; i++) {
+              const auto h_diag = diag[hessian_col + i];
+              block[i * dim + i] =
+                  (S)((double)h_diag * (1.0 + (double)damping_factor));
             }
           }
         });
