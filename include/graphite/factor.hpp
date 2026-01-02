@@ -126,10 +126,10 @@ public:
 
   virtual JacobianStorage<S> *get_jacobians() = 0;
   virtual void initialize_jacobian_storage() = 0;
-  // virtual size_t get_num_vertices() const = 0;
 
   // virtual size_t internal_count() const = 0;
   virtual size_t active_count() const = 0;
+  virtual size_t get_num_descriptors() const = 0;
 
   virtual size_t get_residual_size() const = 0;
   virtual void scale_jacobians(GraphVisitor<T, S> &visitor,
@@ -146,6 +146,16 @@ public:
 
   virtual void get_hessian_block_coordinates(
       thrust::device_vector<BlockCoordinates> &block_coords) = 0;
+
+  virtual size_t setup_hessian_computation(
+      std::unordered_map<BlockCoordinates, size_t> &block_indices,
+      thrust::device_vector<S> &d_hessian, size_t *h_block_offsets,
+      StreamPool &streams) = 0;
+
+  virtual size_t execute_hessian_computation(
+      std::unordered_map<BlockCoordinates, size_t> &block_indices,
+      thrust::device_vector<S> &d_hessian, size_t *d_block_offsets,
+      StreamPool &streams) = 0;
 
   virtual void compute_hessian_blocks(
       std::unordered_map<BlockCoordinates, size_t> &block_indices,
@@ -305,6 +315,8 @@ public:
   }
 
   static constexpr size_t get_num_vertices() { return N; }
+
+  size_t get_num_descriptors() const override { return N; }
 
   JacobianStorage<S> *get_jacobians() override { return jacobians.data(); }
 
@@ -616,6 +628,127 @@ public:
         block_coords.resize(end - block_coords.begin());
       }
     }
+  }
+
+  virtual size_t setup_hessian_computation(
+      std::unordered_map<BlockCoordinates, size_t> &block_indices,
+      thrust::device_vector<S> &d_hessian, size_t *h_block_offsets,
+      StreamPool &streams) override {
+
+    const size_t num_vertices = get_num_vertices();
+    const auto &d_active_factors = active_indices;
+    thrust::host_vector<size_t> h_active_factors = active_indices;
+    const auto d_ids = device_ids.data().get();
+    const auto h_ids = &host_ids[0];
+
+    size_t mul_count = 0;
+    // Determine max number of multiplications based on active factors
+    for (size_t i = 0; i < num_vertices; i++) {
+      for (size_t j = i; j < num_vertices; j++) {
+        mul_count += d_active_factors.size();
+      }
+    }
+
+    size_t write_idx = 0;
+
+    size_t stream_idx = 0;
+    // Then actually do the multiplications
+    for (size_t i = 0; i < num_vertices; i++) {
+      const auto vi_active = vertex_descriptors[i]->get_active_state();
+      const auto vi_block_ids = vertex_descriptors[i]->get_block_ids();
+      for (size_t j = i; j < num_vertices; j++) {
+        const auto vj_active = vertex_descriptors[j]->get_active_state();
+        const auto vj_block_ids = vertex_descriptors[j]->get_block_ids();
+        // Iterate over active factors and generate block coordinates
+        const auto start_idx = write_idx;
+        for (const auto &factor_idx : h_active_factors) {
+          // TODO: Build this in the GPU using a GPU hash map
+          const auto vi_id = h_ids[factor_idx * num_vertices + i];
+          const auto vj_id = h_ids[factor_idx * num_vertices + j];
+
+          if (is_vertex_active(vi_active, vi_id) &&
+              is_vertex_active(vj_active, vj_id)) {
+            const auto block_i = vi_block_ids[vi_id];
+            const auto block_j = vj_block_ids[vj_id];
+            BlockCoordinates coordinates{block_i, block_j};
+            if (block_i > block_j) {
+              coordinates = BlockCoordinates{block_j, block_i};
+            }
+
+            auto it = block_indices.find(coordinates);
+            if (it != block_indices.end()) {
+              const size_t block_offset = it->second;
+              h_block_offsets[write_idx++] = block_offset;
+            } else {
+              // TODO: this should actually be an error, but also impossible
+              h_block_offsets[write_idx++] = 0;
+              std::cerr << "Error: Hessian block coordinate not found!"
+                        << std::endl;
+            }
+          } else {
+            h_block_offsets[write_idx++] = 0;
+          }
+        }
+      }
+    }
+
+    return mul_count;
+  }
+
+  virtual size_t execute_hessian_computation(
+      std::unordered_map<BlockCoordinates, size_t> &block_indices,
+      thrust::device_vector<S> &d_hessian, size_t *d_block_offsets,
+      StreamPool &streams) override {
+    const size_t num_vertices = get_num_vertices();
+    const auto &d_active_factors = active_indices;
+    thrust::host_vector<size_t> h_active_factors = active_indices;
+    const auto d_ids = device_ids.data().get();
+
+    size_t mul_count = 0;
+    // Determine max number of multiplications based on active factors
+    for (size_t i = 0; i < num_vertices; i++) {
+      for (size_t j = i; j < num_vertices; j++) {
+        mul_count += d_active_factors.size();
+      }
+    }
+
+    size_t write_idx = 0;
+
+    size_t stream_idx = 0;
+    // Then actually do the multiplications
+    for (size_t i = 0; i < num_vertices; i++) {
+      const auto vi_active = vertex_descriptors[i]->get_active_state();
+      const auto vi_block_ids = vertex_descriptors[i]->get_block_ids();
+      for (size_t j = i; j < num_vertices; j++) {
+        const auto vj_active = vertex_descriptors[j]->get_active_state();
+        // Iterate over active factors and generate block coordinates
+        const auto start_idx = write_idx;
+        write_idx += d_active_factors.size();
+        const auto stream = streams.select(stream_idx++);
+
+        const auto dim_i = vertex_descriptors[i]->dimension();
+        const auto dim_j = vertex_descriptors[j]->dimension();
+        const size_t block_dim = dim_i * dim_j;
+        const size_t num_threads = d_active_factors.size() * block_dim;
+        const size_t threads_per_block = 256;
+        const size_t num_blocks =
+            (num_threads + threads_per_block - 1) / threads_per_block;
+
+        compute_hessian_block_kernel<T, S, N, error_dim>
+            <<<num_blocks, threads_per_block, 0, stream>>>(
+                i, j, dim_i, dim_j, d_active_factors.data().get(),
+                d_active_factors.size(), d_ids, d_block_offsets + start_idx,
+                vi_active, vj_active, vertex_descriptors[i]->get_hessian_ids(),
+                vertex_descriptors[j]->get_hessian_ids(),
+                jacobians[i].data.data().get(), jacobians[j].data.data().get(),
+                precision_matrices.data().get(), chi2_derivative.data().get(),
+                d_hessian.data().get());
+      }
+    }
+
+    streams.sync_all();
+
+    return mul_count;
   }
 
   virtual void compute_hessian_blocks(

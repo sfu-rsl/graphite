@@ -151,7 +151,8 @@ public:
           // const auto start = p_col[block_col];
           const auto end = p_col[block_col + 1];
 
-          const auto b = end-1; // assume there is always a diagonal block and it is always last
+          const auto b = end - 1; // assume there is always a diagonal block and
+                                  // it is always last
 
           if (r_idx[b] == block_col) {
             // found diagonal block, copy elements
@@ -183,7 +184,8 @@ public:
           // find diagonal block in column where row == col
           // const auto start = p_col[block_col];
           const auto end = p_col[block_col + 1];
-          const auto b = end-1; // assume there is always a diagonal block and it is always last
+          const auto b = end - 1; // assume there is always a diagonal block and
+                                  // it is always last
 
           if (r_idx[b] == block_col) {
             // found diagonal block, backup then apply damping
@@ -195,6 +197,50 @@ public:
             }
           }
         });
+  }
+
+  void setup_hessian_computation(Graph<T, S> *graph, StreamPool &streams) {
+    // Build offset buffer for multiplying Jacobian blocks.
+    // Each offset corresponds to the start index of an output Hessian block.\
+
+    // Generate the offsets for each product, for each factor
+
+    // First we need to compute the upper bound for the size of h_block_offsets
+    const auto &factors = graph->get_factor_descriptors();
+    size_t mul_count = 0;
+    for (auto &f : factors) {
+      const size_t num_vertices = f->get_num_descriptors();
+      for (size_t i = 0; i < num_vertices; i++) {
+        for (size_t j = i; j < num_vertices; j++) {
+          mul_count += f->active_count();
+        }
+      }
+    }
+
+    h_block_offsets.resize(mul_count);
+
+    // Now compute the offsets
+    mul_count = 0;
+    for (auto &f : factors) {
+      mul_count += f->setup_hessian_computation(
+          block_indices, d_hessian, h_block_offsets.data() + mul_count,
+          streams);
+    }
+
+    // Final copy
+    d_block_offsets = h_block_offsets;
+  }
+
+  void execute_hessian_computation(Graph<T, S> *graph, StreamPool &streams) {
+    thrust::fill(thrust::device, d_hessian.begin(), d_hessian.end(),
+                 static_cast<S>(0.0));
+    size_t mul_count = 0;
+    const auto &factors = graph->get_factor_descriptors();
+    for (auto &f : factors) {
+      mul_count += f->execute_hessian_computation(
+          block_indices, d_hessian, d_block_offsets.data().get() + mul_count,
+          streams);
+    }
   }
 
   // Data
@@ -241,19 +287,25 @@ public:
     // and retrieve the data pointer for each block for the purpose of
     // constructing a scalar CSC-style representation.
     build_indices(graph, block_coords);
+
+    // Setup data for computing Hessian as product of Jacobians
+    setup_hessian_computation(graph, streams);
   }
 
   void update_values(Graph<T, S> *graph, StreamPool &streams) {
-    thrust::fill(thrust::device, d_hessian.begin(), d_hessian.end(),
-                 static_cast<S>(0.0));
+    // thrust::fill(thrust::device, d_hessian.begin(), d_hessian.end(),
+    //              static_cast<S>(0.0));
 
-    auto &f_desc = graph->get_factor_descriptors();
-    for (auto &f : f_desc) {
-      h_block_offsets.clear();
-      d_block_offsets.clear();
-      f->compute_hessian_blocks(block_indices, d_hessian, h_block_offsets,
-                                d_block_offsets, streams);
-    }
+    // setup_hessian_computation(graph, streams);
+    execute_hessian_computation(graph, streams);
+
+    // auto &f_desc = graph->get_factor_descriptors();
+    // for (auto &f : f_desc) {
+    //   h_block_offsets.clear();
+    //   d_block_offsets.clear();
+    //   f->compute_hessian_blocks(block_indices, d_hessian, h_block_offsets,
+    //                             d_block_offsets, streams);
+    // }
 
     // Back up diagonal for damping purposes
     backup_diagonal(graph, streams);
