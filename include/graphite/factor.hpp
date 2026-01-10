@@ -88,8 +88,7 @@ __global__ void compute_hessian_block_kernel(
 template <typename S> class JacobianStorage {
 public:
   std::pair<size_t, size_t> dimensions;
-
-  thrust::device_vector<S> data;
+  pod_device_vector<S> data;
 };
 
 template <typename T, typename S> class BaseFactorDescriptor {
@@ -229,19 +228,19 @@ public:
   using LossType = typename Traits::Loss;
 
   thrust::host_vector<size_t> host_ids;
-  thrust::device_vector<size_t> device_ids;
+  pod_device_vector<size_t> device_ids;
   managed_vector<ObservationType> device_obs;
-  thrust::device_vector<T> residuals;
+  pod_device_vector<T> residuals;
   managed_vector<S> precision_matrices;
   managed_vector<ConstraintDataType> data;
 
   managed_vector<T> chi2_vec;
-  thrust::device_vector<S> chi2_derivative;
+  pod_device_vector<S> chi2_derivative;
   managed_vector<LossType> loss;
 
   thrust::host_vector<uint8_t> active;
-  thrust::device_vector<uint8_t> device_active;
-  thrust::device_vector<size_t> active_indices;
+  pod_device_vector<uint8_t> device_active;
+  pod_device_vector<size_t> active_indices;
 
   std::array<JacobianStorage<S>, N> jacobians;
   std::array<S, Traits::dimension * Traits::dimension> default_precision_matrix;
@@ -481,7 +480,7 @@ public:
 
     // Resize and reset residuals
     residuals.resize(error_dim * internal_count());
-    thrust::fill(residuals.begin(), residuals.end(), 0);
+    thrust::fill(thrust::device, residuals.begin(), residuals.end(), 0);
   }
 
   void link_factors(
@@ -637,7 +636,9 @@ public:
 
     const size_t num_vertices = get_num_vertices();
     const auto &d_active_factors = active_indices;
-    thrust::host_vector<size_t> h_active_factors = active_indices;
+    // thrust::host_vector<size_t> h_active_factors = active_indices;
+    thrust::host_vector<size_t> h_active_factors;
+    active_indices.copy_to(h_active_factors);
     const auto d_ids = device_ids.data().get();
     const auto h_ids = &host_ids[0];
 
@@ -701,7 +702,9 @@ public:
       StreamPool &streams) override {
     const size_t num_vertices = get_num_vertices();
     const auto &d_active_factors = active_indices;
-    thrust::host_vector<size_t> h_active_factors = active_indices;
+    // thrust::host_vector<size_t> h_active_factors = active_indices;
+    thrust::host_vector<size_t> h_active_factors;
+    active_indices.copy_to(h_active_factors);
     const auto d_ids = device_ids.data().get();
 
     size_t mul_count = 0;
@@ -760,7 +763,9 @@ public:
 
     const size_t num_vertices = get_num_vertices();
     const auto &d_active_factors = active_indices;
-    thrust::host_vector<size_t> h_active_factors = active_indices;
+    // thrust::host_vector<size_t> h_active_factors = active_indices;
+    thrust::host_vector<size_t> h_active_factors;
+    active_indices.copy_to(h_active_factors);
     const auto d_ids = device_ids.data().get();
     const auto h_ids = &host_ids[0];
 

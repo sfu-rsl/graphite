@@ -1,6 +1,7 @@
 #pragma once
 #include <thrust/device_allocator.h>
 #include <thrust/device_ptr.h>
+#include <thrust/host_vector.h>
 #include <thrust/universal_vector.h>
 namespace graphite {
 
@@ -152,6 +153,12 @@ public:
   pod_device_vector(pod_device_vector &&) = delete;
   pod_device_vector &operator=(pod_device_vector &&) = delete;
 
+  pod_device_vector &operator=(const thrust::host_vector<T> &other) {
+    resize(other.size());
+    thrust::copy(other.begin(), other.end(), m_data);
+    return *this;
+  }
+
   ~pod_device_vector() { deallocate(); }
 
   size_t capacity() const { return m_capacity; }
@@ -159,8 +166,11 @@ public:
 
   T &back() { return m_data[m_size - 1]; }
   const T &back() const { return m_data[m_size - 1]; }
-  T *begin() { return m_data.get(); }
-  T *end() { return m_data.get() + m_size; }
+  thrust::device_ptr<T> begin() { return m_data; }
+  thrust::device_ptr<T> end() { return m_data + m_size; }
+
+  thrust::device_ptr<const T> begin() const { return m_data; }
+  thrust::device_ptr<const T> end() const { return m_data + m_size; }
 
   thrust::device_ptr<T> data() { return m_data; }
   const thrust::device_ptr<T> data() const { return m_data; }
@@ -192,6 +202,12 @@ public:
   }
 
   void clear() { resize(0); }
+
+  void copy_to(thrust::host_vector<T> &host_vec) const {
+    host_vec.resize(m_size);
+    cudaMemcpy(host_vec.data(), m_data.get(), m_size * sizeof(T),
+               cudaMemcpyDeviceToHost);
+  }
 };
 
 } // namespace graphite

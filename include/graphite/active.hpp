@@ -1,4 +1,5 @@
 #pragma once
+#include <graphite/vector.hpp>
 #include <thrust/copy.h>
 #include <thrust/count.h>
 #include <thrust/device_vector.h>
@@ -20,10 +21,13 @@ __host__ __device__ bool is_vertex_active(const uint8_t *active_state,
 }
 
 // Returns the number of active constraints and fills the active_indices vector
-size_t build_active_indices(const thrust::device_vector<uint8_t> &active,
-                            thrust::device_vector<size_t> &active_indices,
-                            const size_t count, const uint8_t level) {
+// size_t build_active_indices(const thrust::device_vector<uint8_t> &active,
+//                             thrust::device_vector<size_t> &active_indices,
+//                             const size_t count, const uint8_t level) {
 
+size_t build_active_indices(const pod_device_vector<uint8_t> &active,
+                            pod_device_vector<size_t> &active_indices,
+                            const size_t count, const uint8_t level) {
   // Count active constraints
   const size_t active_count =
       thrust::count_if(thrust::device, active.begin(), active.end(),

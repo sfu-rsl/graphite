@@ -106,7 +106,7 @@ public:
   using State = get_State_or_t<Traits, VertexType>;
 
 private:
-  thrust::device_vector<VertexType *> x_device;
+  pod_device_vector<VertexType *> x_device;
   thrust::host_vector<VertexType *> x_host;
   thrust::device_vector<State> backup_state;
 
@@ -115,7 +115,7 @@ public:
   std::unordered_map<size_t, size_t> global_to_local_map;
   std::vector<size_t> local_to_global_map;
   thrust::host_vector<size_t> local_to_hessian_offsets;
-  thrust::device_vector<size_t> hessian_ids;
+  pod_device_vector<size_t> hessian_ids;
   managed_vector<size_t> block_ids;
   managed_vector<uint8_t> active_state;
 
@@ -145,7 +145,10 @@ public:
     hessian_ids = local_to_hessian_offsets;
   }
 
-  virtual void to_host() override { x_host = x_device; }
+  virtual void to_host() override {
+    // x_host = x_device;
+    x_device.copy_to(x_host);
+  }
 
   VertexType **vertices() { return x_device.data().get(); }
 
