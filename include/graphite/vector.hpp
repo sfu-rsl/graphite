@@ -124,6 +124,4 @@ public:
   }
 };
 
-template <typename T> using uninitialized_vector = managed_vector<T>;
-
 } // namespace graphite

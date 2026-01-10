@@ -116,8 +116,8 @@ public:
   std::vector<size_t> local_to_global_map;
   thrust::host_vector<size_t> local_to_hessian_offsets;
   thrust::device_vector<size_t> hessian_ids;
-  uninitialized_vector<size_t> block_ids;
-  uninitialized_vector<uint8_t> active_state;
+  managed_vector<size_t> block_ids;
+  managed_vector<uint8_t> active_state;
 
   static constexpr size_t dim = Traits::dimension;
 

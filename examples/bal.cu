@@ -11,6 +11,8 @@
 #include "reprojection_error.cuh"
 #include <argparse/argparse.hpp>
 #include <graphite/core.hpp>
+#include <graphite/cudss_solver.hpp>
+#include <graphite/eigen_solver.hpp>
 #include <graphite/solver.hpp>
 #include <graphite/stream.hpp>
 #include <graphite/types.hpp>
@@ -151,8 +153,8 @@ void bundle_adjustment(argparse::ArgumentParser &program) {
   std::cout << "Number of points: " << num_points << std::endl;
   std::cout << "Number of observations: " << num_observations << std::endl;
 
-  uninitialized_vector<Point<FP>> points(num_points);
-  uninitialized_vector<Camera<FP>> cameras(num_cameras);
+  managed_vector<Point<FP>> points(num_points);
+  managed_vector<Camera<FP>> cameras(num_cameras);
 
   // Create vertices
   auto point_desc = PointDescriptor<FP, SP>();
@@ -187,8 +189,8 @@ void bundle_adjustment(argparse::ArgumentParser &program) {
     const Eigen::Matrix<FP, 2, 1> obs(x, y);
 
     // Add constraint to the graph
-    r_desc.add_factor({camera_idx, point_idx}, obs, precision_matrix.data(), 0,
-                      loss);
+    r_desc.add_factor({camera_idx, point_idx + num_cameras}, obs,
+                      precision_matrix.data(), 0, loss);
   }
   std::cout << "Adding constraints took "
             << std::chrono::duration<FP>(std::chrono::steady_clock::now() -
@@ -221,7 +223,7 @@ void bundle_adjustment(argparse::ArgumentParser &program) {
       file >> point_params[j];
     }
     points[i] = Eigen::Map<Point<FP>>(point_params);
-    point_desc.add_vertex(i, &points[i]);
+    point_desc.add_vertex(i + num_cameras, &points[i]);
   }
   std::cout << "Adding points took "
             << std::chrono::duration<FP>(std::chrono::steady_clock::now() -
@@ -234,11 +236,45 @@ void bundle_adjustment(argparse::ArgumentParser &program) {
   graphite::BlockJacobiPreconditioner<FP, SP> preconditioner;
   // graphite::IdentityPreconditioner<FP, SP> preconditioner;
 
-  const auto pcg_iter = program.get<size_t>("--pcg_iterations");
-  const auto pcg_tol = program.get<double>("--pcg_tolerance");
-  const auto rej_ratio = program.get<double>("--rejection_ratio");
-  PCGSolver<FP, SP> solver(pcg_iter, pcg_tol, rej_ratio,
-                           &preconditioner); // good parameters: 10, 1e0, 5
+  const auto solver_type = program.get<std::string>("--solver");
+
+  std::unique_ptr<Solver<FP, SP>> solver_ptr;
+
+  if (solver_type == "pcg") {
+    std::cout << "Using PCG solver." << std::endl;
+    const auto pcg_iter = program.get<size_t>("--pcg_iterations");
+    const auto pcg_tol = program.get<double>("--pcg_tolerance");
+    const auto rej_ratio = program.get<double>("--rejection_ratio");
+    solver_ptr = std::make_unique<PCGSolver<FP, SP>>(
+        pcg_iter, pcg_tol, rej_ratio,
+        &preconditioner); // good parameters: 10, 1e0, 5
+  } else if (solver_type == "eigen") {
+    if constexpr (std::is_same<SP, __nv_bfloat16>::value) {
+      std::cerr << "Eigen solver does not support bfloat16 precision."
+                << std::endl;
+    } else {
+      std::cout << "Using Eigen LDLT solver." << std::endl;
+      solver_ptr = std::make_unique<EigenLDLTSolver<FP, SP>>();
+    }
+  } else if (solver_type == "cudss") {
+    if constexpr (std::is_same<SP, __nv_bfloat16>::value) {
+      std::cerr << "cuDSS solver does not support bfloat16 precision."
+                << std::endl;
+    } else if constexpr (!std::is_same<FP, SP>::value) {
+      std::cerr
+          << "cuDSS solver requires graph and solver precision to be the same."
+          << std::endl;
+    } else {
+      std::cout << "Using cuDSS solver." << std::endl;
+      solver_ptr = std::make_unique<cudssSolver<FP, SP>>(true);
+    }
+  } else {
+    throw std::runtime_error("Unsupported solver option");
+  }
+
+  if (!solver_ptr) {
+    throw std::runtime_error("Solver initialization failed");
+  }
 
   // Optimize
   std::cout << "Graph built with " << num_cameras << " cameras, " << num_points
@@ -246,11 +282,11 @@ void bundle_adjustment(argparse::ArgumentParser &program) {
             << std::endl;
   std::cout << "Optimizing!" << std::endl;
 
-  StreamPool streams(8); // Just two should be enough for BA
+  StreamPool streams(8); // Want at least max(degree(constraints)) streams
   constexpr uint8_t optimization_level = 0;
 
   graphite::optimizer::LevenbergMarquardtOptions<FP, SP> options;
-  options.solver = &solver;
+  options.solver = solver_ptr.get();
   options.initial_damping = program.get<double>("--lambda");
   options.iterations = program.get<size_t>("--iterations");
   options.optimization_level = optimization_level;
@@ -268,6 +304,8 @@ void bundle_adjustment(argparse::ArgumentParser &program) {
   auto mse = graph.chi2() / num_observations;
   std::cout << "MSE: " << mse << std::endl;
   std::cout << "Half MSE: " << mse / 2 << std::endl;
+
+  solver_ptr.reset(); // need this gone before everything else is cleaned up
 }
 
 int main(int argc, char *argv[]) {
@@ -307,6 +345,11 @@ int main(int argc, char *argv[]) {
       .help("Precision for graph and solver")
       .default_value(std::string("FP64-FP64"))
       .choices("FP64-FP64", "FP64-FP32", "FP64-BF16", "FP32-FP32", "FP32-BF16");
+
+  program.add_argument("--solver")
+      .help("Linear solver type")
+      .default_value(std::string("pcg"))
+      .choices("pcg", "cudss", "eigen");
 
   try {
     program.parse_args(argc, argv);

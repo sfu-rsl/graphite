@@ -230,14 +230,14 @@ public:
 
   thrust::host_vector<size_t> host_ids;
   thrust::device_vector<size_t> device_ids;
-  uninitialized_vector<ObservationType> device_obs;
+  managed_vector<ObservationType> device_obs;
   thrust::device_vector<T> residuals;
-  uninitialized_vector<S> precision_matrices;
-  uninitialized_vector<ConstraintDataType> data;
+  managed_vector<S> precision_matrices;
+  managed_vector<ConstraintDataType> data;
 
-  uninitialized_vector<T> chi2_vec;
+  managed_vector<T> chi2_vec;
   thrust::device_vector<S> chi2_derivative;
-  uninitialized_vector<LossType> loss;
+  managed_vector<LossType> loss;
 
   thrust::host_vector<uint8_t> active;
   thrust::device_vector<uint8_t> device_active;

@@ -19,7 +19,7 @@ void prefetch_vector_on_device_async(const thrust::universal_vector<T> &vec,
 }
 
 template <typename T>
-void prefetch_vector_on_device_async(const uninitialized_vector<T> &vec,
+void prefetch_vector_on_device_async(const managed_vector<T> &vec,
                                      int device_id, cudaStream_t stream) {
 // Prefetch the vector to the device
 // std::cout << "Prefetching vector of size " << vec.size() << " to device " <<
@@ -44,7 +44,7 @@ void prefetch_vector_on_host(const thrust::universal_vector<T> &vec,
 }
 
 template <typename T>
-void prefetch_vector_on_host(const uninitialized_vector<T> &vec,
+void prefetch_vector_on_host(const managed_vector<T> &vec,
                              cudaStream_t stream) {
 // Prefetch the vector to the host
 // std::cout << "Prefetching vector of size " << vec.size() << " to host" <<
