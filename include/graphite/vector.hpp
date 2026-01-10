@@ -143,6 +143,10 @@ private:
   }
 
 public:
+  pod_device_vector() : m_capacity(0), m_size(0), m_data(nullptr) {}
+  pod_device_vector(size_t size)
+      : m_capacity(size), m_size(size), m_data(alloc.allocate(size)) {}
+
   pod_device_vector(const pod_device_vector &) = delete;
   pod_device_vector &operator=(const pod_device_vector &) = delete;
   pod_device_vector(pod_device_vector &&) = delete;
