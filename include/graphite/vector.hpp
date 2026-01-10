@@ -1,4 +1,5 @@
 #pragma once
+#include <thrust/device_allocator.h>
 #include <thrust/device_ptr.h>
 #include <thrust/universal_vector.h>
 namespace graphite {
@@ -117,11 +118,76 @@ public:
   const thrust::universal_ptr<T> data() const { return m_data; }
 
   void clear() {
-    for (size_t i = 0; i < m_size; i++) {
-      m_data[i].~T();
-    }
-    m_size = 0;
+    resize(0);
+    // for (size_t i = 0; i < m_size; i++) {
+    //   m_data[i].~T();
+    // }
+    // m_size = 0;
   }
+};
+
+// TODO: Deduplicate this code
+template <typename T> class pod_device_vector {
+
+private:
+  size_t m_capacity;
+  size_t m_size;
+  thrust::device_ptr<T> m_data;
+  thrust::device_allocator<T> alloc;
+
+  void deallocate() {
+    if (m_capacity > 0) {
+      alloc.deallocate(m_data, m_capacity);
+      m_data = nullptr;
+    }
+  }
+
+public:
+  pod_device_vector(const pod_device_vector &) = delete;
+  pod_device_vector &operator=(const pod_device_vector &) = delete;
+  pod_device_vector(pod_device_vector &&) = delete;
+  pod_device_vector &operator=(pod_device_vector &&) = delete;
+
+  ~pod_device_vector() { deallocate(); }
+
+  size_t capacity() const { return m_capacity; }
+  size_t size() const { return m_size; }
+
+  T &back() { return m_data[m_size - 1]; }
+  const T &back() const { return m_data[m_size - 1]; }
+  T *begin() { return m_data.get(); }
+  T *end() { return m_data.get() + m_size; }
+
+  thrust::device_ptr<T> data() { return m_data; }
+  const thrust::device_ptr<T> data() const { return m_data; }
+
+  void reserve(size_t size) {
+    if (size > m_capacity) {
+
+      thrust::device_ptr<T> new_data = alloc.allocate(size);
+
+      if (m_size > 0) {
+        cudaMemcpy(new_data.get(), m_data.get(), m_size * sizeof(T),
+                   cudaMemcpyDeviceToDevice);
+      }
+
+      deallocate();
+
+      m_data = new_data;
+      m_capacity = size;
+    }
+  }
+
+  void resize(size_t size) {
+    if (size < m_size) {
+      // no need to destruct POD types
+    } else if (size > m_capacity) {
+      reserve(size);
+    }
+    m_size = size;
+  }
+
+  void clear() { resize(0); }
 };
 
 } // namespace graphite
