@@ -651,7 +651,6 @@ public:
 
     size_t write_idx = 0;
 
-    size_t stream_idx = 0;
     // Then actually do the multiplications
     for (size_t i = 0; i < num_vertices; i++) {
       const auto vi_active = vertex_descriptors[i]->get_active_state();
@@ -660,7 +659,6 @@ public:
         const auto vj_active = vertex_descriptors[j]->get_active_state();
         const auto vj_block_ids = vertex_descriptors[j]->get_block_ids();
         // Iterate over active factors and generate block coordinates
-        const auto start_idx = write_idx;
         for (const auto &factor_idx : h_active_factors) {
           // TODO: Build this in the GPU using a GPU hash map
           const auto vi_id = h_ids[factor_idx * num_vertices + i];
