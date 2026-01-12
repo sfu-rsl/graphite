@@ -19,12 +19,12 @@ template <typename T, typename S> struct PointTraits {
   using Vertex = Point<T>;
 
   template <typename P>
-  hd_fn static void parameters(const Vertex &vertex, P *parameters) {
+  d_fn static void parameters(const Vertex &vertex, P *parameters) {
     Eigen::Map<Eigen::Matrix<P, dimension, 1>> params_map(parameters);
     params_map = vertex.template cast<P>();
   }
 
-  hd_fn static void update(Vertex &vertex, const T *delta) {
+  d_fn static void update(Vertex &vertex, const T *delta) {
     Eigen::Map<const Eigen::Matrix<T, dimension, 1>> d(delta);
     vertex += d;
   }
@@ -44,9 +44,9 @@ template <typename T, typename S> struct CircleFactorTraits {
   using Differentiation = DifferentiationMode::Manual;
 
   template <typename D>
-  hd_fn static void error(const D *point, const T *obs, D *error,
-                          const std::tuple<Point<T> *> &vertices,
-                          const Data *data) {
+  d_fn static void error(const D *point, const T *obs, D *error,
+                         const std::tuple<Point<T> *> &vertices,
+                         const Data *data) {
     auto x = point[0];
     auto y = point[1];
     auto r = obs[0];
@@ -54,8 +54,8 @@ template <typename T, typename S> struct CircleFactorTraits {
   }
 
   template <typename J, size_t I>
-  hd_fn static void jacobian(Point<T> *point, const T *obs, J *jacobian,
-                             const Data *data) {
+  d_fn static void jacobian(Point<T> *point, const T *obs, J *jacobian,
+                            const Data *data) {
     if constexpr (I == 0) {
       auto &p = *point;
       auto x = p(0);

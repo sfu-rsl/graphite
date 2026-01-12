@@ -15,4 +15,5 @@
 
 namespace graphite {
 #define hd_fn __host__ __device__
+#define d_fn __device__
 } // namespace graphite

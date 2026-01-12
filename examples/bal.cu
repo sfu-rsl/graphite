@@ -28,12 +28,12 @@ template <typename T> struct PointTraits {
   using Vertex = Point<T>;
 
   template <typename P>
-  hd_fn static void parameters(const Vertex &vertex, P *parameters) {
+  d_fn static void parameters(const Vertex &vertex, P *parameters) {
     Eigen::Map<Eigen::Matrix<P, dimension, 1>> params_map(parameters);
     params_map = vertex.template cast<P>();
   }
 
-  hd_fn static void update(Vertex &vertex, const T *delta) {
+  d_fn static void update(Vertex &vertex, const T *delta) {
     Eigen::Map<const Eigen::Matrix<T, dimension, 1>> d(delta);
     vertex += d;
   }
@@ -45,20 +45,20 @@ template <typename T> struct CameraTraits {
   using Vertex = Camera<T>;
 
   template <typename P>
-  hd_fn static void parameters(const Vertex &vertex, P *parameters) {
+  d_fn static void parameters(const Vertex &vertex, P *parameters) {
     Eigen::Map<Eigen::Matrix<P, dimension, 1>> params_map(parameters);
     params_map = vertex.template cast<P>();
   }
 
-  hd_fn static void update(Vertex &vertex, const T *delta) {
+  d_fn static void update(Vertex &vertex, const T *delta) {
     Eigen::Map<const Eigen::Matrix<T, dimension, 1>> d(delta);
     vertex += d;
   }
 
   // Defining the state requires custom setters and getters
-  hd_fn static State get_state(const Vertex &vertex) { return vertex; }
+  d_fn static State get_state(const Vertex &vertex) { return vertex; }
 
-  hd_fn static void set_state(Vertex &vertex, const State &state) {
+  d_fn static void set_state(Vertex &vertex, const State &state) {
     vertex = state;
   }
 };
@@ -80,7 +80,7 @@ template <typename T, typename S> struct ReprojectionErrorTraits {
   using Differentiation = DifferentiationMode::Manual;
 
   template <typename D, typename M>
-  hd_fn static void
+  d_fn static void
   error(const D *camera, const D *point, const M *obs, D *error,
         const std::tuple<Camera<T> *, Point<T> *> &vertices, const Data *data) {
     // bal_reprojection_error<D, M, T>(camera, point, obs, error);
@@ -88,9 +88,9 @@ template <typename T, typename S> struct ReprojectionErrorTraits {
   }
 
   template <typename D, size_t I>
-  hd_fn static void jacobian(const Camera<T> *camera, const Point<T> *point,
-                             const Observation *obs, D *jacobian,
-                             const Data *data) {
+  d_fn static void jacobian(const Camera<T> *camera, const Point<T> *point,
+                            const Observation *obs, D *jacobian,
+                            const Data *data) {
     bal_jacobian_simple<T, D, I>(camera->data(), point->data(), obs, jacobian,
                                  data);
   }
