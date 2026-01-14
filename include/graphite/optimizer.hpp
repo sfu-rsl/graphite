@@ -23,7 +23,7 @@ T compute_rho(Graph<T, S> *graph, thrust::device_vector<T> &delta_x,
     const auto dx = delta_x.data().get();
 
     denom = thrust::transform_reduce(
-        thrust::make_counting_iterator<std::size_t>(0),
+        thrust::device, thrust::make_counting_iterator<std::size_t>(0),
         thrust::make_counting_iterator<std::size_t>(n),
         [dx, bb, mu] __host__ __device__(const std::size_t i) {
           T x = dx[i];
@@ -72,6 +72,7 @@ public:
   }
 };
 
+// Levenberg-Marquardt algorithm
 template <typename T, typename S>
 bool levenberg_marquardt(Graph<T, S> *graph,
                          LevenbergMarquardtOptions<T, S> *options) {
@@ -106,6 +107,7 @@ bool levenberg_marquardt(Graph<T, S> *graph,
 
   // Initialize solver values
   solver->update_values(graph, *streams);
+  T chi2 = graph->chi2();
 
   thrust::device_vector<T> delta_x(graph->get_hessian_dimension());
 
@@ -131,8 +133,6 @@ bool levenberg_marquardt(Graph<T, S> *graph,
   for (size_t i = 0; i < num_iterations && run; i++) {
 
     start = std::chrono::steady_clock::now();
-
-    T chi2 = graph->chi2();
 
     solver->set_damping_factor(graph, static_cast<T>(mu), *streams);
     bool solve_ok = solver->solve(graph, delta_x.data().get(), *streams);
@@ -166,6 +166,7 @@ bool levenberg_marquardt(Graph<T, S> *graph,
     } else {
       graph->revert_parameters();
       graph->compute_error();
+      graph->chi2();
       // update hyperparameters
       mu *= nu;
       nu *= 2;
@@ -186,6 +187,7 @@ bool levenberg_marquardt(Graph<T, S> *graph,
                 << std::setw(24) << iteration_time << std::setw(24) << time
                 << std::endl;
     }
+    chi2 = new_chi2;
 
     if (!std::isfinite(mu)) {
       std::cout << "Damping factor is infinite, terminating optimization"
@@ -210,6 +212,8 @@ bool levenberg_marquardt(Graph<T, S> *graph,
   return run;
 }
 
+// Levenberg-Marquardt with similar early termination stopping criteria to
+// ORB-SLAM
 template <typename T, typename S>
 bool levenberg_marquardt2(Graph<T, S> *graph,
                           LevenbergMarquardtOptions<T, S> *options) {
@@ -242,6 +246,7 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
 
   graph->linearize(*streams);
   solver->update_values(graph, *streams);
+  T chi2 = graph->chi2();
 
   thrust::device_vector<T> delta_x(graph->get_hessian_dimension());
 
@@ -267,19 +272,20 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
   for (size_t i = 0; i < num_iterations && run; i++) {
 
     start = std::chrono::steady_clock::now();
-
-    T chi2 = graph->chi2();
     T initial_chi2 = chi2;
     T end_chi2 = initial_chi2;
 
     solver->set_damping_factor(graph, static_cast<T>(mu), *streams);
+
     bool solve_ok = solver->solve(graph, delta_x.data().get(), *streams);
 
     graph->backup_parameters();
+
     graph->apply_step(delta_x.data().get(), *streams);
 
     // Try step
     graph->compute_error();
+
     T new_chi2 = graph->chi2();
 
     if (!solve_ok) {
@@ -288,6 +294,7 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
     bool step_is_good = std::isfinite(new_chi2);
 
     T rho = compute_rho(graph, delta_x, chi2, new_chi2, mu, step_is_good);
+
     bool step_accepted = false;
     if (step_is_good && std::isfinite(new_chi2) && rho > 0) {
       // update hyperparameters
@@ -297,19 +304,34 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
       nu = 2;
       // Relinearize since step is accepted
       graph->linearize(*streams);
+
       solver->update_values(graph, *streams);
+
+      // H and b are valid
+      // residuals should be valid
+      // chi2 should be valid
+
       end_chi2 = new_chi2;
       step_accepted = true;
       // std::cout << "Good step" << std::endl;
       // std::cout << "rho: " << rho << std::endl;
     } else {
       graph->revert_parameters();
+
+      // At this point, what is valid?
+      // - Linear system (H and b) are still valid
+      // - chi2 and derivatives are invalid (so the implicit Hessian is invalid,
+      // i.e. PCG will be invalid)
+      // - However chi2 depends on the residuals, which are also invalid
+      // So we need to recompute the error, and the chi2
+
       graph->compute_error();
-      // update hyperparameters
+      graph->chi2();
+      // hyperparameters
       mu *= nu;
       nu *= 2;
       // std::cout << "Bad step" << std::endl;
-      new_chi2 = chi2;
+      new_chi2 = initial_chi2; // chi2 computation may be non-deterministic
     }
 
     double iteration_time =
@@ -322,6 +344,7 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
                 << std::setw(16) << iteration_time << std::setw(16) << time
                 << std::endl;
     }
+    chi2 = new_chi2;
 
     if (!std::isfinite(mu)) {
       std::cout << "Damping factor is infinite, terminating optimization"

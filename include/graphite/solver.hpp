@@ -97,7 +97,7 @@ public:
     diag.resize(dim_h);
     thrust::fill(diag.begin(), diag.end(), 0.0);
     for (size_t i = 0; i < factor_descriptors.size(); i++) {
-      factor_descriptors[i]->visit_scalar_diagonal(
+      factor_descriptors[i]->compute_hessian_diagonal_async(
           visitor, diag.data().get(),
           graph->get_jacobian_scales().data().get());
     }
@@ -149,7 +149,7 @@ public:
       thrust::fill(v1.begin(), v1.end(), 0.0);
       auto v1_ptr = v1.data().get(); // reset
       for (size_t i = 0; i < factor_descriptors.size(); i++) {
-        factor_descriptors[i]->visit_Jv(
+        factor_descriptors[i]->compute_Jv(
             visitor, v1_ptr, p.data().get(),
             graph->get_jacobian_scales().data().get(), streams);
         v1_ptr += factor_descriptors[i]->get_residual_size();
@@ -164,7 +164,7 @@ public:
       thrust::fill(v2.begin(), v2.end(), 0.0);
       v1_ptr = v1.data().get(); // reset
       for (size_t i = 0; i < factor_descriptors.size(); i++) {
-        factor_descriptors[i]->visit_Jtv(
+        factor_descriptors[i]->compute_Jtv(
             visitor, v2.data().get(), v1_ptr,
             graph->get_jacobian_scales().data().get(), streams);
         v1_ptr += factor_descriptors[i]->get_residual_size();

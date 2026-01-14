@@ -104,9 +104,11 @@ public:
     }
     for (auto &desc : factor_descriptors) {
       if constexpr (is_low_precision<S>::value) {
-        desc->visit_block_diagonal(visitor, hp_diagonals, jacobian_scales);
+        desc->compute_hessian_block_diagonal(visitor, hp_diagonals,
+                                             jacobian_scales);
       } else {
-        desc->visit_block_diagonal(visitor, block_diagonals, jacobian_scales);
+        desc->compute_hessian_block_diagonal(visitor, block_diagonals,
+                                             jacobian_scales);
       }
     }
     cudaStreamSynchronize(0);
@@ -115,11 +117,11 @@ public:
 
     for (auto &desc : vertex_descriptors) {
       if constexpr (is_low_precision<S>::value) {
-        desc->visit_augment_block_diagonal(visitor,
-                                           hp_diagonals[desc].data().get(), mu);
+        desc->augment_block_diagonal(visitor, hp_diagonals[desc].data().get(),
+                                     mu);
       } else {
-        desc->visit_augment_block_diagonal(
-            visitor, block_diagonals[desc].data().get(), mu);
+        desc->augment_block_diagonal(visitor,
+                                     block_diagonals[desc].data().get(), mu);
       }
       // Invert the block diagonal using cublas
       const auto d = desc->dimension();
@@ -200,16 +202,14 @@ public:
       for (auto &desc : *vds) {
         const auto d = desc->dimension();
         P *blocks = hp_diagonals[desc].data().get();
-        desc->visit_apply_block_jacobi(visitor, z, r, blocks,
-                                       streams.select(i));
+        desc->apply_block_jacobi(visitor, z, r, blocks, streams.select(i));
         i++;
       }
     } else {
       for (auto &desc : *vds) {
         const auto d = desc->dimension();
         S *blocks = block_diagonals[desc].data().get();
-        desc->visit_apply_block_jacobi(visitor, z, r, blocks,
-                                       streams.select(i));
+        desc->apply_block_jacobi(visitor, z, r, blocks, streams.select(i));
         i++;
       }
     }
