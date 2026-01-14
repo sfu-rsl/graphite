@@ -18,9 +18,10 @@ private:
   thrust::device_vector<T> jacobian_scales;
   size_t hessian_column;
   std::vector<size_t> hessian_offsets;
+  bool scale_jacobians;
 
 public:
-  Graph() {}
+  Graph(): scale_jacobians(true) {}
 
   size_t get_hessian_dimension() const { return hessian_column; }
   size_t get_variable_dimension(const size_t block_index) const {
@@ -197,7 +198,6 @@ public:
     chi2();
 
     // Compute Jacobian scale
-    constexpr bool scale_jacobians = true;
     if (scale_jacobians) {
       thrust::fill(jacobian_scales.begin(), jacobian_scales.end(), 0);
       for (auto &factor : factor_descriptors) {
@@ -220,13 +220,15 @@ public:
     }
 
     // Scale Jacobians
-    for (auto &factor : factor_descriptors) {
-      factor->scale_jacobians(visitor, jacobian_scales.data().get());
+    if (scale_jacobians) {
+      for (auto &factor : factor_descriptors) {
+        factor->scale_jacobians(visitor, jacobian_scales.data().get());
+      }
+      cudaStreamSynchronize(0);
     }
-    cudaStreamSynchronize(0);
 
     // Calculate b=J^T * r
-    thrust::fill(b.begin(), b.end(), 0);
+    thrust::fill(thrust::cuda::par_nosync.on(0), b.begin(), b.end(), 0);
     for (auto &fd : factor_descriptors) {
       fd->visit_b(visitor, b.data().get(), jacobian_scales.data().get());
     }
@@ -275,6 +277,10 @@ public:
     jacobian_scales.clear();
     hessian_column = 0;
     hessian_offsets.clear();
+  }
+
+  void scale_system(const bool enable_scaling) {
+    scale_jacobians = enable_scaling;
   }
 };
 

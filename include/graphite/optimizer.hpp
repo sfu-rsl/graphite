@@ -23,6 +23,7 @@ T compute_rho(Graph<T, S> *graph, thrust::device_vector<T> &delta_x,
     const auto dx = delta_x.data().get();
 
     denom = thrust::transform_reduce(
+        thrust::device,
         thrust::make_counting_iterator<std::size_t>(0),
         thrust::make_counting_iterator<std::size_t>(n),
         [dx, bb, mu] __host__ __device__(const std::size_t i) {
@@ -242,6 +243,7 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
 
   graph->linearize(*streams);
   solver->update_values(graph, *streams);
+  T chi2 = graph->chi2();
 
   thrust::device_vector<T> delta_x(graph->get_hessian_dimension());
 
@@ -268,19 +270,37 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
 
     start = std::chrono::steady_clock::now();
 
-    T chi2 = graph->chi2();
+    auto i0 = std::chrono::steady_clock::now();
+    // T chi2 = graph->chi2();
+    auto i1 = std::chrono::steady_clock::now();
+    std::cout <<  "chi2_1: " << std::chrono::duration<double, std::milli>(i1-i0).count() << " ms" << std::endl;
     T initial_chi2 = chi2;
     T end_chi2 = initial_chi2;
 
     solver->set_damping_factor(graph, static_cast<T>(mu), *streams);
+    auto i2 = std::chrono::steady_clock::now();
+    std::cout <<  "damping: " << std::chrono::duration<double, std::milli>(i2-i1).count() << " ms" << std::endl;
+
     bool solve_ok = solver->solve(graph, delta_x.data().get(), *streams);
+    auto i3 = std::chrono::steady_clock::now();
+    std::cout <<  "solve: " << std::chrono::duration<double, std::milli>(i3-i2).count() << " ms" << std::endl;
 
     graph->backup_parameters();
+    auto i4 = std::chrono::steady_clock::now();
+    std::cout <<  "backup parameters: " << std::chrono::duration<double, std::milli>(i4-i3).count() << " ms" << std::endl;
+
     graph->apply_step(delta_x.data().get(), *streams);
+    auto i5 = std::chrono::steady_clock::now();
+    std::cout <<  "apply step: " << std::chrono::duration<double, std::milli>(i5-i4).count() << " ms" << std::endl;
 
     // Try step
     graph->compute_error();
+    auto i6 = std::chrono::steady_clock::now();
+    std::cout <<  "compute_error: " << std::chrono::duration<double, std::milli>(i6-i5).count() << " ms" << std::endl;
+
     T new_chi2 = graph->chi2();
+    auto i7 = std::chrono::steady_clock::now();
+    std::cout <<  "chi2_2: " << std::chrono::duration<double, std::milli>(i7-i6).count() << " ms" << std::endl;
 
     if (!solve_ok) {
       new_chi2 = std::numeric_limits<T>::max();
@@ -288,6 +308,10 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
     bool step_is_good = std::isfinite(new_chi2);
 
     T rho = compute_rho(graph, delta_x, chi2, new_chi2, mu, step_is_good);
+
+    auto i8 = std::chrono::steady_clock::now();
+    std::cout <<  "compute_rho: " << std::chrono::duration<double, std::milli>(i8-i7).count() << " ms" << std::endl;
+
     bool step_accepted = false;
     if (step_is_good && std::isfinite(new_chi2) && rho > 0) {
       // update hyperparameters
@@ -297,18 +321,29 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
       nu = 2;
       // Relinearize since step is accepted
       graph->linearize(*streams);
+      auto i9 = std::chrono::steady_clock::now();
+      std::cout <<  "linearize: " << std::chrono::duration<double, std::milli>(i9-i8).count() << " ms" << std::endl;
+
       solver->update_values(graph, *streams);
+        auto i10 = std::chrono::steady_clock::now();
+      std::cout <<  "update hessian: " << std::chrono::duration<double, std::milli>(i10-i9).count() << " ms" << std::endl;
+
       end_chi2 = new_chi2;
       step_accepted = true;
-      // std::cout << "Good step" << std::endl;
-      // std::cout << "rho: " << rho << std::endl;
+      std::cout << "Good step" << std::endl;
+      std::cout << "rho: " << rho << std::endl;
     } else {
       graph->revert_parameters();
+      auto i9 = std::chrono::steady_clock::now();
+      std::cout <<  "revert: " << std::chrono::duration<double, std::milli>(i9-i8).count() << " ms" << std::endl;
+
       graph->compute_error();
+          auto i10 = std::chrono::steady_clock::now();
+      std::cout <<  "compute_error 2: " << std::chrono::duration<double, std::milli>(i10-i9).count() << " ms" << std::endl;
       // update hyperparameters
       mu *= nu;
       nu *= 2;
-      // std::cout << "Bad step" << std::endl;
+      std::cout << "Bad step" << std::endl;
       new_chi2 = chi2;
     }
 
@@ -322,6 +357,7 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
                 << std::setw(16) << iteration_time << std::setw(16) << time
                 << std::endl;
     }
+    chi2 = new_chi2;
 
     if (!std::isfinite(mu)) {
       std::cout << "Damping factor is infinite, terminating optimization"

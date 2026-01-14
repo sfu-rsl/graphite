@@ -534,9 +534,9 @@ public:
 
   // TODO: Make this consider kernels and active edges
   virtual T chi2(GraphVisitor<T, S> &visitor) override {
-    visitor.template compute_chi2(this);
-    return thrust::reduce(thrust::device, chi2_vec.begin(), chi2_vec.end(),
-                          static_cast<T>(0.0), thrust::plus<T>());
+    visitor.template compute_chi2(this); // runs on stream 0
+    return thrust::reduce(thrust::cuda::par.on(0), chi2_vec.begin(), chi2_vec.end(),
+                          static_cast<T>(0.0), thrust::plus<T>()); // want to sync here on stream 0
   }
 
   T chi2(const size_t id) const {

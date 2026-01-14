@@ -1826,7 +1826,7 @@ public:
       hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
 
       // Important: Must clear Jacobian storage
-      thrust::fill(f->jacobians[i].data.begin(), f->jacobians[i].data.end(), 0);
+      thrust::fill(thrust::cuda::par_nosync.on(streams.select(i)), f->jacobians[i].data.begin(), f->jacobians[i].data.end(), static_cast<S>(0));
     }
 
     const auto num_factors = f->active_count();
@@ -1834,8 +1834,8 @@ public:
     if constexpr (!is_analytical<F>()) {
       launch_kernel_autodiff(f, hessian_ids, verts, jacs, num_factors, streams,
                              std::make_index_sequence<num_vertices>{});
-      streams.sync_n(num_vertices);
     }
+    streams.sync_n(num_vertices);
   }
 
   template <typename F> void compute_jacobians(F *f, StreamPool &streams) {
@@ -1857,7 +1857,7 @@ public:
       hessian_ids[i] = f->vertex_descriptors[i]->get_hessian_ids();
 
       // Important: Must clear Jacobian storage
-      thrust::fill(f->jacobians[i].data.begin(), f->jacobians[i].data.end(), 0);
+      thrust::fill(thrust::cuda::par_nosync.on(streams.select(i)), f->jacobians[i].data.begin(), f->jacobians[i].data.end(), static_cast<S>(0));
     }
 
     const auto num_factors = f->active_count();
@@ -1914,13 +1914,13 @@ public:
     size_t num_blocks =
         (num_threads + threads_per_block - 1) / threads_per_block;
 
-    thrust::fill(f->chi2_vec.begin(), f->chi2_vec.end(), static_cast<T>(0));
-    compute_chi2_kernel<T, S, F::error_dim><<<num_blocks, threads_per_block>>>(
+    thrust::fill(thrust::cuda::par_nosync.on(0), f->chi2_vec.begin(), f->chi2_vec.end(), static_cast<T>(0));
+    compute_chi2_kernel<T, S, F::error_dim><<<num_blocks, threads_per_block, 0, 0>>>(
         f->chi2_vec.data().get(), f->chi2_derivative.data().get(),
         f->residuals.data().get(), num_threads,
         f->precision_matrices.data().get(), f->loss.data().get());
 
-    cudaStreamSynchronize(0);
+    // cudaStreamSynchronize(0);
   }
 
   template <typename F> void compute_b(F *f, T *b, const T *jacobian_scales) {
@@ -1943,7 +1943,7 @@ public:
     launch_kernel_compute_b(f, b, hessian_ids, jacs, jacobian_scales,
                             num_factors,
                             std::make_index_sequence<num_vertices>{});
-    cudaStreamSynchronize(0);
+    // cudaStreamSynchronize(0);
   }
 
   template <typename F>
