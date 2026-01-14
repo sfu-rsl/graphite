@@ -132,23 +132,21 @@ public:
 
     // For each vertex descriptor, set the state MSB to 0
     for (auto &desc : vertex_descriptors) {
-      thrust::transform(thrust::device, desc->get_active_state(),
+      thrust::transform(thrust::cuda::par_nosync.on(0), desc->get_active_state(),
                         desc->get_active_state() + desc->count(),
                         desc->get_active_state(),
                         [] __device__(uint8_t state) { return state & 0x7F; });
     }
-    cudaStreamSynchronize(0);
     // For each factor descriptor
     // Go through each vertex descriptor and set the state MSB to 1 if the
     // constraint is active
     for (auto &desc : factor_descriptors) {
-      desc->flag_active_vertices(visitor, level);
+      desc->flag_active_vertices_async(visitor, level); // stream 0
     }
-    cudaStreamSynchronize(0);
     // For each vertex descriptor, MSB of the active state is XOR'd with 1
     // (0->1, 1->0)
     for (auto &desc : vertex_descriptors) {
-      thrust::transform(thrust::device, desc->get_active_state(),
+      thrust::transform(thrust::cuda::par_nosync.on(0), desc->get_active_state(),
                         desc->get_active_state() + desc->count(),
                         desc->get_active_state(),
                         [] __device__(uint8_t state) { return state ^ 0x80; });

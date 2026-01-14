@@ -2118,7 +2118,6 @@ public:
   void visit_flag_active_vertices(F *f, const uint8_t level) {
     launch_kernel_flag_active(
         f, level, std::make_index_sequence<F::get_num_vertices()>{});
-    cudaStreamSynchronize(0);
   }
 };
 } // namespace graphite

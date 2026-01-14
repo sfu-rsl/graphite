@@ -110,7 +110,7 @@ public:
   virtual void compute_Jtv(GraphVisitor<T, S> &visitor, T *out, T *in,
                          const T *jacobian_scales, StreamPool &streams) = 0;
 
-  virtual void flag_active_vertices(GraphVisitor<T, S> &visitor,
+  virtual void flag_active_vertices_async(GraphVisitor<T, S> &visitor,
                                           const uint8_t level) = 0;
 
   virtual void compute_jacobians(GraphVisitor<T, S> &visitor,
@@ -280,7 +280,7 @@ public:
     visitor.template compute_Jtv(this, out, in, jacobian_scales, streams);
   }
 
-  void flag_active_vertices(GraphVisitor<T, S> &visitor,
+  void flag_active_vertices_async(GraphVisitor<T, S> &visitor,
                                   const uint8_t level) override {
     visitor.template visit_flag_active_vertices(this, level);
   }
