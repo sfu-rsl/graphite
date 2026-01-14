@@ -2043,7 +2043,7 @@ public:
     launch_kernel_scalar_diagonal(f, diagonal, hessian_ids, jacs,
                                   jacobian_scales, num_factors,
                                   std::make_index_sequence<num_vertices>{});
-    cudaStreamSynchronize(0);
+    // cudaStreamSynchronize(0);
   }
 
   template <typename F> void scale_jacobians(F *f, T *jacobian_scales) {
@@ -2070,7 +2070,6 @@ public:
     launch_kernel_scale_jacobians(f, jacobian_scales, hessian_ids, jacs,
                                   num_factors,
                                   std::make_index_sequence<num_vertices>{});
-    cudaStreamSynchronize(0);
   }
 
   template <typename V>
