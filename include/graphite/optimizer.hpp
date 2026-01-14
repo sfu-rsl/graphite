@@ -23,8 +23,7 @@ T compute_rho(Graph<T, S> *graph, thrust::device_vector<T> &delta_x,
     const auto dx = delta_x.data().get();
 
     denom = thrust::transform_reduce(
-        thrust::device,
-        thrust::make_counting_iterator<std::size_t>(0),
+        thrust::device, thrust::make_counting_iterator<std::size_t>(0),
         thrust::make_counting_iterator<std::size_t>(n),
         [dx, bb, mu] __host__ __device__(const std::size_t i) {
           T x = dx[i];
@@ -135,7 +134,6 @@ bool levenberg_marquardt(Graph<T, S> *graph,
 
     start = std::chrono::steady_clock::now();
 
-
     solver->set_damping_factor(graph, static_cast<T>(mu), *streams);
     bool solve_ok = solver->solve(graph, delta_x.data().get(), *streams);
 
@@ -214,7 +212,8 @@ bool levenberg_marquardt(Graph<T, S> *graph,
   return run;
 }
 
-// Levenberg-Marquardt with similar early termination stopping criteria to ORB-SLAM
+// Levenberg-Marquardt with similar early termination stopping criteria to
+// ORB-SLAM
 template <typename T, typename S>
 bool levenberg_marquardt2(Graph<T, S> *graph,
                           LevenbergMarquardtOptions<T, S> *options) {
@@ -279,28 +278,34 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
 
     solver->set_damping_factor(graph, static_cast<T>(mu), *streams);
     auto i2 = std::chrono::steady_clock::now();
-    // std::cout <<  "damping: " << std::chrono::duration<double, std::milli>(i2-i1).count() << " ms" << std::endl;
+    // std::cout <<  "damping: " << std::chrono::duration<double,
+    // std::milli>(i2-i1).count() << " ms" << std::endl;
 
     bool solve_ok = solver->solve(graph, delta_x.data().get(), *streams);
     auto i3 = std::chrono::steady_clock::now();
-    // std::cout <<  "solve: " << std::chrono::duration<double, std::milli>(i3-i2).count() << " ms" << std::endl;
+    // std::cout <<  "solve: " << std::chrono::duration<double,
+    // std::milli>(i3-i2).count() << " ms" << std::endl;
 
     graph->backup_parameters();
     auto i4 = std::chrono::steady_clock::now();
-    // std::cout <<  "backup parameters: " << std::chrono::duration<double, std::milli>(i4-i3).count() << " ms" << std::endl;
+    // std::cout <<  "backup parameters: " << std::chrono::duration<double,
+    // std::milli>(i4-i3).count() << " ms" << std::endl;
 
     graph->apply_step(delta_x.data().get(), *streams);
     auto i5 = std::chrono::steady_clock::now();
-    // std::cout <<  "apply step: " << std::chrono::duration<double, std::milli>(i5-i4).count() << " ms" << std::endl;
+    // std::cout <<  "apply step: " << std::chrono::duration<double,
+    // std::milli>(i5-i4).count() << " ms" << std::endl;
 
     // Try step
     graph->compute_error();
     auto i6 = std::chrono::steady_clock::now();
-    // std::cout <<  "compute_error: " << std::chrono::duration<double, std::milli>(i6-i5).count() << " ms" << std::endl;
+    // std::cout <<  "compute_error: " << std::chrono::duration<double,
+    // std::milli>(i6-i5).count() << " ms" << std::endl;
 
     T new_chi2 = graph->chi2();
     auto i7 = std::chrono::steady_clock::now();
-    // std::cout <<  "chi2_2: " << std::chrono::duration<double, std::milli>(i7-i6).count() << " ms" << std::endl;
+    // std::cout <<  "chi2_2: " << std::chrono::duration<double,
+    // std::milli>(i7-i6).count() << " ms" << std::endl;
 
     if (!solve_ok) {
       new_chi2 = std::numeric_limits<T>::max();
@@ -310,7 +315,8 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
     T rho = compute_rho(graph, delta_x, chi2, new_chi2, mu, step_is_good);
 
     auto i8 = std::chrono::steady_clock::now();
-    // std::cout <<  "compute_rho: " << std::chrono::duration<double, std::milli>(i8-i7).count() << " ms" << std::endl;
+    // std::cout <<  "compute_rho: " << std::chrono::duration<double,
+    // std::milli>(i8-i7).count() << " ms" << std::endl;
 
     bool step_accepted = false;
     if (step_is_good && std::isfinite(new_chi2) && rho > 0) {
@@ -322,11 +328,13 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
       // Relinearize since step is accepted
       graph->linearize(*streams);
       auto i9 = std::chrono::steady_clock::now();
-      // std::cout <<  "linearize: " << std::chrono::duration<double, std::milli>(i9-i8).count() << " ms" << std::endl;
+      // std::cout <<  "linearize: " << std::chrono::duration<double,
+      // std::milli>(i9-i8).count() << " ms" << std::endl;
 
       solver->update_values(graph, *streams);
-        auto i10 = std::chrono::steady_clock::now();
-      // std::cout <<  "update hessian: " << std::chrono::duration<double, std::milli>(i10-i9).count() << " ms" << std::endl;
+      auto i10 = std::chrono::steady_clock::now();
+      // std::cout <<  "update hessian: " << std::chrono::duration<double,
+      // std::milli>(i10-i9).count() << " ms" << std::endl;
 
       // H and b are valid
       // residuals should be valid
@@ -341,18 +349,21 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
 
       // At this point, what is valid?
       // - Linear system (H and b) are still valid
-      // - chi2 and derivatives are invalid (so the implicit Hessian is invalid, i.e. PCG will be invalid)
+      // - chi2 and derivatives are invalid (so the implicit Hessian is invalid,
+      // i.e. PCG will be invalid)
       // - However chi2 depends on the residuals, which are also invalid
       // So we need to recompute the error, and the chi2
 
       auto i9 = std::chrono::steady_clock::now();
-      // std::cout <<  "revert: " << std::chrono::duration<double, std::milli>(i9-i8).count() << " ms" << std::endl;
+      // std::cout <<  "revert: " << std::chrono::duration<double,
+      // std::milli>(i9-i8).count() << " ms" << std::endl;
 
       graph->compute_error();
       graph->chi2();
       auto i10 = std::chrono::steady_clock::now();
-      // std::cout <<  "compute_error 2: " << std::chrono::duration<double, std::milli>(i10-i9).count() << " ms" << std::endl;
-      // update hyperparameters
+      // std::cout <<  "compute_error 2: " << std::chrono::duration<double,
+      // std::milli>(i10-i9).count() << " ms" << std::endl; update
+      // hyperparameters
       mu *= nu;
       nu *= 2;
       // std::cout << "Bad step" << std::endl;

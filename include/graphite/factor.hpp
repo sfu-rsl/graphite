@@ -102,27 +102,28 @@ public:
   virtual bool use_autodiff() = 0;
   virtual void compute_error(GraphVisitor<T, S> &visitor) = 0;
   virtual void compute_error_autodiff(GraphVisitor<T, S> &visitor,
-                                    StreamPool &streams) = 0;
+                                      StreamPool &streams) = 0;
   virtual void compute_b_async(GraphVisitor<T, S> &visitor, T *b,
-                       const T *jacobian_scales) = 0;
+                               const T *jacobian_scales) = 0;
   virtual void compute_Jv(GraphVisitor<T, S> &visitor, T *out, T *in,
-                        const T *jacobian_scales, StreamPool &streams) = 0;
+                          const T *jacobian_scales, StreamPool &streams) = 0;
   virtual void compute_Jtv(GraphVisitor<T, S> &visitor, T *out, T *in,
-                         const T *jacobian_scales, StreamPool &streams) = 0;
+                           const T *jacobian_scales, StreamPool &streams) = 0;
 
   virtual void flag_active_vertices_async(GraphVisitor<T, S> &visitor,
                                           const uint8_t level) = 0;
 
   virtual void compute_jacobians(GraphVisitor<T, S> &visitor,
-                               StreamPool &streams) = 0;
+                                 StreamPool &streams) = 0;
   virtual void compute_hessian_block_diagonal(
       GraphVisitor<T, S> &visitor,
       std::unordered_map<BaseVertexDescriptor<T, S> *,
                          thrust::device_vector<InvP>> &block_diagonals,
       const T *jacobian_scales) = 0;
   // Computes the scalar hessian diagonal
-  virtual void compute_hessian_diagonal_async(GraphVisitor<T, S> &visitor, T *diagonal,
-                                     const T *jacobian_scales) = 0;
+  virtual void compute_hessian_diagonal_async(GraphVisitor<T, S> &visitor,
+                                              T *diagonal,
+                                              const T *jacobian_scales) = 0;
   // virtual void apply_op(Op<T>& op) = 0;
 
   virtual JacobianStorage<S> *get_jacobians() = 0;
@@ -134,7 +135,7 @@ public:
 
   virtual size_t get_residual_size() const = 0;
   virtual void scale_jacobians_async(GraphVisitor<T, S> &visitor,
-                               T *jacobian_scales) = 0;
+                                     T *jacobian_scales) = 0;
 
   virtual void initialize_device_ids(const uint8_t optimization_level) = 0;
   virtual void to_device() = 0;
@@ -261,22 +262,22 @@ public:
   }
 
   void compute_error_autodiff(GraphVisitor<T, S> &visitor,
-                            StreamPool &streams) override {
+                              StreamPool &streams) override {
     visitor.template compute_error_autodiff(this, streams);
   }
 
   void compute_b_async(GraphVisitor<T, S> &visitor, T *b,
-               const T *jacobian_scales) override {
+                       const T *jacobian_scales) override {
     visitor.template compute_b(this, b, jacobian_scales);
   }
 
   void compute_Jv(GraphVisitor<T, S> &visitor, T *out, T *in,
-                const T *jacobian_scales, StreamPool &streams) override {
+                  const T *jacobian_scales, StreamPool &streams) override {
     visitor.template compute_Jv(this, out, in, jacobian_scales, streams);
   }
 
   void compute_Jtv(GraphVisitor<T, S> &visitor, T *out, T *in,
-                 const T *jacobian_scales, StreamPool &streams) override {
+                   const T *jacobian_scales, StreamPool &streams) override {
     visitor.template compute_Jtv(this, out, in, jacobian_scales, streams);
   }
 
@@ -286,7 +287,7 @@ public:
   }
 
   void compute_jacobians(GraphVisitor<T, S> &visitor,
-                       StreamPool &streams) override {
+                         StreamPool &streams) override {
     if constexpr (std::is_same_v<typename Traits::Differentiation,
                                  DifferentiationMode::Manual>) {
       visitor.template compute_jacobians(this, streams);
@@ -311,7 +312,7 @@ public:
   }
 
   void compute_hessian_diagonal_async(GraphVisitor<T, S> &visitor, T *diagonal,
-                             const T *jacobian_scales) override {
+                                      const T *jacobian_scales) override {
     visitor.template compute_scalar_diagonal(this, diagonal, jacobian_scales);
   }
 
@@ -536,8 +537,9 @@ public:
   // TODO: Make this consider kernels and active edges
   virtual T chi2(GraphVisitor<T, S> &visitor) override {
     visitor.template compute_chi2(this); // runs on stream 0
-    return thrust::reduce(thrust::cuda::par.on(0), chi2_vec.begin(), chi2_vec.end(),
-                          static_cast<T>(0.0), thrust::plus<T>()); // want to sync here on stream 0
+    return thrust::reduce(thrust::cuda::par.on(0), chi2_vec.begin(),
+                          chi2_vec.end(), static_cast<T>(0.0),
+                          thrust::plus<T>()); // want to sync here on stream 0
   }
 
   T chi2(const size_t id) const {
@@ -573,7 +575,7 @@ public:
   }
 
   virtual void scale_jacobians_async(GraphVisitor<T, S> &visitor,
-                               T *jacobian_scales) override {
+                                     T *jacobian_scales) override {
     visitor.template scale_jacobians(this, jacobian_scales);
   }
 

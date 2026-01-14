@@ -21,7 +21,7 @@ private:
   bool scale_jacobians;
 
 public:
-  Graph(): scale_jacobians(true) {}
+  Graph() : scale_jacobians(true) {}
 
   size_t get_hessian_dimension() const { return hessian_column; }
   size_t get_variable_dimension(const size_t block_index) const {
@@ -132,10 +132,10 @@ public:
 
     // For each vertex descriptor, set the state MSB to 0
     for (auto &desc : vertex_descriptors) {
-      thrust::transform(thrust::cuda::par_nosync.on(0), desc->get_active_state(),
-                        desc->get_active_state() + desc->count(),
-                        desc->get_active_state(),
-                        [] __device__(uint8_t state) { return state & 0x7F; });
+      thrust::transform(
+          thrust::cuda::par_nosync.on(0), desc->get_active_state(),
+          desc->get_active_state() + desc->count(), desc->get_active_state(),
+          [] __device__(uint8_t state) { return state & 0x7F; });
     }
     // For each factor descriptor
     // Go through each vertex descriptor and set the state MSB to 1 if the
@@ -146,10 +146,10 @@ public:
     // For each vertex descriptor, MSB of the active state is XOR'd with 1
     // (0->1, 1->0)
     for (auto &desc : vertex_descriptors) {
-      thrust::transform(thrust::cuda::par_nosync.on(0), desc->get_active_state(),
-                        desc->get_active_state() + desc->count(),
-                        desc->get_active_state(),
-                        [] __device__(uint8_t state) { return state ^ 0x80; });
+      thrust::transform(
+          thrust::cuda::par_nosync.on(0), desc->get_active_state(),
+          desc->get_active_state() + desc->count(), desc->get_active_state(),
+          [] __device__(uint8_t state) { return state ^ 0x80; });
     }
     cudaStreamSynchronize(0);
   }
@@ -186,7 +186,7 @@ public:
                                      !factor->supports_dynamic_jacobians())) {
         factor->compute_error_autodiff(visitor, streams); // synchronous
       } else {
-        factor->compute_error(visitor); // synchronous
+        factor->compute_error(visitor);              // synchronous
         factor->compute_jacobians(visitor, streams); // synchronous
       }
     }
@@ -199,8 +199,8 @@ public:
     if (scale_jacobians) {
       thrust::fill(jacobian_scales.begin(), jacobian_scales.end(), 0);
       for (auto &factor : factor_descriptors) {
-        factor->compute_hessian_diagonal_async(visitor, jacobian_scales.data().get(),
-                                      nullptr);
+        factor->compute_hessian_diagonal_async(
+            visitor, jacobian_scales.data().get(), nullptr);
       }
       cudaStreamSynchronize(0);
 
@@ -228,7 +228,8 @@ public:
     // Calculate b=J^T * r
     thrust::fill(thrust::cuda::par_nosync.on(0), b.begin(), b.end(), 0);
     for (auto &fd : factor_descriptors) {
-      fd->compute_b_async(visitor, b.data().get(), jacobian_scales.data().get());
+      fd->compute_b_async(visitor, b.data().get(),
+                          jacobian_scales.data().get());
     }
 
     cudaStreamSynchronize(0);
@@ -238,7 +239,7 @@ public:
     size_t i = 0;
     for (auto &desc : vertex_descriptors) {
       desc->apply_step_async(visitor, delta_x, jacobian_scales.data().get(),
-                         streams.select(i));
+                             streams.select(i));
       i++;
     }
     streams.sync_n(i);
