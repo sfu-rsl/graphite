@@ -26,13 +26,13 @@ private:
     auto h_ptrs = matrix.outerIndexPtr();
     auto h_indices = matrix.innerIndexPtr();
 
-    thrust::copy(thrust::cuda::par_nosync.on(0), d_matrix.d_pointers.begin(), d_matrix.d_pointers.end(),
+    thrust::copy(d_matrix.d_pointers.begin(), d_matrix.d_pointers.end(),
                  h_ptrs);
-    thrust::copy(thrust::cuda::par_nosync.on(0), d_matrix.d_indices.begin(), d_matrix.d_indices.end(),
+    thrust::copy(d_matrix.d_indices.begin(), d_matrix.d_indices.end(),
                  h_indices);
+
     h_x.resize(dim);
     h_b.resize(dim);
-    cudaStreamSynchronize(0);
   }
 
   void fill_matrix_values() {
@@ -69,17 +69,17 @@ public:
 
     auto dim = graph->get_hessian_dimension();
 
-    thrust::fill(thrust::cuda::par_nosync.on(0), x, x + dim, static_cast<T>(0.0));
-    thrust::copy(thrust::cuda::par_nosync.on(0), graph->get_b().begin(), graph->get_b().end(), h_b.data());
-    thrust::device_ptr<T> d_x(x); // must wrap pointer for older toolkits
-    thrust::copy(thrust::cuda::par_nosync.on(0), d_x, d_x + dim, h_x.data());
-
     if (!solver.factorize(matrix)) {
       std::cerr << "LDLT matrix decomposition failed!";
-      cudaStreamSynchronize(0);
       return false;
     }
-    cudaStreamSynchronize(0);
+
+    thrust::fill(thrust::device, x, x + dim, static_cast<T>(0.0));
+
+    thrust::copy(graph->get_b().begin(), graph->get_b().end(), h_b.data());
+    thrust::device_ptr<T> d_x(
+        x); // If you don't wrap the pointer, thrust breaks on older toolkits
+    thrust::copy(d_x, d_x + dim, h_x.data());
 
     auto map_b = VecMap<S>(h_b.data(), dim, 1);
     auto map_x = VecMap<S>(h_x.data(), dim, 1);
