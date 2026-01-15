@@ -3,6 +3,7 @@
 #include <array>
 #include <chrono>
 #include <graphite/core.hpp>
+#include <graphite/pcg.hpp>
 #include <graphite/preconditioner/identity.hpp>
 #include <graphite/solver.hpp>
 #include <iostream>

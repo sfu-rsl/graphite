@@ -13,6 +13,7 @@
 #include <graphite/core.hpp>
 #include <graphite/cudss_solver.hpp>
 #include <graphite/eigen_solver.hpp>
+#include <graphite/pcg.hpp>
 #include <graphite/preconditioner/block_jacobi.hpp>
 #include <graphite/solver.hpp>
 #include <graphite/stream.hpp>
