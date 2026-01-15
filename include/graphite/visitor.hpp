@@ -100,7 +100,8 @@ apply_update_kernel(V **vertices, const T *delta_x, const T *jacobian_scales,
 }
 
 template <typename S, int D>
-__global__ void augment_hessian_diagonal_kernel(S *diagonal_blocks, const S mu,
+__global__ void augment_hessian_diagonal_kernel(S *diagonal_blocks,
+                                                S *scalar_diagonal, const S mu,
                                                 const uint8_t *active_state,
                                                 const size_t num_threads) {
   const size_t idx = get_thread_id();
@@ -119,7 +120,8 @@ __global__ void augment_hessian_diagonal_kernel(S *diagonal_blocks, const S mu,
   S *block = diagonal_blocks + vertex_id * block_size;
   for (size_t i = 0; i < D; i++) {
 
-    const double diag = static_cast<double>(block[i * D + i]);
+    // const double diag = static_cast<double>(block[i * D + i]);
+    const double diag = static_cast<double>(scalar_diagonal[vertex_id * D + i]);
     const double new_diag =
         diag + static_cast<double>(mu) * std::clamp(diag, 1.0e-6, 1.0e32);
     // const double new_diag =
@@ -2092,8 +2094,8 @@ public:
   }
 
   template <typename V>
-  void augment_block_diagonal(V *v, InvP *block_diagonal, T mu,
-                              cudaStream_t stream) {
+  void augment_block_diagonal(V *v, InvP *block_diagonal, InvP *scalar_diagonal,
+                              T mu, cudaStream_t stream) {
     const size_t num_threads = v->count();
     const auto threads_per_block = 256;
     const auto num_blocks =
@@ -2101,7 +2103,8 @@ public:
 
     augment_hessian_diagonal_kernel<InvP, V::dim>
         <<<num_blocks, threads_per_block, 0, stream>>>(
-            block_diagonal, (InvP)mu, v->get_active_state(), num_threads);
+            block_diagonal, scalar_diagonal, (InvP)mu, v->get_active_state(),
+            num_threads);
   }
 
   template <typename V>

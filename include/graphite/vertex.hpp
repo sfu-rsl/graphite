@@ -71,7 +71,8 @@ public:
   virtual void apply_step_async(GraphVisitor<T, S> &visitor, const T *delta_x,
                                 T *jacobian_scales, cudaStream_t stream) = 0;
   virtual void augment_block_diagonal_async(GraphVisitor<T, S> &visitor,
-                                            InvP *block_diagonal, T mu,
+                                            InvP *block_diagonal,
+                                            InvP *scalar_diagonal, T mu,
                                             cudaStream_t stream) = 0;
   virtual void apply_block_jacobi(GraphVisitor<T, S> &visitor, T *z, const T *r,
                                   InvP *block_diagonal,
@@ -131,9 +132,10 @@ public:
   }
 
   void augment_block_diagonal_async(GraphVisitor<T, S> &visitor,
-                                    InvP *block_diagonal, T mu,
-                                    cudaStream_t stream) override {
-    visitor.template augment_block_diagonal(this, block_diagonal, mu, stream);
+                                    InvP *block_diagonal, InvP *scalar_diagonal,
+                                    T mu, cudaStream_t stream) override {
+    visitor.template augment_block_diagonal(this, block_diagonal,
+                                            scalar_diagonal, mu, stream);
   }
 
   void apply_block_jacobi(GraphVisitor<T, S> &visitor, T *z, const T *r,

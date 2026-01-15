@@ -54,14 +54,19 @@ public:
         damping_factor(0), preconditioner(preconditioner) {}
 
   virtual void update_structure(Graph<T, S> *graph,
-                                StreamPool &streams) override {}
+                                StreamPool &streams) override {
+
+    preconditioner->update_structure(graph, streams);
+  }
 
   virtual void update_values(Graph<T, S> *graph, StreamPool &streams) override {
+    preconditioner->update_values(graph, streams);
   }
 
   virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor,
                                   StreamPool &streams) override {
     this->damping_factor = damping_factor;
+    preconditioner->set_damping_factor(graph, damping_factor, streams);
   }
 
   // Assumes that x is already initialized

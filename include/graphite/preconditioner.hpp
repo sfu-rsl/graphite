@@ -3,6 +3,7 @@
 #include <graphite/factor.hpp>
 #include <graphite/op.hpp>
 #include <graphite/vertex.hpp>
+#include <thrust/count.h>
 #include <thrust/execution_policy.h>
 
 namespace graphite {
@@ -16,6 +17,13 @@ public:
              const T *jacobian_scales,
 
              size_t dimension, T mu) = 0;
+
+  virtual void update_structure(Graph<T, S> *graph, StreamPool &streams) = 0;
+
+  virtual void update_values(Graph<T, S> *graph, StreamPool &streams) = 0;
+
+  virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor,
+                                  StreamPool &streams) = 0;
 
   virtual void apply(GraphVisitor<T, S> &visitor, T *z, const T *r,
                      StreamPool &streams) = 0;
@@ -36,6 +44,13 @@ public:
     this->dimension = dimension;
   }
 
+  virtual void update_structure(Graph<T, S> *graph, StreamPool &streams){};
+
+  virtual void update_values(Graph<T, S> *graph, StreamPool &streams){};
+
+  virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor,
+                                  StreamPool &streams){};
+
   void apply(GraphVisitor<T, S> &visitor, T *z, const T *r,
              StreamPool &streams) override {
     cudaMemcpy(z, r, dimension * sizeof(T), cudaMemcpyDeviceToDevice);
@@ -53,6 +68,12 @@ private:
 
   std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<P>>
       hp_diagonals; // higher precision diagonals for inversion
+
+  std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<S>>
+      scalar_diagonals;
+  std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<P>>
+      hp_scalar_diagonals;
+
   std::vector<BaseVertexDescriptor<T, S> *> *vds;
   cublasHandle_t handle;
 
@@ -71,11 +92,10 @@ public:
 
   ~BlockJacobiPreconditioner() { cublasDestroy(handle); }
 
-  void precompute(GraphVisitor<T, S> &visitor,
-                  std::vector<BaseVertexDescriptor<T, S> *> &vertex_descriptors,
-                  std::vector<BaseFactorDescriptor<T, S> *> &factor_descriptors,
-                  const T *jacobian_scales, size_t dimension, T mu) override {
+  virtual void update_structure(Graph<T, S> *graph, StreamPool &streams) {
+
     this->dimension = dimension;
+    auto &vertex_descriptors = graph->get_vertex_descriptors();
     this->vds = &vertex_descriptors;
 
     for (auto &desc : vertex_descriptors) {
@@ -87,8 +107,10 @@ public:
 
       if constexpr (is_low_precision<S>::value) {
         hp_diagonals[desc].resize(num_values);
+        hp_scalar_diagonals[desc].resize(desc->count() * d);
       } else {
         block_diagonals[desc].resize(num_values);
+        scalar_diagonals[desc].resize(desc->count() * d);
       }
     }
 
@@ -111,9 +133,15 @@ public:
       Ainv_data.resize(max_data_size);
       info.resize(max_num_blocks);
     }
+  };
+
+  virtual void update_values(Graph<T, S> *graph, StreamPool &streams) {
 
     const cudaStream_t stream = 0;
     cublasSetStream(handle, stream);
+    auto &vertex_descriptors = graph->get_vertex_descriptors();
+    auto &factor_descriptors = graph->get_factor_descriptors();
+    auto jacobian_scales = graph->get_jacobian_scales().data().get();
 
     // Compute Hessian blocks on the diagonal
     for (auto &desc : vertex_descriptors) {
@@ -128,6 +156,7 @@ public:
       }
     }
     for (auto &desc : factor_descriptors) {
+      GraphVisitor<T, S> visitor;
       if constexpr (is_low_precision<S>::value) {
         desc->compute_hessian_block_diagonal_async(visitor, hp_diagonals,
                                                    jacobian_scales, stream);
@@ -136,16 +165,74 @@ public:
                                                    jacobian_scales, stream);
       }
     }
+    // back up diagonals for each vertex descriptor
+    for (auto &desc : vertex_descriptors) {
+      if constexpr (is_low_precision<S>::value) {
+        // auto start =
+        // thrust::make_strided_iterator(hp_diagonals[desc].begin(),
+        // desc->dimension() + 1); auto end = hp_diagonals[desc].end();
+        // thrust::copy(thrust::cuda::par_nosync.on(stream), start, end,
+        // hp_scalar_diagonals[desc].begin());
+        auto b = hp_diagonals[desc].data().get();
+        auto s = hp_scalar_diagonals[desc].data().get();
+
+        auto start = thrust::make_counting_iterator<size_t>(0);
+        auto end = start + hp_scalar_diagonals[desc].size();
+        const size_t D = desc->dimension();
+        thrust::for_each(thrust::cuda::par_nosync.on(stream), start, end,
+                         [b, s, D] __device__(const size_t idx) {
+                           const size_t vertex_id = idx / D;
+                           const auto block = b + vertex_id * D * D;
+                           const size_t col = idx % D;
+                           s[idx] = block[col * D + col];
+                         });
+      } else {
+        // auto start =
+        // thrust::make_strided_iterator(block_diagonals[desc].begin(),
+        // desc->dimension() + 1); auto end = block_diagonals[desc].end();
+        // thrust::copy(thrust::cuda::par_nosync.on(stream), start, end,
+        // scalar_diagonals[desc].begin());
+
+        auto b = block_diagonals[desc].data().get();
+        auto s = scalar_diagonals[desc].data().get();
+
+        auto start = thrust::make_counting_iterator<size_t>(0);
+        auto end = start + scalar_diagonals[desc].size();
+        const size_t D = desc->dimension();
+        thrust::for_each(thrust::cuda::par_nosync.on(stream), start, end,
+                         [b, s, D] __device__(const size_t idx) {
+                           const size_t vertex_id = idx / D;
+                           const auto block = b + vertex_id * D * D;
+                           const size_t col = idx % D;
+                           s[idx] = block[col * D + col];
+                         });
+      }
+    }
+
+    cudaStreamSynchronize(stream);
+  };
+
+  virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor,
+                                  StreamPool &streams) {
+
+    const cudaStream_t stream = 0;
+    cublasSetStream(handle, stream);
+    auto &vertex_descriptors = graph->get_vertex_descriptors();
+    auto &factor_descriptors = graph->get_factor_descriptors();
+    GraphVisitor<T, S> visitor;
 
     // Invert the blocks
 
     for (auto &desc : vertex_descriptors) {
       if constexpr (is_low_precision<S>::value) {
+        // first
         desc->augment_block_diagonal_async(
-            visitor, hp_diagonals[desc].data().get(), mu, stream);
+            visitor, hp_diagonals[desc].data().get(),
+            hp_scalar_diagonals[desc].data().get(), damping_factor, stream);
       } else {
         desc->augment_block_diagonal_async(
-            visitor, block_diagonals[desc].data().get(), mu, stream);
+            visitor, block_diagonals[desc].data().get(),
+            scalar_diagonals[desc].data().get(), damping_factor, stream);
       }
       // Invert the block diagonal using cublas
       const auto d = desc->dimension();
@@ -202,7 +289,12 @@ public:
 
     // Final sync
     cudaStreamSynchronize(stream);
-  }
+  };
+
+  void precompute(GraphVisitor<T, S> &visitor,
+                  std::vector<BaseVertexDescriptor<T, S> *> &vertex_descriptors,
+                  std::vector<BaseFactorDescriptor<T, S> *> &factor_descriptors,
+                  const T *jacobian_scales, size_t dimension, T mu) override {}
 
   void apply(GraphVisitor<T, S> &visitor, T *z, const T *r,
              StreamPool &streams) override {
