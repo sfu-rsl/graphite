@@ -48,20 +48,15 @@ private:
   using P = std::conditional_t<is_low_precision<S>::value, T, S>;
   size_t dimension;
   std::vector<std::pair<size_t, size_t>> block_sizes;
-  std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<S>>
+  std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<P>>
       block_diagonals;
-  std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<P>>
-      hp_diagonals; // higher precision diagonals for inversion
 
-  std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<S>>
-      scalar_diagonals;
   std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<P>>
-      hp_scalar_diagonals;
+      scalar_diagonals;
 
   std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<P>>
       P_inv;
 
-  std::vector<BaseVertexDescriptor<T, S> *> *vds;
   cublasHandle_t handle;
 
   // For batched inversion
@@ -82,22 +77,14 @@ public:
 
     this->dimension = dimension;
     auto &vertex_descriptors = graph->get_vertex_descriptors();
-    this->vds = &vertex_descriptors;
 
     for (auto &desc : vertex_descriptors) {
       // Reserve space
       const auto d = desc->dimension();
       const size_t num_values =
-          d * d * desc->count(); // this is not tightly packed since count
-                                 // includes fixed vertices
-
-      if constexpr (is_low_precision<S>::value) {
-        hp_diagonals[desc].resize(num_values);
-        hp_scalar_diagonals[desc].resize(desc->count() * d);
-      } else {
-        block_diagonals[desc].resize(num_values);
-        scalar_diagonals[desc].resize(desc->count() * d);
-      }
+          d * d * desc->count(); // includes inactive vertices
+      block_diagonals[desc].resize(num_values);
+      scalar_diagonals[desc].resize(desc->count() * d);
       P_inv[desc].resize(num_values);
     }
 
@@ -132,68 +119,31 @@ public:
 
     // Compute Hessian blocks on the diagonal
     for (auto &desc : vertex_descriptors) {
-      if constexpr (is_low_precision<S>::value) {
-        thrust::fill(thrust::cuda::par_nosync.on(stream),
-                     hp_diagonals[desc].begin(), hp_diagonals[desc].end(),
-                     static_cast<P>(0.0));
-      } else {
-        thrust::fill(thrust::cuda::par_nosync.on(stream),
-                     block_diagonals[desc].begin(), block_diagonals[desc].end(),
-                     static_cast<S>(0.0));
-      }
+      thrust::fill(thrust::cuda::par_nosync.on(stream),
+                   block_diagonals[desc].begin(), block_diagonals[desc].end(),
+                   static_cast<S>(0.0));
     }
     for (auto &desc : factor_descriptors) {
       GraphVisitor<T, S> visitor;
-      if constexpr (is_low_precision<S>::value) {
-        desc->compute_hessian_block_diagonal_async(visitor, hp_diagonals,
-                                                   jacobian_scales, stream);
-      } else {
-        desc->compute_hessian_block_diagonal_async(visitor, block_diagonals,
-                                                   jacobian_scales, stream);
-      }
+      desc->compute_hessian_block_diagonal_async(visitor, block_diagonals,
+                                                 jacobian_scales, stream);
     }
     // back up diagonals for each vertex descriptor
     for (auto &desc : vertex_descriptors) {
-      if constexpr (is_low_precision<S>::value) {
-        // auto start =
-        // thrust::make_strided_iterator(hp_diagonals[desc].begin(),
-        // desc->dimension() + 1); auto end = hp_diagonals[desc].end();
-        // thrust::copy(thrust::cuda::par_nosync.on(stream), start, end,
-        // hp_scalar_diagonals[desc].begin());
-        auto b = hp_diagonals[desc].data().get();
-        auto s = hp_scalar_diagonals[desc].data().get();
 
-        auto start = thrust::make_counting_iterator<size_t>(0);
-        auto end = start + hp_scalar_diagonals[desc].size();
-        const size_t D = desc->dimension();
-        thrust::for_each(thrust::cuda::par_nosync.on(stream), start, end,
-                         [b, s, D] __device__(const size_t idx) {
-                           const size_t vertex_id = idx / D;
-                           const auto block = b + vertex_id * D * D;
-                           const size_t col = idx % D;
-                           s[idx] = block[col * D + col];
-                         });
-      } else {
-        // auto start =
-        // thrust::make_strided_iterator(block_diagonals[desc].begin(),
-        // desc->dimension() + 1); auto end = block_diagonals[desc].end();
-        // thrust::copy(thrust::cuda::par_nosync.on(stream), start, end,
-        // scalar_diagonals[desc].begin());
+      auto b = block_diagonals[desc].data().get();
+      auto s = scalar_diagonals[desc].data().get();
 
-        auto b = block_diagonals[desc].data().get();
-        auto s = scalar_diagonals[desc].data().get();
-
-        auto start = thrust::make_counting_iterator<size_t>(0);
-        auto end = start + scalar_diagonals[desc].size();
-        const size_t D = desc->dimension();
-        thrust::for_each(thrust::cuda::par_nosync.on(stream), start, end,
-                         [b, s, D] __device__(const size_t idx) {
-                           const size_t vertex_id = idx / D;
-                           const auto block = b + vertex_id * D * D;
-                           const size_t col = idx % D;
-                           s[idx] = block[col * D + col];
-                         });
-      }
+      auto start = thrust::make_counting_iterator<size_t>(0);
+      auto end = start + scalar_diagonals[desc].size();
+      const size_t D = desc->dimension();
+      thrust::for_each(thrust::cuda::par_nosync.on(stream), start, end,
+                       [b, s, D] __device__(const size_t idx) {
+                         const size_t vertex_id = idx / D;
+                         const auto block = b + vertex_id * D * D;
+                         const size_t col = idx % D;
+                         s[idx] = block[col * D + col];
+                       });
     }
 
     cudaStreamSynchronize(stream);
@@ -211,29 +161,17 @@ public:
     // Invert the blocks
 
     for (auto &desc : vertex_descriptors) {
-      if constexpr (is_low_precision<S>::value) {
-        // first
-        desc->augment_block_diagonal_async(
-            visitor, hp_diagonals[desc].data().get(),
-            hp_scalar_diagonals[desc].data().get(), damping_factor, stream);
-      } else {
-        desc->augment_block_diagonal_async(
-            visitor, block_diagonals[desc].data().get(),
-            scalar_diagonals[desc].data().get(), damping_factor, stream);
-      }
+      desc->augment_block_diagonal_async(
+          visitor, block_diagonals[desc].data().get(),
+          scalar_diagonals[desc].data().get(), damping_factor, stream);
+
       // Invert the block diagonal using cublas
       const auto d = desc->dimension();
       const size_t num_blocks = desc->count();
       const auto block_size = d * d;
       const size_t data_size = num_blocks * block_size;
 
-      P *a_ptr = nullptr;
-
-      if constexpr (is_low_precision<S>::value) {
-        a_ptr = hp_diagonals[desc].data().get();
-      } else {
-        a_ptr = block_diagonals[desc].data().get();
-      }
+      P *a_ptr = block_diagonals[desc].data().get();
 
       P *a_inv_ptr = P_inv[desc].data().get();
       for (size_t i = 0; i < num_blocks; ++i) {
@@ -260,7 +198,7 @@ public:
         static_assert(
             is_low_precision<S>::value || std::is_same<S, float>::value ||
                 std::is_same<S, double>::value,
-            "BlockJacobiPreconditioner only supports ghalf, float, or "
+            "BlockJacobiPreconditioner only supports bfloat16, float, or "
             "double types.");
       }
     }
@@ -274,7 +212,8 @@ public:
     // Apply the preconditioner
     GraphVisitor<T, S> visitor;
     size_t i = 0;
-    for (auto &desc : *vds) {
+    auto &vertex_descriptors = graph->get_vertex_descriptors();
+    for (auto &desc : vertex_descriptors) {
       const auto d = desc->dimension();
       P *blocks = P_inv[desc].data().get();
       desc->apply_block_jacobi(visitor, z, r, blocks, streams.select(i));
