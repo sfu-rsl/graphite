@@ -1,46 +1,10 @@
 #pragma once
-#include <cublas_v2.h>
-#include <graphite/factor.hpp>
-#include <graphite/op.hpp>
-#include <graphite/vertex.hpp>
+#include <graphite/preconditioner/preconditioner.hpp>
 #include <thrust/count.h>
 #include <thrust/execution_policy.h>
+#include <cublas_v2.h>
 
 namespace graphite {
-
-template <typename T, typename S> class Preconditioner {
-public:
-  virtual void update_structure(Graph<T, S> *graph, StreamPool &streams) = 0;
-
-  virtual void update_values(Graph<T, S> *graph, StreamPool &streams) = 0;
-
-  virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor,
-                                  StreamPool &streams) = 0;
-
-  virtual void apply(Graph<T, S> *graph, T *z, const T *r,
-                     StreamPool &streams) = 0;
-};
-
-template <typename T, typename S>
-class IdentityPreconditioner : public Preconditioner<T, S> {
-private:
-  size_t dimension;
-
-public:
-  virtual void update_structure(Graph<T, S> *graph, StreamPool &streams) {
-    dimension = graph->get_hessian_dimension();
-  };
-
-  virtual void update_values(Graph<T, S> *graph, StreamPool &streams){};
-
-  virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor,
-                                  StreamPool &streams){};
-
-  void apply(Graph<T, S> *graph, T *z, const T *r,
-             StreamPool &streams) override {
-    cudaMemcpy(z, r, dimension * sizeof(T), cudaMemcpyDeviceToDevice);
-  }
-};
 
 template <typename T, typename S>
 class BlockJacobiPreconditioner : public Preconditioner<T, S> {
@@ -223,4 +187,4 @@ public:
   }
 };
 
-} // namespace graphite
+}

@@ -3,7 +3,7 @@
 #include <graphite/factor.hpp>
 #include <graphite/hessian.hpp>
 #include <graphite/kernel.hpp>
-#include <graphite/preconditioner.hpp>
+#include <graphite/preconditioner/preconditioner.hpp>
 #include <graphite/stream.hpp>
 #include <graphite/utils.hpp>
 #include <memory>
