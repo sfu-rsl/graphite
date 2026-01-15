@@ -50,7 +50,6 @@ private:
   std::vector<std::pair<size_t, size_t>> block_sizes;
   std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<S>>
       block_diagonals;
-
   std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<P>>
       hp_diagonals; // higher precision diagonals for inversion
 
@@ -59,12 +58,14 @@ private:
   std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<P>>
       hp_scalar_diagonals;
 
+  std::unordered_map<BaseVertexDescriptor<T, S> *, thrust::device_vector<P>>
+      P_inv;
+
   std::vector<BaseVertexDescriptor<T, S> *> *vds;
   cublasHandle_t handle;
 
   // For batched inversion
   // TODO: Figure out a better way to handle the memory
-  thrust::device_vector<P> Ainv_data;
   thrust::host_vector<P *> A_ptrs, Ainv_ptrs;
   thrust::device_vector<P *> A_ptrs_device, Ainv_ptrs_device;
   thrust::device_vector<int> info;
@@ -97,6 +98,7 @@ public:
         block_diagonals[desc].resize(num_values);
         scalar_diagonals[desc].resize(desc->count() * d);
       }
+      P_inv[desc].resize(num_values);
     }
 
     // Determine max sizes for buffers
@@ -115,15 +117,15 @@ public:
 
       A_ptrs.resize(max_num_blocks);
       Ainv_ptrs.resize(max_num_blocks);
-      Ainv_data.resize(max_data_size);
       info.resize(max_num_blocks);
+
+      A_ptrs_device.resize(max_num_blocks);
+      Ainv_ptrs_device.resize(max_num_blocks);
     }
   };
 
   virtual void update_values(Graph<T, S> *graph, StreamPool &streams) {
-
     const cudaStream_t stream = 0;
-    cublasSetStream(handle, stream);
     auto &vertex_descriptors = graph->get_vertex_descriptors();
     auto &factor_descriptors = graph->get_factor_descriptors();
     auto jacobian_scales = graph->get_jacobian_scales().data().get();
@@ -233,14 +235,16 @@ public:
         a_ptr = block_diagonals[desc].data().get();
       }
 
-      P *a_inv_ptr = Ainv_data.data().get();
+      P *a_inv_ptr = P_inv[desc].data().get();
       for (size_t i = 0; i < num_blocks; ++i) {
         A_ptrs[i] = a_ptr + i * block_size;
         Ainv_ptrs[i] = a_inv_ptr + i * block_size;
       }
 
-      A_ptrs_device = A_ptrs;
-      Ainv_ptrs_device = Ainv_ptrs;
+      cudaMemcpyAsync(A_ptrs_device.data().get(), A_ptrs.data(),
+                      sizeof(P *) * num_blocks, cudaMemcpyHostToDevice, stream);
+      cudaMemcpyAsync(Ainv_ptrs_device.data().get(), Ainv_ptrs.data(),
+                      sizeof(P *) * num_blocks, cudaMemcpyHostToDevice, stream);
 
       // cublas should use stream 0
       if constexpr (std::is_same<P, double>::value) {
@@ -259,17 +263,6 @@ public:
             "BlockJacobiPreconditioner only supports ghalf, float, or "
             "double types.");
       }
-
-      // Copy back
-      if constexpr (is_low_precision<S>::value) {
-        // copy to higher precision buffer
-        thrust::copy(thrust::cuda::par_nosync.on(stream), Ainv_data.begin(),
-                     Ainv_data.begin() + data_size, hp_diagonals[desc].begin());
-      } else {
-        thrust::copy(thrust::cuda::par_nosync.on(stream), Ainv_data.begin(),
-                     Ainv_data.begin() + data_size,
-                     block_diagonals[desc].begin());
-      }
     }
 
     // Final sync
@@ -281,21 +274,11 @@ public:
     // Apply the preconditioner
     GraphVisitor<T, S> visitor;
     size_t i = 0;
-    if constexpr (is_low_precision<S>::value) {
-      // Apply the P version of the block jacobi
-      for (auto &desc : *vds) {
-        const auto d = desc->dimension();
-        P *blocks = hp_diagonals[desc].data().get();
-        desc->apply_block_jacobi(visitor, z, r, blocks, streams.select(i));
-        i++;
-      }
-    } else {
-      for (auto &desc : *vds) {
-        const auto d = desc->dimension();
-        S *blocks = block_diagonals[desc].data().get();
-        desc->apply_block_jacobi(visitor, z, r, blocks, streams.select(i));
-        i++;
-      }
+    for (auto &desc : *vds) {
+      const auto d = desc->dimension();
+      P *blocks = P_inv[desc].data().get();
+      desc->apply_block_jacobi(visitor, z, r, blocks, streams.select(i));
+      i++;
     }
     streams.sync_n(i);
   }
