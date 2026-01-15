@@ -10,14 +10,6 @@ namespace graphite {
 
 template <typename T, typename S> class Preconditioner {
 public:
-  virtual void
-  precompute(GraphVisitor<T, S> &visitor,
-             std::vector<BaseVertexDescriptor<T, S> *> &vertex_descriptors,
-             std::vector<BaseFactorDescriptor<T, S> *> &factor_descriptors,
-             const T *jacobian_scales,
-
-             size_t dimension, T mu) = 0;
-
   virtual void update_structure(Graph<T, S> *graph, StreamPool &streams) = 0;
 
   virtual void update_values(Graph<T, S> *graph, StreamPool &streams) = 0;
@@ -35,16 +27,9 @@ private:
   size_t dimension;
 
 public:
-  void precompute(GraphVisitor<T, S> &visitor,
-                  std::vector<BaseVertexDescriptor<T, S> *> &vertex_descriptors,
-                  std::vector<BaseFactorDescriptor<T, S> *> &factor_descriptors,
-                  const T *jacobian_scales,
-
-                  size_t dimension, T mu) override {
-    this->dimension = dimension;
-  }
-
-  virtual void update_structure(Graph<T, S> *graph, StreamPool &streams){};
+  virtual void update_structure(Graph<T, S> *graph, StreamPool &streams) {
+    dimension = graph->get_hessian_dimension();
+  };
 
   virtual void update_values(Graph<T, S> *graph, StreamPool &streams){};
 
@@ -290,11 +275,6 @@ public:
     // Final sync
     cudaStreamSynchronize(stream);
   };
-
-  void precompute(GraphVisitor<T, S> &visitor,
-                  std::vector<BaseVertexDescriptor<T, S> *> &vertex_descriptors,
-                  std::vector<BaseFactorDescriptor<T, S> *> &factor_descriptors,
-                  const T *jacobian_scales, size_t dimension, T mu) override {}
 
   void apply(GraphVisitor<T, S> &visitor, T *z, const T *r,
              StreamPool &streams) override {

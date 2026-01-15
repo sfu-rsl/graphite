@@ -127,9 +127,6 @@ public:
     rescale_vec_async<T>(stream, dim_h, y.data().get(), scale, r.data().get());
     cudaStreamSynchronize(stream);
     // Apply preconditioner
-    preconditioner->precompute(visitor, vertex_descriptors, factor_descriptors,
-                               graph->get_jacobian_scales().data().get(), dim_h,
-                               damping_factor);
     z.resize(dim_h);
 
     thrust::fill(z.begin(), z.end(), 0.0);
