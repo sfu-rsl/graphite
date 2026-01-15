@@ -92,60 +92,70 @@ public:
       }
     }
 
+    // Determine max sizes for buffers
+    {
+      size_t max_num_blocks = 0;
+      size_t max_data_size = 0;
+
+      for (auto &desc : vertex_descriptors) {
+        const size_t num_blocks = desc->count();
+        const size_t d = desc->dimension();
+        const size_t block_size = d * d;
+
+        max_num_blocks = std::max(max_num_blocks, num_blocks);
+        max_data_size = std::max(max_data_size, num_blocks * block_size);
+      }
+
+      A_ptrs.resize(max_num_blocks);
+      Ainv_ptrs.resize(max_num_blocks);
+      Ainv_data.resize(max_data_size);
+      info.resize(max_num_blocks);
+    }
+
+    const cudaStream_t stream = 0;
+    cublasSetStream(handle, stream);
+
     // Compute Hessian blocks on the diagonal
     for (auto &desc : vertex_descriptors) {
       if constexpr (is_low_precision<S>::value) {
-        thrust::fill(hp_diagonals[desc].begin(), hp_diagonals[desc].end(),
+        thrust::fill(thrust::cuda::par_nosync.on(stream),
+                     hp_diagonals[desc].begin(), hp_diagonals[desc].end(),
                      static_cast<P>(0.0));
       } else {
-        thrust::fill(block_diagonals[desc].begin(), block_diagonals[desc].end(),
+        thrust::fill(thrust::cuda::par_nosync.on(stream),
+                     block_diagonals[desc].begin(), block_diagonals[desc].end(),
                      static_cast<S>(0.0));
       }
     }
     for (auto &desc : factor_descriptors) {
       if constexpr (is_low_precision<S>::value) {
-        desc->compute_hessian_block_diagonal(visitor, hp_diagonals,
-                                             jacobian_scales);
+        desc->compute_hessian_block_diagonal_async(visitor, hp_diagonals,
+                                                   jacobian_scales, stream);
       } else {
-        desc->compute_hessian_block_diagonal(visitor, block_diagonals,
-                                             jacobian_scales);
+        desc->compute_hessian_block_diagonal_async(visitor, block_diagonals,
+                                                   jacobian_scales, stream);
       }
     }
-    cudaStreamSynchronize(0);
 
     // Invert the blocks
 
     for (auto &desc : vertex_descriptors) {
       if constexpr (is_low_precision<S>::value) {
-        desc->augment_block_diagonal(visitor, hp_diagonals[desc].data().get(),
-                                     mu);
+        desc->augment_block_diagonal_async(
+            visitor, hp_diagonals[desc].data().get(), mu, stream);
       } else {
-        desc->augment_block_diagonal(visitor,
-                                     block_diagonals[desc].data().get(), mu);
+        desc->augment_block_diagonal_async(
+            visitor, block_diagonals[desc].data().get(), mu, stream);
       }
       // Invert the block diagonal using cublas
       const auto d = desc->dimension();
       const size_t num_blocks = desc->count();
       const auto block_size = d * d;
-
-      A_ptrs.resize(num_blocks);
-      Ainv_ptrs.resize(num_blocks);
-      Ainv_data.resize(num_blocks * block_size);
-      info.resize(num_blocks);
-
-      // P *a_ptr = block_diagonals[desc].data().get();
+      const size_t data_size = num_blocks * block_size;
 
       P *a_ptr = nullptr;
 
       if constexpr (is_low_precision<S>::value) {
-        // hp_diagonals[desc].resize(num_blocks * block_size);
-        // // Copy to higher precision
-        // thrust::transform(thrust::device, block_diagonals[desc].begin(),
-        //                   block_diagonals[desc].end(),
-        //                   hp_diagonals[desc].begin(),
-        //                   [] __device__(S val) { return static_cast<P>(val);
-        //                   });
-
         a_ptr = hp_diagonals[desc].data().get();
       } else {
         a_ptr = block_diagonals[desc].data().get();
@@ -160,6 +170,7 @@ public:
       A_ptrs_device = A_ptrs;
       Ainv_ptrs_device = Ainv_ptrs;
 
+      // cublas should use stream 0
       if constexpr (std::is_same<P, double>::value) {
 
         cublasDmatinvBatched(handle, d, A_ptrs_device.data().get(), d,
@@ -177,20 +188,20 @@ public:
             "double types.");
       }
 
-      cudaStreamSynchronize(0);
-
       // Copy back
       if constexpr (is_low_precision<S>::value) {
         // copy to higher precision buffer
-        thrust::copy(thrust::device, Ainv_data.begin(), Ainv_data.end(),
-                     hp_diagonals[desc].begin());
+        thrust::copy(thrust::cuda::par_nosync.on(stream), Ainv_data.begin(),
+                     Ainv_data.begin() + data_size, hp_diagonals[desc].begin());
       } else {
-        thrust::copy(thrust::device, Ainv_data.begin(), Ainv_data.end(),
+        thrust::copy(thrust::cuda::par_nosync.on(stream), Ainv_data.begin(),
+                     Ainv_data.begin() + data_size,
                      block_diagonals[desc].begin());
       }
     }
 
-    cudaStreamSynchronize(0);
+    // Final sync
+    cudaStreamSynchronize(stream);
   }
 
   void apply(GraphVisitor<T, S> &visitor, T *z, const T *r,
