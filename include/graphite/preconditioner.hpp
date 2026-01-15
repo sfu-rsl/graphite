@@ -17,7 +17,7 @@ public:
   virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor,
                                   StreamPool &streams) = 0;
 
-  virtual void apply(GraphVisitor<T, S> &visitor, T *z, const T *r,
+  virtual void apply(Graph<T, S> *graph, T *z, const T *r,
                      StreamPool &streams) = 0;
 };
 
@@ -36,7 +36,7 @@ public:
   virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor,
                                   StreamPool &streams){};
 
-  void apply(GraphVisitor<T, S> &visitor, T *z, const T *r,
+  void apply(Graph<T, S> *graph, T *z, const T *r,
              StreamPool &streams) override {
     cudaMemcpy(z, r, dimension * sizeof(T), cudaMemcpyDeviceToDevice);
   }
@@ -276,9 +276,10 @@ public:
     cudaStreamSynchronize(stream);
   };
 
-  void apply(GraphVisitor<T, S> &visitor, T *z, const T *r,
+  void apply(Graph<T, S> *graph, T *z, const T *r,
              StreamPool &streams) override {
     // Apply the preconditioner
+    GraphVisitor<T, S> visitor;
     size_t i = 0;
     if constexpr (is_low_precision<S>::value) {
       // Apply the P version of the block jacobi

@@ -130,7 +130,7 @@ public:
     z.resize(dim_h);
 
     thrust::fill(z.begin(), z.end(), 0.0);
-    preconditioner->apply(visitor, z.data().get(), y.data().get(), streams);
+    preconditioner->apply(graph, z.data().get(), y.data().get(), streams);
 
     p.resize(dim_h);
     thrust::copy(z.begin(), z.end(), p.begin()); // p = z
@@ -203,7 +203,7 @@ public:
 
       // Apply preconditioner again
       thrust::fill(thrust::cuda::par.on(stream), z.begin(), z.end(), 0.0);
-      preconditioner->apply(visitor, z.data().get(), y.data().get(), streams);
+      preconditioner->apply(graph, z.data().get(), y.data().get(), streams);
       T rz_new = thrust::inner_product(thrust::cuda::par.on(stream), r.begin(),
                                        r.end(), z.begin(), static_cast<T>(0.0));
 
