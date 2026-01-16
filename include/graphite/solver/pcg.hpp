@@ -1,5 +1,5 @@
 #pragma once
-#include <graphite/solver.hpp>
+#include <graphite/solver/solver.hpp>
 
 namespace graphite {
     template <typename T, typename S> class PCGSolver : public Solver<T, S> {

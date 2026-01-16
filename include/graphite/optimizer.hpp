@@ -1,6 +1,6 @@
 #pragma once
 #include <graphite/graph.hpp>
-#include <graphite/solver.hpp>
+#include <graphite/solver/solver.hpp>
 #include <iomanip>
 
 namespace graphite {
