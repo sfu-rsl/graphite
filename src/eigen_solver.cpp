@@ -1,4 +1,4 @@
-#include <graphite/eigen_solver_interface.hpp>
+#include <graphite/solver/eigen_solver_interface.hpp>
 
 namespace graphite {
 

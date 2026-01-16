@@ -11,9 +11,11 @@
 #include "reprojection_error.cuh"
 #include <argparse/argparse.hpp>
 #include <graphite/core.hpp>
-#include <graphite/cudss_solver.hpp>
-#include <graphite/eigen_solver.hpp>
-#include <graphite/solver.hpp>
+#include <graphite/preconditioner/block_jacobi.hpp>
+#include <graphite/solver/cudss.hpp>
+#include <graphite/solver/eigen.hpp>
+#include <graphite/solver/pcg.hpp>
+#include <graphite/solver/solver.hpp>
 #include <graphite/stream.hpp>
 #include <graphite/types.hpp>
 
@@ -234,7 +236,6 @@ void bundle_adjustment(argparse::ArgumentParser &program) {
 
   // Configure solver
   graphite::BlockJacobiPreconditioner<FP, SP> preconditioner;
-  // graphite::IdentityPreconditioner<FP, SP> preconditioner;
 
   const auto solver_type = program.get<std::string>("--solver");
 

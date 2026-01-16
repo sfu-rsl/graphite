@@ -1,7 +1,7 @@
 #pragma once
 #include <cuda_runtime.h>
 #include <cudss.h>
-#include <graphite/solver.hpp>
+#include <graphite/solver/solver.hpp>
 // Interface for Linear Solvers
 namespace graphite {
 

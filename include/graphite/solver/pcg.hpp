@@ -1,32 +1,8 @@
 #pragma once
-#include <graphite/common.hpp>
-#include <graphite/factor.hpp>
-#include <graphite/hessian.hpp>
-#include <graphite/kernel.hpp>
-#include <graphite/preconditioner.hpp>
-#include <graphite/stream.hpp>
-#include <graphite/utils.hpp>
-#include <memory>
-#include <thrust/execution_policy.h>
-#include <thrust/inner_product.h>
+#include <graphite/solver/solver.hpp>
 
 namespace graphite {
-
-template <typename T, typename S> class Solver {
-public:
-  virtual ~Solver() = default;
-
-  virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor,
-                                  StreamPool &streams) = 0;
-
-  virtual void update_structure(Graph<T, S> *graph, StreamPool &streams) = 0;
-
-  virtual void update_values(Graph<T, S> *graph, StreamPool &streams) = 0;
-
-  virtual bool solve(Graph<T, S> *graph, T *delta_x, StreamPool &streams) = 0;
-};
-
-template <typename T, typename S> class PCGSolver : public Solver<T, S> {
+    template <typename T, typename S> class PCGSolver : public Solver<T, S> {
 private:
   thrust::device_vector<T> v;
 
@@ -54,14 +30,19 @@ public:
         damping_factor(0), preconditioner(preconditioner) {}
 
   virtual void update_structure(Graph<T, S> *graph,
-                                StreamPool &streams) override {}
+                                StreamPool &streams) override {
+
+    preconditioner->update_structure(graph, streams);
+  }
 
   virtual void update_values(Graph<T, S> *graph, StreamPool &streams) override {
+    preconditioner->update_values(graph, streams);
   }
 
   virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor,
                                   StreamPool &streams) override {
     this->damping_factor = damping_factor;
+    preconditioner->set_damping_factor(graph, damping_factor, streams);
   }
 
   // Assumes that x is already initialized
@@ -73,42 +54,45 @@ public:
     T *b = graph->get_b().data().get();
     size_t dim_h = graph->get_hessian_dimension();
 
-    thrust::fill(thrust::device, x, x + dim_h, 0.0);
-
     size_t dim_r = 0;
-    v1.resize(factor_descriptors.size());
     for (size_t i = 0; i < factor_descriptors.size(); i++) {
       dim_r += factor_descriptors[i]->get_residual_size();
     }
 
+    // Resize vectors (assuming this causes host synchronization)
     v1.resize(dim_r);
-    thrust::fill(v1.begin(), v1.end(), 0.0);
-
     v2.resize(dim_h);
-    thrust::fill(v2.begin(), v2.end(), 0.0);
+    r.resize(dim_h); // dim h because dim(r) = dim(Ax) = dim(b)
+    diag.resize(dim_h);
+
+    const cudaStream_t stream = 0;
+
+    thrust::fill(thrust::cuda::par_nosync.on(stream), x, x + dim_h, 0.0);
+    thrust::fill(thrust::cuda::par_nosync.on(stream), v1.begin(), v1.end(),
+                 0.0);
+    thrust::fill(thrust::cuda::par_nosync.on(stream), v2.begin(), v2.end(),
+                 0.0);
 
     // Compute residual
-    r.resize(dim_h); // dim h because dim(r) = dim(Ax) = dim(b)
-    thrust::copy(thrust::device, graph->get_b().begin(), graph->get_b().end(),
-                 r.begin());
+    thrust::copy(thrust::cuda::par_nosync.on(stream), graph->get_b().begin(),
+                 graph->get_b().end(), r.begin());
 
     // 3. Add damping factor
     // v2 += damping_factor*diag(H)*x
-    diag.resize(dim_h);
-    thrust::fill(diag.begin(), diag.end(), 0.0);
+    thrust::fill(thrust::cuda::par_nosync.on(stream), diag.begin(), diag.end(),
+                 0.0);
     for (size_t i = 0; i < factor_descriptors.size(); i++) {
       factor_descriptors[i]->compute_hessian_diagonal_async(
           visitor, diag.data().get(),
-          graph->get_jacobian_scales().data().get());
+          graph->get_jacobian_scales().data().get()); // also on default stream
     }
-    cudaStreamSynchronize(0);
 
     // Check for negative values in diag and print an error if found
     T min_diag = static_cast<T>(1.0e-6);
     T max_diag = static_cast<T>(1.0e32);
-    clamp(dim_h, min_diag, max_diag, diag.data().get());
+    clamp_async(stream, dim_h, min_diag, max_diag, diag.data().get());
 
-    cudaStreamSynchronize(0);
+    cudaStreamSynchronize(stream);
 
     // Rescale r
     y.resize(dim_h);
@@ -116,15 +100,13 @@ public:
                                        r.begin(), static_cast<T>(0.0));
     rnorm = std::sqrt(rnorm);
     auto scale = 1.0 / rnorm;
-    rescale_vec<T>(dim_h, y.data().get(), scale, r.data().get());
+    rescale_vec_async<T>(stream, dim_h, y.data().get(), scale, r.data().get());
+    cudaStreamSynchronize(stream);
     // Apply preconditioner
-    preconditioner->precompute(visitor, vertex_descriptors, factor_descriptors,
-                               graph->get_jacobian_scales().data().get(), dim_h,
-                               damping_factor);
     z.resize(dim_h);
 
     thrust::fill(z.begin(), z.end(), 0.0);
-    preconditioner->apply(visitor, z.data().get(), y.data().get(), streams);
+    preconditioner->apply(graph, z.data().get(), y.data().get(), streams);
 
     p.resize(dim_h);
     thrust::copy(z.begin(), z.end(), p.begin()); // p = z
@@ -171,31 +153,35 @@ public:
       }
       // Add damping factor
       // v2 += damping_factor*diag(H)*p
-      damp_by_factor(dim_h, v2.data().get(), damping_factor, diag.data().get(),
-                     p.data().get());
+      damp_by_factor_async(stream, dim_h, v2.data().get(), damping_factor,
+                           diag.data().get(), p.data().get());
 
       // 4. Compute alpha = dot(r, z) / dot(p, v2)
-      T alpha = (rz) / thrust::inner_product(p.begin(), p.end(), v2.begin(),
+      T alpha = (rz) / thrust::inner_product(thrust::cuda::par.on(stream),
+                                             p.begin(), p.end(), v2.begin(),
                                              static_cast<T>(0.0));
       // 5. x  += alpha * p
-      thrust::copy(thrust::device, x, x + dim_h, x_backup.begin());
-      axpy(dim_h, x, alpha, p.data().get(), x);
+      thrust::copy(thrust::cuda::par.on(stream), x, x + dim_h,
+                   x_backup.begin());
+      axpy_async(stream, dim_h, x, alpha, p.data().get(), x);
 
       // 6. r -= alpha * v2
-      axpy(dim_h, r.data().get(), -alpha, v2.data().get(), r.data().get());
-      cudaStreamSynchronize(0);
+      axpy_async(stream, dim_h, r.data().get(), -alpha, v2.data().get(),
+                 r.data().get());
+      // cudaStreamSynchronize(0);
 
-      rnorm = (T)thrust::inner_product(thrust::device, r.begin(), r.end(),
-                                       r.begin(), static_cast<T>(0.0));
+      rnorm = (T)thrust::inner_product(thrust::cuda::par.on(stream), r.begin(),
+                                       r.end(), r.begin(), static_cast<T>(0.0));
       rnorm = std::sqrt(rnorm);
       scale = 1.0 / rnorm;
-      rescale_vec<T>(dim_h, y.data().get(), scale, r.data().get());
+      rescale_vec_async<T>(stream, dim_h, y.data().get(), scale,
+                           r.data().get());
 
       // Apply preconditioner again
-      thrust::fill(z.begin(), z.end(), 0.0);
-      preconditioner->apply(visitor, z.data().get(), y.data().get(), streams);
-      T rz_new = thrust::inner_product(r.begin(), r.end(), z.begin(),
-                                       static_cast<T>(0.0));
+      thrust::fill(thrust::cuda::par.on(stream), z.begin(), z.end(), 0.0);
+      preconditioner->apply(graph, z.data().get(), y.data().get(), streams);
+      T rz_new = thrust::inner_product(thrust::cuda::par.on(stream), r.begin(),
+                                       r.end(), z.begin(), static_cast<T>(0.0));
 
       // if (rz_new > rejection_ratio * rz_0) {
       if (std::abs(rz_new) > rejection_ratio * rz_0 || std::isnan(rz_new)) {
@@ -215,8 +201,9 @@ public:
       rz = rz_new;
 
       // 9. Update p
-      axpy(dim_h, p.data().get(), beta, p.data().get(), z.data().get());
-      cudaStreamSynchronize(0);
+      axpy_async(stream, dim_h, p.data().get(), beta, p.data().get(),
+                 z.data().get());
+      cudaStreamSynchronize(stream);
 
       if (std::abs(static_cast<T>(rz_new)) < tol) {
         // std::cout << "Converged after " << k + 1
@@ -232,5 +219,4 @@ public:
     return true;
   }
 };
-
-} // namespace graphite
+}

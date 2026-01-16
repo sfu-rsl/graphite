@@ -115,11 +115,11 @@ public:
 
   virtual void compute_jacobians(GraphVisitor<T, S> &visitor,
                                  StreamPool &streams) = 0;
-  virtual void compute_hessian_block_diagonal(
+  virtual void compute_hessian_block_diagonal_async(
       GraphVisitor<T, S> &visitor,
       std::unordered_map<BaseVertexDescriptor<T, S> *,
                          thrust::device_vector<InvP>> &block_diagonals,
-      const T *jacobian_scales) = 0;
+      const T *jacobian_scales, cudaStream_t stream) = 0;
   // Computes the scalar hessian diagonal
   virtual void compute_hessian_diagonal_async(GraphVisitor<T, S> &visitor,
                                               T *diagonal,
@@ -294,11 +294,11 @@ public:
     }
   }
 
-  void compute_hessian_block_diagonal(
+  void compute_hessian_block_diagonal_async(
       GraphVisitor<T, S> &visitor,
       std::unordered_map<BaseVertexDescriptor<T, S> *,
                          thrust::device_vector<InvP>> &block_diagonals,
-      const T *jacobian_scales) override {
+      const T *jacobian_scales, cudaStream_t stream) override {
 
     std::array<InvP *, N> diagonal_blocks;
     for (size_t i = 0; i < N; i++) {
@@ -308,7 +308,7 @@ public:
     }
 
     visitor.template compute_block_diagonal(this, diagonal_blocks,
-                                            jacobian_scales);
+                                            jacobian_scales, stream);
   }
 
   void compute_hessian_diagonal_async(GraphVisitor<T, S> &visitor, T *diagonal,
