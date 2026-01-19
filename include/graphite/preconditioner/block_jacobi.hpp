@@ -1,8 +1,8 @@
 #pragma once
+#include <cublas_v2.h>
 #include <graphite/preconditioner/preconditioner.hpp>
 #include <thrust/count.h>
 #include <thrust/execution_policy.h>
-#include <cublas_v2.h>
 
 namespace graphite {
 
@@ -187,4 +187,4 @@ public:
   }
 };
 
-}
+} // namespace graphite

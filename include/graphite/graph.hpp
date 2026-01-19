@@ -263,12 +263,6 @@ public:
     cudaStreamSynchronize(0);
   }
 
-  void to_host() {
-    for (auto &desc : vertex_descriptors) {
-      desc->to_host();
-    }
-  }
-
   void clear() {
     vertex_descriptors.clear();
     factor_descriptors.clear();

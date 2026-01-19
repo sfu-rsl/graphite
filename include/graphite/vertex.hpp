@@ -84,7 +84,6 @@ public:
   virtual void backup_parameters_async() = 0;
   virtual void restore_parameters_async() = 0;
   virtual void to_device() = 0;
-  virtual void to_host() = 0;
 
   virtual const std::unordered_map<size_t, size_t> &get_global_map() const = 0;
   virtual const size_t *get_hessian_ids() const = 0;
@@ -147,8 +146,6 @@ public:
     x_device = x_host;
     hessian_ids = local_to_hessian_offsets;
   }
-
-  virtual void to_host() override { x_host = x_device; }
 
   VertexType **vertices() { return x_device.data().get(); }
 

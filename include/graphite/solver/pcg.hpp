@@ -2,7 +2,7 @@
 #include <graphite/solver/solver.hpp>
 
 namespace graphite {
-    template <typename T, typename S> class PCGSolver : public Solver<T, S> {
+template <typename T, typename S> class PCGSolver : public Solver<T, S> {
 private:
   thrust::device_vector<T> v;
 
@@ -219,4 +219,4 @@ public:
     return true;
   }
 };
-}
+} // namespace graphite

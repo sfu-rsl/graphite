@@ -3,7 +3,6 @@
 #include <graphite/op.hpp>
 #include <graphite/vertex.hpp>
 
-
 namespace graphite {
 
 template <typename T, typename S> class Preconditioner {
