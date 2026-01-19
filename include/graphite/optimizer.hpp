@@ -372,9 +372,6 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
     }
   }
 
-  // Should only really do this when optimization is successful
-  graph->to_host();
-
   return run;
 }
 
