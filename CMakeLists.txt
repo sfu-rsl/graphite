@@ -52,6 +52,7 @@ if(CLANG_FORMAT_BIN)
     "include/graphite/*.cpp" "include/graphite/*.hpp" "include/graphite/*.c" "include/graphite/*.h" "include/graphite/*.cu" "include/graphite/*.cuh"
     "examples/*.cpp" "examples/*.hpp" "examples/*.c" "examples/*.h" "examples/*.cu" "examples/*.cuh"
   )
+  list(FILTER FORMAT_FILES EXCLUDE REGEX "examples/argparse/*")
   add_custom_target(format
     COMMAND ${CLANG_FORMAT_BIN}
       -i
