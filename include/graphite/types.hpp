@@ -14,6 +14,9 @@ template <> struct is_half_or_bfloat16<__nv_bfloat16> : std::true_type {};
 
 template <typename T> using is_low_precision = is_half_or_bfloat16<T>;
 
+template <typename T, typename S>
+using InvP = std::conditional_t<is_low_precision<S>::value, T, S>;
+
 // Vec2 types for different precisions
 
 template <typename T> struct vec2_type;

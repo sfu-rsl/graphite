@@ -88,8 +88,7 @@ public:
                    static_cast<S>(0.0));
     }
     for (auto &desc : factor_descriptors) {
-      GraphVisitor<T, S> visitor;
-      desc->compute_hessian_block_diagonal_async(visitor, block_diagonals,
+      desc->compute_hessian_block_diagonal_async(block_diagonals,
                                                  jacobian_scales, stream);
     }
     // back up diagonals for each vertex descriptor
@@ -120,14 +119,13 @@ public:
     cublasSetStream(handle, stream);
     auto &vertex_descriptors = graph->get_vertex_descriptors();
     auto &factor_descriptors = graph->get_factor_descriptors();
-    GraphVisitor<T, S> visitor;
 
     // Invert the blocks
 
     for (auto &desc : vertex_descriptors) {
-      desc->augment_block_diagonal_async(
-          visitor, block_diagonals[desc].data().get(),
-          scalar_diagonals[desc].data().get(), damping_factor, stream);
+      desc->augment_block_diagonal_async(block_diagonals[desc].data().get(),
+                                         scalar_diagonals[desc].data().get(),
+                                         damping_factor, stream);
 
       // Invert the block diagonal using cublas
       const auto d = desc->dimension();
@@ -174,13 +172,12 @@ public:
   void apply(Graph<T, S> *graph, T *z, const T *r,
              StreamPool &streams) override {
     // Apply the preconditioner
-    GraphVisitor<T, S> visitor;
     size_t i = 0;
     auto &vertex_descriptors = graph->get_vertex_descriptors();
     for (auto &desc : vertex_descriptors) {
       const auto d = desc->dimension();
       P *blocks = P_inv[desc].data().get();
-      desc->apply_block_jacobi(visitor, z, r, blocks, streams.select(i));
+      desc->apply_block_jacobi(z, r, blocks, streams.select(i));
       i++;
     }
     streams.sync_n(i);

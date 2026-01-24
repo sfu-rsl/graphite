@@ -1,6 +1,5 @@
 #pragma once
 #include <graphite/factor.hpp>
-#include <graphite/op.hpp>
 #include <graphite/vertex.hpp>
 
 namespace graphite {

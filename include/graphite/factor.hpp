@@ -4,7 +4,12 @@
 #include <graphite/common.hpp>
 #include <graphite/differentiation.hpp>
 #include <graphite/loss.hpp>
-#include <graphite/op.hpp>
+#include <graphite/ops/active.hpp>
+#include <graphite/ops/chi2.hpp>
+#include <graphite/ops/error.hpp>
+#include <graphite/ops/hessian.hpp>
+#include <graphite/ops/linearize.hpp>
+#include <graphite/ops/product.hpp>
 #include <graphite/utils.hpp>
 #include <graphite/vector.hpp>
 #include <graphite/vertex.hpp>
@@ -13,77 +18,6 @@
 #include <thrust/universal_vector.h>
 
 namespace graphite {
-
-template <typename T, typename S, size_t N, size_t E>
-__global__ void compute_hessian_block_kernel(
-    const size_t vi, const size_t vj, size_t dim_i, size_t dim_j,
-    const size_t *active_factors, const size_t num_active_factors,
-    const size_t *ids, const size_t *block_offsets, const uint8_t *vi_active,
-    const uint8_t *vj_active, const size_t *hessian_offset_i,
-    const size_t *hessian_offset_j, const S *jacobian_i, const S *jacobian_j,
-    const S *precision, const S *chi2_derivative, S *hessian) {
-  // TODO: simpify and optimize this kernel
-  const auto idx = get_thread_id();
-
-  const auto block_id = idx / (dim_i * dim_j);
-
-  if (block_id >= num_active_factors) {
-    return;
-  }
-
-  const auto factor_idx = active_factors[block_id];
-
-  const size_t vi_id = ids[factor_idx * N + vi];
-  const size_t vj_id = ids[factor_idx * N + vj];
-
-  if (is_vertex_active(vi_active, vi_id) &&
-      is_vertex_active(vj_active, vj_id)) {
-
-    const size_t block_size = dim_i * dim_j;
-    const size_t offset = idx % block_size;
-    // Hessian block may be rectangular
-    // output blocks are all column major
-
-    const bool transposed = hessian_offset_i[vi_id] > hessian_offset_j[vj_id];
-
-    auto ji = factor_idx * E * dim_i + jacobian_i;
-    auto jj = factor_idx * E * dim_j + jacobian_j;
-    const auto precision_offset = factor_idx * E * E;
-    const auto p = precision + precision_offset;
-
-    if (transposed) {
-      cuda::std::swap(ji, jj);
-      cuda::std::swap(dim_i, dim_j);
-    }
-
-    const size_t row = offset % dim_i;
-    const size_t col = offset / dim_i;
-
-    // Each thread computes one element of the Hessian block
-    using highp = T;
-    highp value = 0;
-
-    // computes J_i^T * P * J_j
-
-    const auto J = jj + col * E;
-    const auto Jt = ji + row * E;
-#pragma unroll
-    for (int i = 0; i < E; i++) { // p row
-      highp pj = 0;
-#pragma unroll
-      for (int j = 0; j < E; j++) { // p col
-        pj += (highp)p[i * E + j] * (highp)J[j];
-      }
-      value += (highp)Jt[i] * pj;
-    }
-
-    value *= (highp)chi2_derivative[factor_idx];
-
-    auto block = hessian + (block_offsets[block_id] + (row + col * dim_i));
-    S lp_value = static_cast<S>(value);
-    atomicAdd(block, lp_value);
-  }
-}
 
 template <typename S> class JacobianStorage {
 public:
@@ -100,30 +34,25 @@ public:
 
   // virtual void error_func(const T** vertices, const T* obs, T* error) = 0;
   virtual bool use_autodiff() = 0;
-  virtual void compute_error(GraphVisitor<T, S> &visitor) = 0;
-  virtual void compute_error_autodiff(GraphVisitor<T, S> &visitor,
-                                      StreamPool &streams) = 0;
-  virtual void compute_b_async(GraphVisitor<T, S> &visitor, T *b,
-                               const T *jacobian_scales) = 0;
-  virtual void compute_Jv(GraphVisitor<T, S> &visitor, T *out, T *in,
-                          const T *jacobian_scales, StreamPool &streams) = 0;
-  virtual void compute_Jtv(GraphVisitor<T, S> &visitor, T *out, T *in,
-                           const T *jacobian_scales, StreamPool &streams) = 0;
+  virtual void compute_error() = 0;
+  virtual void compute_error_autodiff(StreamPool &streams) = 0;
+  virtual void compute_b_async(T *b, const T *jacobian_scales) = 0;
+  virtual void compute_Jv(T *out, T *in, const T *jacobian_scales,
+                          StreamPool &streams) = 0;
+  virtual void compute_Jtv(T *out, T *in, const T *jacobian_scales,
+                           StreamPool &streams) = 0;
 
-  virtual void flag_active_vertices_async(GraphVisitor<T, S> &visitor,
-                                          const uint8_t level) = 0;
+  virtual void flag_active_vertices_async(const uint8_t level) = 0;
 
-  virtual void compute_jacobians(GraphVisitor<T, S> &visitor,
-                                 StreamPool &streams) = 0;
+  virtual void compute_jacobians(StreamPool &streams) = 0;
   virtual void compute_hessian_block_diagonal_async(
-      GraphVisitor<T, S> &visitor,
       std::unordered_map<BaseVertexDescriptor<T, S> *,
                          thrust::device_vector<InvP>> &block_diagonals,
       const T *jacobian_scales, cudaStream_t stream) = 0;
   // Computes the scalar hessian diagonal
-  virtual void compute_hessian_diagonal_async(GraphVisitor<T, S> &visitor,
-                                              T *diagonal,
-                                              const T *jacobian_scales) = 0;
+  virtual void
+  compute_hessian_scalar_diagonal_async(T *diagonal,
+                                        const T *jacobian_scales) = 0;
   // virtual void apply_op(Op<T>& op) = 0;
 
   virtual JacobianStorage<S> *get_jacobians() = 0;
@@ -134,13 +63,12 @@ public:
   virtual size_t get_num_descriptors() const = 0;
 
   virtual size_t get_residual_size() const = 0;
-  virtual void scale_jacobians_async(GraphVisitor<T, S> &visitor,
-                                     T *jacobian_scales) = 0;
+  virtual void scale_jacobians_async(T *jacobian_scales) = 0;
 
   virtual void initialize_device_ids(const uint8_t optimization_level) = 0;
   virtual void to_device() = 0;
 
-  virtual T chi2(GraphVisitor<T, S> &visitor) = 0;
+  virtual T chi2() = 0;
 
   virtual void set_jacobian_storage(const bool store) = 0;
   virtual bool store_jacobians() = 0;
@@ -257,45 +185,38 @@ public:
     default_precision_matrix = get_default_precision_matrix();
   }
 
-  void compute_error(GraphVisitor<T, S> &visitor) override {
-    visitor.template compute_error(this);
+  void compute_error() override { ops::compute_error<T>(this); }
+
+  void compute_error_autodiff(StreamPool &streams) override {
+    ops::compute_error_autodiff<T, S>(this, streams);
   }
 
-  void compute_error_autodiff(GraphVisitor<T, S> &visitor,
-                              StreamPool &streams) override {
-    visitor.template compute_error_autodiff(this, streams);
+  void compute_b_async(T *b, const T *jacobian_scales) override {
+    ops::compute_b_async<T, S>(this, b, jacobian_scales);
   }
 
-  void compute_b_async(GraphVisitor<T, S> &visitor, T *b,
-                       const T *jacobian_scales) override {
-    visitor.template compute_b(this, b, jacobian_scales);
+  void compute_Jv(T *out, T *in, const T *jacobian_scales,
+                  StreamPool &streams) override {
+    ops::compute_Jv<T, S>(this, out, in, jacobian_scales, streams);
   }
 
-  void compute_Jv(GraphVisitor<T, S> &visitor, T *out, T *in,
-                  const T *jacobian_scales, StreamPool &streams) override {
-    visitor.template compute_Jv(this, out, in, jacobian_scales, streams);
+  void compute_Jtv(T *out, T *in, const T *jacobian_scales,
+                   StreamPool &streams) override {
+    ops::compute_Jtv<T, S>(this, out, in, jacobian_scales, streams);
   }
 
-  void compute_Jtv(GraphVisitor<T, S> &visitor, T *out, T *in,
-                   const T *jacobian_scales, StreamPool &streams) override {
-    visitor.template compute_Jtv(this, out, in, jacobian_scales, streams);
+  void flag_active_vertices_async(const uint8_t level) override {
+    ops::flag_active_vertices(this, level);
   }
 
-  void flag_active_vertices_async(GraphVisitor<T, S> &visitor,
-                                  const uint8_t level) override {
-    visitor.template visit_flag_active_vertices(this, level);
-  }
-
-  void compute_jacobians(GraphVisitor<T, S> &visitor,
-                         StreamPool &streams) override {
+  void compute_jacobians(StreamPool &streams) override {
     if constexpr (std::is_same_v<typename Traits::Differentiation,
                                  DifferentiationMode::Manual>) {
-      visitor.template compute_jacobians(this, streams);
+      ops::compute_jacobians<T, S>(this, streams);
     }
   }
 
   void compute_hessian_block_diagonal_async(
-      GraphVisitor<T, S> &visitor,
       std::unordered_map<BaseVertexDescriptor<T, S> *,
                          thrust::device_vector<InvP>> &block_diagonals,
       const T *jacobian_scales, cudaStream_t stream) override {
@@ -303,17 +224,16 @@ public:
     std::array<InvP *, N> diagonal_blocks;
     for (size_t i = 0; i < N; i++) {
       diagonal_blocks[i] = block_diagonals[vertex_descriptors[i]].data().get();
-      // std::cout << "BD size: " <<
-      // block_diagonals[vertex_descriptors[i]].size() << std::endl;
     }
 
-    visitor.template compute_block_diagonal(this, diagonal_blocks,
-                                            jacobian_scales, stream);
+    ops::compute_block_diagonal<T, S>(this, diagonal_blocks, jacobian_scales,
+                                      stream);
   }
 
-  void compute_hessian_diagonal_async(GraphVisitor<T, S> &visitor, T *diagonal,
-                                      const T *jacobian_scales) override {
-    visitor.template compute_scalar_diagonal(this, diagonal, jacobian_scales);
+  void
+  compute_hessian_scalar_diagonal_async(T *diagonal,
+                                        const T *jacobian_scales) override {
+    ops::compute_hessian_scalar_diagonal<T, S>(this, diagonal, jacobian_scales);
   }
 
   static constexpr size_t get_num_vertices() { return N; }
@@ -535,8 +455,8 @@ public:
   }
 
   // TODO: Make this consider kernels and active edges
-  virtual T chi2(GraphVisitor<T, S> &visitor) override {
-    visitor.template compute_chi2(this); // runs on stream 0
+  virtual T chi2() override {
+    ops::compute_chi2_async<T, S>(this); // runs on stream 0
     return thrust::reduce(thrust::cuda::par.on(0), chi2_vec.begin(),
                           chi2_vec.end(), static_cast<T>(0.0),
                           thrust::plus<T>()); // want to sync here on stream 0
@@ -574,9 +494,8 @@ public:
     return ids;
   }
 
-  virtual void scale_jacobians_async(GraphVisitor<T, S> &visitor,
-                                     T *jacobian_scales) override {
-    visitor.template scale_jacobians(this, jacobian_scales);
+  virtual void scale_jacobians_async(T *jacobian_scales) override {
+    ops::scale_jacobians<T, S>(this, jacobian_scales);
   }
 
   virtual bool use_autodiff() override {
@@ -735,7 +654,7 @@ public:
         const size_t num_blocks =
             (num_threads + threads_per_block - 1) / threads_per_block;
 
-        compute_hessian_block_kernel<T, S, N, error_dim>
+        ops::compute_hessian_block_kernel<T, S, N, error_dim>
             <<<num_blocks, threads_per_block, 0, stream>>>(
                 i, j, dim_i, dim_j, d_active_factors.data().get(),
                 d_active_factors.size(), d_ids, d_block_offsets + start_idx,
@@ -832,7 +751,7 @@ public:
         const size_t num_blocks =
             (num_threads + threads_per_block - 1) / threads_per_block;
 
-        compute_hessian_block_kernel<T, S, N, error_dim>
+        ops::compute_hessian_block_kernel<T, S, N, error_dim>
             <<<num_blocks, threads_per_block, 0, stream>>>(
                 i, j, dim_i, dim_j, d_active_factors.data().get(),
                 d_active_factors.size(), d_ids,

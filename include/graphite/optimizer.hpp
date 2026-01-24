@@ -138,7 +138,7 @@ bool levenberg_marquardt(Graph<T, S> *graph,
     bool solve_ok = solver->solve(graph, delta_x.data().get(), *streams);
 
     graph->backup_parameters();
-    graph->apply_step(delta_x.data().get(), *streams);
+    graph->apply_update(delta_x.data().get(), *streams);
 
     // Try step
     graph->compute_error();
@@ -278,7 +278,7 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
 
     graph->backup_parameters();
 
-    graph->apply_step(delta_x.data().get(), *streams);
+    graph->apply_update(delta_x.data().get(), *streams);
 
     // Try step
     graph->compute_error();

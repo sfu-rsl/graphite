@@ -50,7 +50,6 @@ public:
 
     auto &vertex_descriptors = graph->get_vertex_descriptors();
     auto &factor_descriptors = graph->get_factor_descriptors();
-    auto visitor = GraphVisitor<T, S>();
     T *b = graph->get_b().data().get();
     size_t dim_h = graph->get_hessian_dimension();
 
@@ -82,8 +81,8 @@ public:
     thrust::fill(thrust::cuda::par_nosync.on(stream), diag.begin(), diag.end(),
                  0.0);
     for (size_t i = 0; i < factor_descriptors.size(); i++) {
-      factor_descriptors[i]->compute_hessian_diagonal_async(
-          visitor, diag.data().get(),
+      factor_descriptors[i]->compute_hessian_scalar_diagonal_async(
+          diag.data().get(),
           graph->get_jacobian_scales().data().get()); // also on default stream
     }
 
@@ -132,8 +131,8 @@ public:
       auto v1_ptr = v1.data().get(); // reset
       for (size_t i = 0; i < factor_descriptors.size(); i++) {
         factor_descriptors[i]->compute_Jv(
-            visitor, v1_ptr, p.data().get(),
-            graph->get_jacobian_scales().data().get(), streams);
+            v1_ptr, p.data().get(), graph->get_jacobian_scales().data().get(),
+            streams);
         v1_ptr += factor_descriptors[i]->get_residual_size();
       }
       // auto t_jv_end = std::chrono::steady_clock::now();
@@ -147,8 +146,8 @@ public:
       v1_ptr = v1.data().get(); // reset
       for (size_t i = 0; i < factor_descriptors.size(); i++) {
         factor_descriptors[i]->compute_Jtv(
-            visitor, v2.data().get(), v1_ptr,
-            graph->get_jacobian_scales().data().get(), streams);
+            v2.data().get(), v1_ptr, graph->get_jacobian_scales().data().get(),
+            streams);
         v1_ptr += factor_descriptors[i]->get_residual_size();
       }
       // Add damping factor

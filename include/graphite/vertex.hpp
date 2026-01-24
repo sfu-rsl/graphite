@@ -1,8 +1,9 @@
 #pragma once
 #include <graphite/common.hpp>
+#include <graphite/ops/hessian.hpp>
+#include <graphite/ops/update.hpp>
 #include <graphite/stream.hpp>
 #include <graphite/vector.hpp>
-#include <graphite/visitor.hpp>
 #include <type_traits>
 
 namespace graphite {
@@ -68,14 +69,12 @@ public:
   virtual ~BaseVertexDescriptor(){};
 
   // virtual void update(const T* x, const T* delta) = 0;
-  virtual void apply_step_async(GraphVisitor<T, S> &visitor, const T *delta_x,
-                                T *jacobian_scales, cudaStream_t stream) = 0;
-  virtual void augment_block_diagonal_async(GraphVisitor<T, S> &visitor,
-                                            InvP *block_diagonal,
+  virtual void apply_update_async(const T *delta_x, T *jacobian_scales,
+                                  cudaStream_t stream) = 0;
+  virtual void augment_block_diagonal_async(InvP *block_diagonal,
                                             InvP *scalar_diagonal, T mu,
                                             cudaStream_t stream) = 0;
-  virtual void apply_block_jacobi(GraphVisitor<T, S> &visitor, T *z, const T *r,
-                                  InvP *block_diagonal,
+  virtual void apply_block_jacobi(T *z, const T *r, InvP *block_diagonal,
                                   cudaStream_t stream) = 0;
 
   virtual size_t dimension() const = 0;
@@ -125,21 +124,20 @@ public:
 public:
   virtual ~VertexDescriptor(){};
 
-  void apply_step_async(GraphVisitor<T, S> &visitor, const T *delta_x,
-                        T *jacobian_scales, cudaStream_t stream) override {
-    visitor.template apply_step(this, delta_x, jacobian_scales, stream);
+  void apply_update_async(const T *delta_x, T *jacobian_scales,
+                          cudaStream_t stream) override {
+    ops::apply_update<T, S>(this, delta_x, jacobian_scales, stream);
   }
 
-  void augment_block_diagonal_async(GraphVisitor<T, S> &visitor,
-                                    InvP *block_diagonal, InvP *scalar_diagonal,
+  void augment_block_diagonal_async(InvP *block_diagonal, InvP *scalar_diagonal,
                                     T mu, cudaStream_t stream) override {
-    visitor.template augment_block_diagonal(this, block_diagonal,
-                                            scalar_diagonal, mu, stream);
+    ops::augment_block_diagonal<T, S>(this, block_diagonal, scalar_diagonal, mu,
+                                      stream);
   }
 
-  void apply_block_jacobi(GraphVisitor<T, S> &visitor, T *z, const T *r,
-                          InvP *block_diagonal, cudaStream_t stream) override {
-    visitor.template apply_block_jacobi(this, z, r, block_diagonal, stream);
+  void apply_block_jacobi(T *z, const T *r, InvP *block_diagonal,
+                          cudaStream_t stream) override {
+    ops::apply_block_jacobi<T, S>(this, z, r, block_diagonal, stream);
   }
 
   virtual void to_device() override {
