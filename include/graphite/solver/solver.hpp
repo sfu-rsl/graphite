@@ -1,14 +1,7 @@
 #pragma once
 #include <graphite/common.hpp>
-#include <graphite/factor.hpp>
-#include <graphite/hessian.hpp>
-#include <graphite/kernel/vector.hpp>
-#include <graphite/preconditioner/preconditioner.hpp>
-#include <graphite/stream.hpp>
+#include <graphite/graph.hpp>
 #include <graphite/utils.hpp>
-#include <memory>
-#include <thrust/execution_policy.h>
-#include <thrust/inner_product.h>
 
 namespace graphite {
 

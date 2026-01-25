@@ -1,5 +1,9 @@
 #pragma once
+#include <graphite/ops/vector.hpp>
+#include <graphite/preconditioner/preconditioner.hpp>
 #include <graphite/solver/solver.hpp>
+#include <thrust/execution_policy.h>
+#include <thrust/inner_product.h>
 
 namespace graphite {
 template <typename T, typename S> class PCGSolver : public Solver<T, S> {
@@ -89,7 +93,7 @@ public:
     // Check for negative values in diag and print an error if found
     T min_diag = static_cast<T>(1.0e-6);
     T max_diag = static_cast<T>(1.0e32);
-    clamp_async(stream, dim_h, min_diag, max_diag, diag.data().get());
+    ops::clamp_async(stream, dim_h, min_diag, max_diag, diag.data().get());
 
     cudaStreamSynchronize(stream);
 
@@ -99,7 +103,8 @@ public:
                                        r.begin(), static_cast<T>(0.0));
     rnorm = std::sqrt(rnorm);
     auto scale = 1.0 / rnorm;
-    rescale_vec_async<T>(stream, dim_h, y.data().get(), scale, r.data().get());
+    ops::rescale_vec_async<T>(stream, dim_h, y.data().get(), scale,
+                              r.data().get());
     cudaStreamSynchronize(stream);
     // Apply preconditioner
     z.resize(dim_h);
@@ -152,8 +157,8 @@ public:
       }
       // Add damping factor
       // v2 += damping_factor*diag(H)*p
-      damp_by_factor_async(stream, dim_h, v2.data().get(), damping_factor,
-                           diag.data().get(), p.data().get());
+      ops::damp_by_factor_async(stream, dim_h, v2.data().get(), damping_factor,
+                                diag.data().get(), p.data().get());
 
       // 4. Compute alpha = dot(r, z) / dot(p, v2)
       T alpha = (rz) / thrust::inner_product(thrust::cuda::par.on(stream),
@@ -162,19 +167,19 @@ public:
       // 5. x  += alpha * p
       thrust::copy(thrust::cuda::par.on(stream), x, x + dim_h,
                    x_backup.begin());
-      axpy_async(stream, dim_h, x, alpha, p.data().get(), x);
+      ops::axpy_async(stream, dim_h, x, alpha, p.data().get(), x);
 
       // 6. r -= alpha * v2
-      axpy_async(stream, dim_h, r.data().get(), -alpha, v2.data().get(),
-                 r.data().get());
+      ops::axpy_async(stream, dim_h, r.data().get(), -alpha, v2.data().get(),
+                      r.data().get());
       // cudaStreamSynchronize(0);
 
       rnorm = (T)thrust::inner_product(thrust::cuda::par.on(stream), r.begin(),
                                        r.end(), r.begin(), static_cast<T>(0.0));
       rnorm = std::sqrt(rnorm);
       scale = 1.0 / rnorm;
-      rescale_vec_async<T>(stream, dim_h, y.data().get(), scale,
-                           r.data().get());
+      ops::rescale_vec_async<T>(stream, dim_h, y.data().get(), scale,
+                                r.data().get());
 
       // Apply preconditioner again
       thrust::fill(thrust::cuda::par.on(stream), z.begin(), z.end(), 0.0);
@@ -200,8 +205,8 @@ public:
       rz = rz_new;
 
       // 9. Update p
-      axpy_async(stream, dim_h, p.data().get(), beta, p.data().get(),
-                 z.data().get());
+      ops::axpy_async(stream, dim_h, p.data().get(), beta, p.data().get(),
+                      z.data().get());
       cudaStreamSynchronize(stream);
 
       if (std::abs(static_cast<T>(rz_new)) < tol) {

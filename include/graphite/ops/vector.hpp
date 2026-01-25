@@ -1,6 +1,7 @@
 #pragma once
-// #include <cublas_v2.h>
+
 namespace graphite {
+namespace ops {
 template <typename T>
 __global__ void axpy_kernel(size_t n, T *z, const T a, const T *x, T *y) {
   const size_t idx =
@@ -76,5 +77,7 @@ void rescale_vec_async(cudaStream_t stream, size_t n, T *out, const T scale,
   rescale_vec_kernel<T>
       <<<num_blocks, threads_per_block, 0, stream>>>(n, out, scale, x);
 }
+
+} // namespace ops
 
 } // namespace graphite

@@ -5,7 +5,6 @@
 #include <graphite/core.hpp>
 #include <graphite/preconditioner/identity.hpp>
 #include <graphite/solver/pcg.hpp>
-#include <graphite/solver/solver.hpp>
 #include <iostream>
 #include <numeric>
 #include <random>

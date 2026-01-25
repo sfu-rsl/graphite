@@ -1,4 +1,5 @@
 #pragma once
+#include <graphite/hessian.hpp>
 #include <graphite/solver/eigen_solver_interface.hpp>
 #include <graphite/solver/solver.hpp>
 
