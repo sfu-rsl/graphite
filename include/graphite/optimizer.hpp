@@ -148,11 +148,9 @@ bool levenberg_marquardt(Graph<T, S> *graph,
       new_chi2 = std::numeric_limits<T>::max();
     }
 
-    bool step_is_good = std::isfinite(new_chi2);
+    T rho = compute_rho(graph, delta_x, chi2, new_chi2, mu, solve_ok);
 
-    T rho = compute_rho(graph, delta_x, chi2, new_chi2, mu, step_is_good);
-
-    if (step_is_good && std::isfinite(new_chi2) && rho > 0) {
+    if (solve_ok && std::isfinite(new_chi2) && rho > 0) {
       // update hyperparameters
       double alpha = 1.0 - pow(2.0 * rho - 1.0, 3);
       alpha = std::max(std::min(alpha, 2.0 / 3.0), 1.0 / 3.0);
@@ -288,12 +286,11 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
     if (!solve_ok) {
       new_chi2 = std::numeric_limits<T>::max();
     }
-    bool step_is_good = std::isfinite(new_chi2);
 
-    T rho = compute_rho(graph, delta_x, chi2, new_chi2, mu, step_is_good);
+    T rho = compute_rho(graph, delta_x, chi2, new_chi2, mu, solve_ok);
 
     bool step_accepted = false;
-    if (step_is_good && std::isfinite(new_chi2) && rho > 0) {
+    if (solve_ok && std::isfinite(new_chi2) && rho > 0) {
       // update hyperparameters
       double alpha = 1.0 - pow(2.0 * rho - 1.0, 3);
       alpha = std::max(std::min(alpha, 2.0 / 3.0), 1.0 / 3.0);
