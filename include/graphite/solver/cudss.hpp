@@ -24,7 +24,7 @@ private:
   void fill_matrix_structure() {
     const auto dim = d_matrix.d_pointers.size() - 1;
     const auto nnz = d_matrix.d_values.size();
-    const cudssMatrixType_t matrix_type = CUDSS_MTYPE_SPD;
+    const cudssMatrixType_t matrix_type = CUDSS_MTYPE_SYMMETRIC;
     const cudssMatrixViewType_t view_type = CUDSS_MVIEW_LOWER;
     const cudssIndexBase_t index_base = CUDSS_BASE_ZERO;
 
@@ -98,6 +98,7 @@ public:
     cudssDataDestroy(handle, solver_data);
     cudssConfigDestroy(solver_config);
     cudssDestroy(handle);
+    cudaStreamSynchronize(stream);
     cudaStreamDestroy(stream);
   }
 
@@ -128,6 +129,7 @@ public:
                         get_cuda_data_type<T>(), CUDSS_LAYOUT_COL_MAJOR);
 
     // Factorize
+    factorization_failed = false;
     auto status = cudssExecute(handle, CUDSS_PHASE_ANALYSIS, solver_config,
                                solver_data, m_A, m_x, m_b);
     if (status != CUDSS_STATUS_SUCCESS) {
@@ -135,6 +137,7 @@ public:
       std::cerr << "cudss Analysis failed with error code: " << status
                 << std::endl;
     }
+    cudaStreamSynchronize(stream);
   }
 
   virtual void update_values(Graph<T, S> *graph, StreamPool &streams) override {
@@ -183,6 +186,7 @@ public:
                 << std::endl;
       return false;
     }
+    cudaStreamSynchronize(stream);
 
     thrust::copy(thrust::device, solver_x.data(), solver_x.data() + dim, x);
 
