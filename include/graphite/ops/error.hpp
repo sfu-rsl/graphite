@@ -147,7 +147,7 @@ void compute_error_autodiff(F *f, StreamPool &streams) {
   const auto num_factors = f->active_count();
 
   if constexpr (!is_analytical<F>()) {
-    launch_kernel_autodiff(f, hessian_ids, verts, jacs, num_factors, streams,
+    launch_kernel_autodiff<T, S>(f, hessian_ids, verts, jacs, num_factors, streams,
                            std::make_index_sequence<num_vertices>{});
   }
   streams.sync_n(num_vertices);
