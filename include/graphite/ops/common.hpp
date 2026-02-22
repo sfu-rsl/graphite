@@ -27,8 +27,23 @@ __device__ void compute_Jblock(
   auto vargs = cuda::std::make_tuple(
       (*(std::get<Is>(args) + ids[factor_id * N + Is]))...);
 
-  F::Traits::template jacobian<T, I>(cuda::std::get<Is>(vargs)..., local_obs,
-                                     jacobian, local_data);
+  using DataType = typename F::ConstraintDataType;
+  using ObsType = typename F::ObservationType;
+
+  if constexpr (std::is_empty<ObsType>::value &&
+                std::is_empty<DataType>::value) {
+    F::Traits::template jacobian<T, I>((*cuda::std::get<Is>(vargs))...,
+                                       jacobian);
+  } else if constexpr (std::is_empty<DataType>::value) {
+    F::Traits::template jacobian<T, I>((*cuda::std::get<Is>(vargs))...,
+                                       *local_obs, jacobian);
+  } else if constexpr (std::is_empty<ObsType>::value) {
+    F::Traits::template jacobian<T, I>((*cuda::std::get<Is>(vargs))...,
+                                       *local_data, jacobian);
+  } else {
+    F::Traits::template jacobian<T, I>((*cuda::std::get<Is>(vargs))...,
+                                       *local_obs, *local_data, jacobian);
+  }
 }
 
 } // namespace graphite

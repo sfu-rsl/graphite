@@ -311,10 +311,12 @@ public:
     hm.release(id);
   }
 
-  size_t add_factor(const std::array<size_t, N> &ids,
-                    const ObservationType &obs, const S *precision_matrix,
-                    const ConstraintDataType &constraint_data,
-                    const LossType &loss_func) {
+  size_t
+  add_factor(const std::array<size_t, N> &ids,
+             const ObservationType &obs = ObservationType(),
+             const S *precision_matrix = nullptr,
+             const ConstraintDataType &constraint_data = ConstraintDataType(),
+             const LossType &loss_func = LossType()) {
 
     const auto id = hm.get();
     const auto local_id = internal_count();

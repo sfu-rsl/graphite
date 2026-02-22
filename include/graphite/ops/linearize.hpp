@@ -35,19 +35,46 @@ __global__ void compute_jacobian_kernel(
   constexpr size_t jacobian_size = E * vertex_sizes[I];
 
   S *j = jacs + factor_id * jacobian_size;
+  using DataType = typename F::ConstraintDataType;
+  using ObsType = typename F::ObservationType;
+
   // if constexpr (is_low_precision<S>::value) {
   if constexpr (!std::is_same<T, S>::value) {
     T jacobian[jacobian_size];
-    F::Traits::template jacobian<T, I>(cuda::std::get<Is>(vargs)..., local_obs,
-                                       jacobian, local_data);
+
+    if constexpr (std::is_same<Empty, ObsType>::value &&
+                  std::is_same<Empty, DataType>::value) {
+      F::Traits::template jacobian<T, I>((*cuda::std::get<Is>(vargs))...,
+                                         jacobian);
+    } else if constexpr (std::is_same<Empty, DataType>::value) {
+      F::Traits::template jacobian<T, I>((*cuda::std::get<Is>(vargs))...,
+                                         *local_obs, jacobian);
+    } else if constexpr (std::is_same<Empty, ObsType>::value) {
+      F::Traits::template jacobian<T, I>((*cuda::std::get<Is>(vargs))...,
+                                         *local_data, jacobian);
+    } else {
+      F::Traits::template jacobian<T, I>((*cuda::std::get<Is>(vargs))...,
+                                         *local_obs, *local_data, jacobian);
+    }
 
 #pragma unroll
     for (size_t i = 0; i < jacobian_size; ++i) {
       j[i] = jacobian[i];
     }
   } else {
-    F::Traits::template jacobian<T, I>(cuda::std::get<Is>(vargs)..., local_obs,
-                                       j, local_data);
+    if constexpr (std::is_same<Empty, ObsType>::value &&
+                  std::is_same<Empty, DataType>::value) {
+      F::Traits::template jacobian<T, I>((*cuda::std::get<Is>(vargs))..., j);
+    } else if constexpr (std::is_same<Empty, DataType>::value) {
+      F::Traits::template jacobian<T, I>((*cuda::std::get<Is>(vargs))...,
+                                         *local_obs, j);
+    } else if constexpr (std::is_same<Empty, ObsType>::value) {
+      F::Traits::template jacobian<T, I>((*cuda::std::get<Is>(vargs))...,
+                                         *local_data, j);
+    } else {
+      F::Traits::template jacobian<T, I>((*cuda::std::get<Is>(vargs))...,
+                                         *local_obs, *local_data, j);
+    }
   }
 }
 

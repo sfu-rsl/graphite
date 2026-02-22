@@ -77,25 +77,23 @@ template <typename T, typename S> struct ReprojectionErrorTraits {
   using VertexDescriptors =
       std::tuple<CameraDescriptor<T, S>, PointDescriptor<T, S>>;
   using Observation = Eigen::Matrix<T, dimension, 1>;
-  using Data = unsigned char;
+  using Data = Empty;
   using Loss = DefaultLoss<T, dimension>;
   // using Differentiation = DifferentiationMode::Auto;
   using Differentiation = DifferentiationMode::Manual;
 
-  template <typename D, typename M>
-  d_fn static void
-  error(const D *camera, const D *point, const M *obs, D *error,
-        const std::tuple<Camera<T> *, Point<T> *> &vertices, const Data *data) {
-    // bal_reprojection_error<D, M, T>(camera, point, obs, error);
-    bal_reprojection_error_simple<D, M, T>(camera, point, obs, error);
+  template <typename D>
+  d_fn static void error(const Camera<T> &vcam, const Point<T> &vpoint,
+                         const D *camera, const D *point,
+                         const Observation &obs, D *error) {
+    bal_reprojection_error_simple<D, Observation, T>(camera, point, &obs,
+                                                     error);
   }
 
   template <typename D, size_t I>
-  d_fn static void jacobian(const Camera<T> *camera, const Point<T> *point,
-                            const Observation *obs, D *jacobian,
-                            const Data *data) {
-    bal_jacobian_simple<T, D, I>(camera->data(), point->data(), obs, jacobian,
-                                 data);
+  d_fn static void jacobian(const Camera<T> &camera, const Point<T> &point,
+                            const Observation &obs, D *jacobian) {
+    bal_jacobian_simple<T, D, I>(camera.data(), point.data(), &obs, jacobian);
   }
 };
 
@@ -103,14 +101,6 @@ template <typename T, typename S>
 using ReprojectionError = FactorDescriptor<T, S, ReprojectionErrorTraits<T, S>>;
 
 } // namespace graphite
-
-void print_memory_info() {
-  size_t free_mem, total_mem;
-  cudaMemGetInfo(&free_mem, &total_mem);
-  std::cout << "Free: " << free_mem / (1024 * 1024) << "MB, "
-            << "Used: " << (total_mem - free_mem) / (1024 * 1024) << "MB"
-            << std::endl;
-}
 
 template <typename T> const char *get_type_name() {
   if (std::is_same<T, double>::value) {
@@ -174,10 +164,6 @@ void bundle_adjustment(argparse::ArgumentParser &program) {
   graph.add_factor_descriptor(&r_desc);
   // r_desc.set_jacobian_storage(false);
 
-  const auto loss = DefaultLoss<FP, 2>();
-  Eigen::Matrix<SP, 2, 2> precision_matrix =
-      Eigen::Matrix<SP, 2, 2>::Identity();
-
   auto start = std::chrono::steady_clock::now();
 
   // Read observations and create constraints
@@ -191,9 +177,9 @@ void bundle_adjustment(argparse::ArgumentParser &program) {
     // Store the observation
     const Eigen::Matrix<FP, 2, 1> obs(x, y);
 
-    // Add constraint to the graph
-    r_desc.add_factor({camera_idx, point_idx + num_cameras}, obs,
-                      precision_matrix.data(), 0, loss);
+    // Add constraint to the graph (values for precision matrix, constraint
+    // data, and loss function) can be passed in as additional arguments
+    r_desc.add_factor({camera_idx, point_idx + num_cameras}, obs);
   }
   std::cout << "Adding constraints took "
             << std::chrono::duration<FP>(std::chrono::steady_clock::now() -

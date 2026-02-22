@@ -46,22 +46,19 @@ template <typename T, typename S> struct CircleFactorTraits {
   using Differentiation = DifferentiationMode::Manual;
 
   template <typename D>
-  d_fn static void error(const D *point, const T *obs, D *error,
-                         const std::tuple<Point<T> *> &vertices,
-                         const Data *data) {
-    auto x = point[0];
-    auto y = point[1];
-    auto r = obs[0];
+  d_fn static void error(const Point<T> &vpoint, const D *point, const T &obs,
+                         D *error) {
+    const auto x = point[0];
+    const auto y = point[1];
+    const auto r = obs;
     error[0] = x * x + y * y - r * r;
   }
 
   template <typename J, size_t I>
-  d_fn static void jacobian(Point<T> *point, const T *obs, J *jacobian,
-                            const Data *data) {
+  d_fn static void jacobian(const Point<T> &point, const T &obs, J *jacobian) {
     if constexpr (I == 0) {
-      auto &p = *point;
-      auto x = p(0);
-      auto y = p(1);
+      const auto x = point(0);
+      const auto y = point(1);
       jacobian[0] = 2 * x;
       jacobian[1] = 2 * y;
     }

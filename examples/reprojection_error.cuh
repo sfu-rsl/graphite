@@ -125,8 +125,7 @@ __device__ static void bal_reprojection_error_simple(const D *camera,
 template <typename T, typename D, size_t I>
 __device__ static void bal_jacobian_simple(const T *camera, const T *point,
                                            const Eigen::Matrix<T, 2, 1> *obs,
-                                           D *jacobian,
-                                           const unsigned char *data) {
+                                           D *jacobian) {
   Eigen::Map<const Eigen::Matrix<D, 3, 1>> X(point);
   Eigen::Map<const Eigen::Matrix<D, 9, 1>> cam(camera);
 

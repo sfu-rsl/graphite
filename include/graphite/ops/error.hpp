@@ -32,22 +32,38 @@ __global__ void compute_error_kernel_autodiff(
 
   auto v = cuda::std::make_tuple(std::array<Dual<T, G>, vertex_sizes[Is]>{}...);
 
-  auto vargs =
-      std::make_tuple((*(std::get<Is>(args) + ids[factor_id * N + Is]))...);
+  auto vargs = cuda::std::make_tuple(
+      (*(std::get<Is>(args) + ids[factor_id * N + Is]))...);
 
   auto copy_vertices = [&v, &vertex_sizes, &vargs](auto &&...ptrs) {
     ((std::tuple_element<Is, typename F::Traits::VertexDescriptors>::type::
-          Traits::parameters(*std::get<Is>(vargs),
+          Traits::parameters(*cuda::std::get<Is>(vargs),
                              cuda::std::get<Is>(v).data())),
      ...);
   };
 
-  std::apply(copy_vertices, vargs);
+  cuda::std::apply(copy_vertices, vargs);
 
   cuda::std::get<I>(v)[idx % vertex_sizes[I]].dual = static_cast<G>(1);
 
-  F::Traits::error(cuda::std::get<Is>(v).data()..., local_obs, local_error,
-                   vargs, local_data);
+  using DataType = typename F::ConstraintDataType;
+  using ObsType = typename F::ObservationType;
+
+  if constexpr (std::is_empty<ObsType>::value &&
+                std::is_empty<DataType>::value) {
+    F::Traits::error((*cuda::std::get<Is>(vargs))...,
+                     cuda::std::get<Is>(v).data()..., local_error);
+  } else if constexpr (std::is_empty<DataType>::value) {
+    F::Traits::error((*cuda::std::get<Is>(vargs))...,
+                     cuda::std::get<Is>(v).data()..., *local_obs, local_error);
+  } else if constexpr (std::is_empty<ObsType>::value) {
+    F::Traits::error((*cuda::std::get<Is>(vargs))...,
+                     cuda::std::get<Is>(v).data()..., *local_data, local_error);
+  } else {
+    F::Traits::error((*cuda::std::get<Is>(vargs))...,
+                     cuda::std::get<Is>(v).data()..., *local_obs, *local_data,
+                     local_error);
+  }
 
   constexpr auto j_size = vertex_sizes[I] * E;
   // constexpr auto col_offset = I*E;
@@ -147,8 +163,9 @@ void compute_error_autodiff(F *f, StreamPool &streams) {
   const auto num_factors = f->active_count();
 
   if constexpr (!is_analytical<F>()) {
-    launch_kernel_autodiff<T, S>(f, hessian_ids, verts, jacs, num_factors, streams,
-                           std::make_index_sequence<num_vertices>{});
+    launch_kernel_autodiff<T, S>(f, hessian_ids, verts, jacs, num_factors,
+                                 streams,
+                                 std::make_index_sequence<num_vertices>{});
   }
   streams.sync_n(num_vertices);
 }
@@ -179,20 +196,36 @@ compute_error_kernel(const M *obs, T *error,
 
   auto v = cuda::std::make_tuple(std::array<T, vertex_sizes[Is]>{}...);
 
-  auto vargs =
-      std::make_tuple((*(std::get<Is>(args) + ids[factor_id * N + Is]))...);
+  auto vargs = cuda::std::make_tuple(
+      (*(std::get<Is>(args) + ids[factor_id * N + Is]))...);
 
   auto copy_vertices = [&v, &vertex_sizes, &vargs](auto &&...ptrs) {
     ((std::tuple_element<Is, typename F::Traits::VertexDescriptors>::type::
-          Traits::parameters(*std::get<Is>(vargs),
+          Traits::parameters(*cuda::std::get<Is>(vargs),
                              cuda::std::get<Is>(v).data())),
      ...);
   };
 
-  std::apply(copy_vertices, vargs);
+  cuda::std::apply(copy_vertices, vargs);
 
-  F::Traits::error(cuda::std::get<Is>(v).data()..., local_obs, local_error,
-                   vargs, local_data);
+  using DataType = typename F::ConstraintDataType;
+  using ObsType = typename F::ObservationType;
+
+  if constexpr (std::is_empty<ObsType>::value &&
+                std::is_empty<DataType>::value) {
+    F::Traits::error((*cuda::std::get<Is>(vargs))...,
+                     cuda::std::get<Is>(v).data()..., local_error);
+  } else if constexpr (std::is_empty<DataType>::value) {
+    F::Traits::error((*cuda::std::get<Is>(vargs))...,
+                     cuda::std::get<Is>(v).data()..., *local_obs, local_error);
+  } else if constexpr (std::is_empty<ObsType>::value) {
+    F::Traits::error((*cuda::std::get<Is>(vargs))...,
+                     cuda::std::get<Is>(v).data()..., *local_data, local_error);
+  } else {
+    F::Traits::error((*cuda::std::get<Is>(vargs))...,
+                     cuda::std::get<Is>(v).data()..., *local_obs, *local_data,
+                     local_error);
+  }
 
 #pragma unroll
   for (size_t i = 0; i < E; ++i) {
