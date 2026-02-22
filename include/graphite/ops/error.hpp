@@ -1,8 +1,98 @@
 #pragma once
+#include <cstddef>
 #include <graphite/ops/common.hpp>
 namespace graphite {
 
 namespace ops {
+
+template <size_t N, size_t P> struct arg_helper {
+  constexpr static size_t value = N;
+  static_assert(N == P, "Helper to print N and P at compile time");
+};
+
+template <class> struct fn_arity;
+
+// Count number of arguments
+template <class R, class... Args>
+struct fn_arity<R (*)(Args...)>
+    : std::integral_constant<std::size_t, sizeof...(Args)> {};
+
+template <class> struct first_arg;
+
+template <class R, class First, class... Rest>
+struct first_arg<R (*)(First, Rest...)> {
+  using type = First;
+};
+
+template <typename F, typename D> __device__ constexpr bool takes_vertices() {
+  return std::is_reference<
+      typename first_arg<decltype(&F::Traits::template error<D>)>::type>::value;
+}
+
+template <typename F, typename D, typename VertexPointers,
+          typename ParameterBlocks, typename Observation,
+          typename ConstraintData, typename ErrorVector, std::size_t... Is>
+__device__ inline void
+call_error_fn(VertexPointers &vertices, ParameterBlocks &parameters,
+              Observation &local_obs, ConstraintData &local_data,
+              ErrorVector &local_error, std::index_sequence<Is...>) {
+
+  using DataType = typename F::ConstraintDataType;
+  using ObsType = typename F::ObservationType;
+  constexpr size_t N = F::get_num_vertices();
+
+  constexpr size_t num_parameters =
+      fn_arity<decltype(&F::Traits::template error<D>)>::value;
+
+  if constexpr (std::is_empty<ObsType>::value &&
+                std::is_empty<DataType>::value) {
+    if constexpr (N * 2 + 1 == num_parameters) {
+      F::Traits::error((*cuda::std::get<Is>(vertices))...,
+                       cuda::std::get<Is>(parameters).data()..., local_error);
+    } else if constexpr (takes_vertices<F, D>()) {
+      F::Traits::error((*cuda::std::get<Is>(vertices))..., local_error);
+    } else {
+      F::Traits::error(cuda::std::get<Is>(parameters).data()..., local_error);
+    }
+  } else if constexpr (std::is_empty<DataType>::value) {
+
+    if constexpr (N * 2 + 2 == num_parameters) {
+      F::Traits::error((*cuda::std::get<Is>(vertices))...,
+                       cuda::std::get<Is>(parameters).data()..., *local_obs,
+                       local_error);
+    } else if constexpr (takes_vertices<F, D>()) {
+      F::Traits::error((*cuda::std::get<Is>(vertices))..., *local_obs,
+                       local_error);
+    } else {
+      F::Traits::error(cuda::std::get<Is>(parameters).data()..., *local_obs,
+                       local_error);
+    }
+  } else if constexpr (std::is_empty<ObsType>::value) {
+    if constexpr (N * 2 + 2 == num_parameters) {
+      F::Traits::error((*cuda::std::get<Is>(vertices))...,
+                       cuda::std::get<Is>(parameters).data()..., *local_data,
+                       local_error);
+    } else if constexpr (takes_vertices<F, D>()) {
+      F::Traits::error((*cuda::std::get<Is>(vertices))..., *local_data,
+                       local_error);
+    } else {
+      F::Traits::error(cuda::std::get<Is>(parameters).data()..., *local_data,
+                       local_error);
+    }
+  } else {
+    if constexpr (N * 2 + 3 == num_parameters) {
+      F::Traits::error((*cuda::std::get<Is>(vertices))...,
+                       cuda::std::get<Is>(parameters).data()..., *local_obs,
+                       *local_data, local_error);
+    } else if constexpr (takes_vertices<F, D>()) {
+      F::Traits::error((*cuda::std::get<Is>(vertices))..., *local_obs,
+                       *local_data, local_error);
+    } else {
+      F::Traits::error(cuda::std::get<Is>(parameters).data()..., *local_obs,
+                       *local_data, local_error);
+    }
+  }
+}
 
 template <typename T, typename S, size_t I, size_t N, typename M, size_t E,
           typename F, typename VT, std::size_t... Is>
@@ -46,24 +136,8 @@ __global__ void compute_error_kernel_autodiff(
 
   cuda::std::get<I>(v)[idx % vertex_sizes[I]].dual = static_cast<G>(1);
 
-  using DataType = typename F::ConstraintDataType;
-  using ObsType = typename F::ObservationType;
-
-  if constexpr (std::is_empty<ObsType>::value &&
-                std::is_empty<DataType>::value) {
-    F::Traits::error((*cuda::std::get<Is>(vargs))...,
-                     cuda::std::get<Is>(v).data()..., local_error);
-  } else if constexpr (std::is_empty<DataType>::value) {
-    F::Traits::error((*cuda::std::get<Is>(vargs))...,
-                     cuda::std::get<Is>(v).data()..., *local_obs, local_error);
-  } else if constexpr (std::is_empty<ObsType>::value) {
-    F::Traits::error((*cuda::std::get<Is>(vargs))...,
-                     cuda::std::get<Is>(v).data()..., *local_data, local_error);
-  } else {
-    F::Traits::error((*cuda::std::get<Is>(vargs))...,
-                     cuda::std::get<Is>(v).data()..., *local_obs, *local_data,
-                     local_error);
-  }
+  call_error_fn<F, Dual<T, G>>(vargs, v, local_obs, local_data, local_error,
+                               std::make_index_sequence<N>{});
 
   constexpr auto j_size = vertex_sizes[I] * E;
   // constexpr auto col_offset = I*E;
@@ -208,24 +282,8 @@ compute_error_kernel(const M *obs, T *error,
 
   cuda::std::apply(copy_vertices, vargs);
 
-  using DataType = typename F::ConstraintDataType;
-  using ObsType = typename F::ObservationType;
-
-  if constexpr (std::is_empty<ObsType>::value &&
-                std::is_empty<DataType>::value) {
-    F::Traits::error((*cuda::std::get<Is>(vargs))...,
-                     cuda::std::get<Is>(v).data()..., local_error);
-  } else if constexpr (std::is_empty<DataType>::value) {
-    F::Traits::error((*cuda::std::get<Is>(vargs))...,
-                     cuda::std::get<Is>(v).data()..., *local_obs, local_error);
-  } else if constexpr (std::is_empty<ObsType>::value) {
-    F::Traits::error((*cuda::std::get<Is>(vargs))...,
-                     cuda::std::get<Is>(v).data()..., *local_data, local_error);
-  } else {
-    F::Traits::error((*cuda::std::get<Is>(vargs))...,
-                     cuda::std::get<Is>(v).data()..., *local_obs, *local_data,
-                     local_error);
-  }
+  call_error_fn<F, T>(vargs, v, local_obs, local_data, local_error,
+                      std::make_index_sequence<N>{});
 
 #pragma unroll
   for (size_t i = 0; i < E; ++i) {

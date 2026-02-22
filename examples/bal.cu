@@ -82,9 +82,11 @@ template <typename T, typename S> struct ReprojectionErrorTraits {
   // using Differentiation = DifferentiationMode::Auto;
   using Differentiation = DifferentiationMode::Manual;
 
+  // You can pass in vertex references (class references), parameter blocks
+  // (pointer to 1D parameters), or both. The framework will automatically call
+  // your function with the correct arguments.
   template <typename D>
-  d_fn static void error(const Camera<T> &vcam, const Point<T> &vpoint,
-                         const D *camera, const D *point,
+  d_fn static void error(const D *camera, const D *point,
                          const Observation &obs, D *error) {
     bal_reprojection_error_simple<D, Observation, T>(camera, point, &obs,
                                                      error);
