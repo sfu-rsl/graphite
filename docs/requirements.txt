@@ -1,0 +1,4 @@
+breathe==4.36.0
+sphinx
+sphinx_book_theme
+furo

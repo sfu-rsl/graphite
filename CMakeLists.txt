@@ -20,6 +20,7 @@ if(CMAKE_HOST_SYSTEM_VERSION MATCHES "microsoft-standard-WSL2$")
 endif()
 
 # Libraries
+include(FetchContent)
 find_package(CUDAToolkit REQUIRED)
 find_package(Eigen3 3.1 REQUIRED)
 find_package(cudss 0.7.0 REQUIRED)
@@ -43,6 +44,39 @@ if(BUILD_EXAMPLES)
   add_executable(bal examples/bal.cu)
   target_link_libraries(bal graphite)
 endif()
+
+option(BUILD_DOCS "Build documentation" ON)
+
+if (BUILD_DOCS)
+  find_package(Doxygen)
+  if (DOXYGEN_FOUND)
+
+    FetchContent_Declare(
+        doxygen-awesome-css
+        URL https://github.com/jothepro/doxygen-awesome-css/archive/refs/heads/main.zip
+    )
+    FetchContent_MakeAvailable(doxygen-awesome-css)
+
+    FetchContent_GetProperties(doxygen-awesome-css SOURCE_DIR AWESOME_CSS_DIR)
+
+
+    set(DOXYGEN_IN ${CMAKE_CURRENT_SOURCE_DIR}/docs/Doxyfile.in)
+    set(DOXYGEN_OUT ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
+    configure_file(${DOXYGEN_IN} ${DOXYGEN_OUT} @ONLY)
+
+    add_custom_target(docs
+      COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYGEN_OUT}
+      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+      COMMENT "Generating API documentation with Doxygen"
+      VERBATIM
+    )
+  else()
+    message(WARNING "Doxygen not found! 'docs' target will not be available.")
+  endif()
+
+
+endif()
+
 
 
 # Formatter
