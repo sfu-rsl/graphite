@@ -1,7 +1,7 @@
 # Statically generated file for GitHub actions
 PROJECT_NAME = "Graphite"
 OUTPUT_DIRECTORY       = ../docs/
-INPUT                  = ../src/ ../include ../docs/
+INPUT                  = ../src/ ../include/ ../docs/markdown/
 RECURSIVE              = YES
 EXTRACT_PRIVATE        = YES
 GENERATE_HTML          = YES
