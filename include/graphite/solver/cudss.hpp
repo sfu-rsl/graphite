@@ -1,10 +1,10 @@
+/// \file cudss.hpp
 #pragma once
 #include <cuda_runtime.h>
 #include <cudss.h>
 #include <graphite/hessian.hpp>
 #include <graphite/solver/solver.hpp>
 
-// Interface for Linear Solvers
 namespace graphite {
 
 template <typename T> cudaDataType_t get_cuda_data_type();

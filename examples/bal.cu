@@ -1,3 +1,6 @@
+/** \file bal.cu
+  A bundle adjustment example using the BAL dataset.
+*/
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <array>

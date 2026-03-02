@@ -1,11 +1,16 @@
 PROJECT_NAME = "Graphite"
 OUTPUT_DIRECTORY       = @CMAKE_CURRENT_SOURCE_DIR@/docs/
-INPUT                  = @CMAKE_CURRENT_SOURCE_DIR@/src/ @CMAKE_CURRENT_SOURCE_DIR@/include/ @CMAKE_CURRENT_SOURCE_DIR@/docs/markdown/
+INPUT                  = @CMAKE_CURRENT_SOURCE_DIR@/src/ @CMAKE_CURRENT_SOURCE_DIR@/include/ @CMAKE_CURRENT_SOURCE_DIR@/docs/markdown/ \
+                         @CMAKE_CURRENT_SOURCE_DIR@/examples
+EXCLUDE_PATTERNS       = */argparse/*
+FILE_PATTERNS          = *.cpp *.hpp *.h *.c *.cu *.cuh *.md
+EXTENSION_MAPPING      = cu=C++ cuh=C++
 RECURSIVE              = YES
 EXTRACT_PRIVATE        = YES
 GENERATE_HTML          = YES
 GENERATE_XML           = YES
-
+# EXTRACT_ALL            = YES
+EXAMPLE_PATH           = @CMAKE_CURRENT_SOURCE_DIR@/examples
 
 GENERATE_TREEVIEW      = YES
 DISABLE_INDEX          = NO

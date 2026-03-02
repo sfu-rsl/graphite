@@ -1,3 +1,6 @@
+/** \file circle.cu
+  A simple example which fits points to a circle.
+*/
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <array>

@@ -1,3 +1,4 @@
+/// \file solver.hpp
 #pragma once
 #include <graphite/common.hpp>
 #include <graphite/graph.hpp>
@@ -5,6 +6,9 @@
 
 namespace graphite {
 
+/**
+ * @brief Linear solver interface. Implement this for your own linear solvers.
+ */
 template <typename T, typename S> class Solver {
 public:
   virtual ~Solver() = default;

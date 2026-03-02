@@ -1,11 +1,15 @@
 # Statically generated file for GitHub actions
 PROJECT_NAME = "Graphite"
 OUTPUT_DIRECTORY       = ../docs/
-INPUT                  = ../src/ ../include/ ../docs/markdown/
+INPUT                  = ../src/ ../include/ ../docs/markdown/ ../examples/
+EXCLUDE_PATTERNS       = */argparse/*
+FILE_PATTERNS          = *.cpp *.hpp *.h *.c *.cu *.cuh *.md
+EXTENSION_MAPPING      = cu=C++ cuh=C++
 RECURSIVE              = YES
 EXTRACT_PRIVATE        = YES
 GENERATE_HTML          = YES
 GENERATE_XML           = YES
+EXAMPLE_PATH           = ../examples
 
 
 GENERATE_TREEVIEW      = YES

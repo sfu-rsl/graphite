@@ -1,3 +1,4 @@
+/// \file optimizer.hpp
 #pragma once
 #include <graphite/graph.hpp>
 #include <graphite/solver/solver.hpp>
@@ -37,6 +38,9 @@ T compute_rho(Graph<T, S> *graph, thrust::device_vector<T> &delta_x,
   return num / (denom);
 }
 
+/**
+ * @brief Levenberg-Marquardt options
+ */
 template <typename T, typename S> class LevenbergMarquardtOptions {
 public:
   LevenbergMarquardtOptions()
@@ -44,14 +48,25 @@ public:
         optimization_level(0), verbose(false), stop_flag(nullptr),
         streams(nullptr) {}
 
+  /// Pointer to the linear solver to use for the optimization
   Solver<T, S> *solver;
+  /// Maximum number of iterations to run the optimization for
   size_t iterations;
+  /// Initial damping factor (lambda) value
   double initial_damping;
+  /// Constraints with level <= optimization_level will be optimized
   uint8_t optimization_level;
+  /// If true, print verbose output during optimization
   bool verbose;
+  /// Pointer to a stop flag which can be used to terminate the optimization
   bool *stop_flag;
+  /// Pointer to a pool of streams
   StreamPool *streams;
 
+  /**
+   * @brief Validate the options
+   * @return true if the options are valid, false otherwise
+   */
   bool validate() const {
     if (solver == nullptr) {
       if (verbose) {
@@ -72,7 +87,15 @@ public:
   }
 };
 
-// Levenberg-Marquardt algorithm
+/**
+ * @brief Levenberg-Marquardt optimization algorithm
+ *
+ * @tparam T Scalar type
+ * @tparam S Scalar type
+ * @param graph Graph to optimize
+ * @param options Options for the optimization
+ * @return true if optimization completed successfully, false otherwise
+ */
 template <typename T, typename S>
 bool levenberg_marquardt(Graph<T, S> *graph,
                          LevenbergMarquardtOptions<T, S> *options) {
@@ -207,8 +230,17 @@ bool levenberg_marquardt(Graph<T, S> *graph,
   return run;
 }
 
-// Levenberg-Marquardt with similar early termination stopping criteria to
-// ORB-SLAM
+/**
+ * @brief Levenberg-Marquardt with similar early termination stopping criteria
+ * to ORB-SLAM.
+ *
+ * @tparam T Scalar type
+ * @tparam S Scalar type
+ * @param graph Graph to optimize
+ * @param options Options for the optimization
+ * @return true if optimization completed successfully, false otherwise
+ */
+
 template <typename T, typename S>
 bool levenberg_marquardt2(Graph<T, S> *graph,
                           LevenbergMarquardtOptions<T, S> *options) {

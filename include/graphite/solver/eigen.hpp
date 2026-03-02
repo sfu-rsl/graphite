@@ -1,3 +1,4 @@
+/// \file eigen.hpp
 #pragma once
 #include <graphite/hessian.hpp>
 #include <graphite/solver/eigen_solver_interface.hpp>

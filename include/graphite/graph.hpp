@@ -1,3 +1,4 @@
+/// \file graph.hpp
 #pragma once
 #include <graphite/factor.hpp>
 #include <graphite/stream.hpp>
@@ -7,6 +8,15 @@
 
 namespace graphite {
 
+/**
+ * @brief Graph class which stores references to vertex and factor descriptors,
+ * and provides methods for optimization.
+ *
+ * @tparam T Scalar type (e.g., double, float) representing the precision of the
+ * vertices and constraints.
+ * @tparam S Scalar type (e.g., double, Point2D) representing the precision of
+ * the linear system.
+ */
 template <typename T, typename S> class Graph {
 
 private:
@@ -273,5 +283,12 @@ public:
     scale_jacobians = enable_scaling;
   }
 };
+
+/**
+ * \example circle.cu
+ * This is an example of a simple optimization problem where points are fit to a
+ * circle. \example bal.cu This is an example of bundle adjustment on the BAL
+ * dataset.
+ */
 
 } // namespace graphite

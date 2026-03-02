@@ -1,3 +1,4 @@
+/// \file pcg.hpp
 #pragma once
 #include <graphite/ops/vector.hpp>
 #include <graphite/preconditioner/preconditioner.hpp>
@@ -6,6 +7,8 @@
 #include <thrust/inner_product.h>
 
 namespace graphite {
+
+/// @brief Preconditioned Conjugate Gradient (PCG) solver
 template <typename T, typename S> class PCGSolver : public Solver<T, S> {
 private:
   thrust::device_vector<T> v;
