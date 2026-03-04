@@ -1,4 +1,4 @@
-/// \file solver.hpp
+/// @file solver.hpp
 #pragma once
 #include <graphite/common.hpp>
 #include <graphite/graph.hpp>

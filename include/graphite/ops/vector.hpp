@@ -1,3 +1,4 @@
+/// @file vector.hpp
 #pragma once
 
 namespace graphite {

@@ -1,3 +1,4 @@
+/// @file vector.hpp
 #pragma once
 #include <thrust/device_ptr.h>
 #include <thrust/universal_vector.h>

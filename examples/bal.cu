@@ -1,4 +1,4 @@
-/** \file bal.cu
+/** @file bal.cu
   A bundle adjustment example using the BAL dataset.
 */
 #include <Eigen/Core>

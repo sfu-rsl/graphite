@@ -1,3 +1,4 @@
+/// @file dual.hpp
 #pragma once
 #include <cuda/std/cmath>
 #include <cuda/std/limits>

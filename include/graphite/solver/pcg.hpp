@@ -1,4 +1,4 @@
-/// \file pcg.hpp
+/// @file pcg.hpp
 #pragma once
 #include <graphite/ops/vector.hpp>
 #include <graphite/preconditioner/preconditioner.hpp>

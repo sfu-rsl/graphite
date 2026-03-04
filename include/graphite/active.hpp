@@ -1,3 +1,4 @@
+/// @file active.hpp
 #pragma once
 #include <thrust/copy.h>
 #include <thrust/count.h>

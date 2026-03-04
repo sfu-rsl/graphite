@@ -1,6 +1,4 @@
-/** \file eigen_solver.cpp
-  \brief Implementation of the Eigen solver interface.
-*/
+/// @file eigen_solver.cpp
 #include <graphite/solver/eigen_solver_interface.hpp>
 
 namespace graphite {

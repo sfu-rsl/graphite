@@ -1,3 +1,4 @@
+/// @file block.hpp
 #pragma once
 #include <graphite/utils.hpp>
 

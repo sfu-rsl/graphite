@@ -1,4 +1,4 @@
-/// \file optimizer.hpp
+/// @file optimizer.hpp
 #pragma once
 #include <graphite/graph.hpp>
 #include <graphite/solver/solver.hpp>

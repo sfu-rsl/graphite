@@ -1,3 +1,4 @@
+/// @file eigen_solver_interface.hpp
 #pragma once
 #include <Eigen/Sparse>
 #include <Eigen/SparseCholesky>

@@ -1,4 +1,4 @@
-/** \file circle.cu
+/** @file circle.cu
   A simple example which fits points to a circle.
 */
 #include <Eigen/Core>
@@ -49,8 +49,7 @@ template <typename T, typename S> struct CircleFactorTraits {
   using Differentiation = DifferentiationMode::Manual;
 
   template <typename D>
-  d_fn static void error(const Point<T> &vpoint, const D *point, const T &obs,
-                         D *error) {
+  d_fn static void error(const D *point, const T &obs, D *error) {
     const auto x = point[0];
     const auto y = point[1];
     const auto r = obs;

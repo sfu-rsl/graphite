@@ -1,3 +1,4 @@
+/// @file chi2.hpp
 #pragma once
 #include <graphite/ops/common.hpp>
 

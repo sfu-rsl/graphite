@@ -1,4 +1,4 @@
-/// \file cudss.hpp
+/// @file cudss.hpp
 #pragma once
 #include <cuda_runtime.h>
 #include <cudss.h>

@@ -1,3 +1,4 @@
+/// @file product.hpp
 #pragma once
 #include <graphite/ops/common.hpp>
 

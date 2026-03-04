@@ -1,3 +1,4 @@
+/// @file block_jacobi.hpp
 #pragma once
 #include <cublas_v2.h>
 #include <graphite/preconditioner/preconditioner.hpp>

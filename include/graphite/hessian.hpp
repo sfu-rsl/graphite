@@ -1,3 +1,4 @@
+/// @file hessian.hpp
 #pragma once
 #include <graphite/block.hpp>
 #include <graphite/common.hpp>

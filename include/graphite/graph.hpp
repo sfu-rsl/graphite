@@ -1,4 +1,4 @@
-/// \file graph.hpp
+/// @file graph.hpp
 #pragma once
 #include <graphite/factor.hpp>
 #include <graphite/stream.hpp>

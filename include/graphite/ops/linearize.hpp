@@ -1,3 +1,4 @@
+/// @file linearize.hpp
 #pragma once
 #include <graphite/ops/common.hpp>
 

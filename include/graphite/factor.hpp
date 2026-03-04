@@ -1,3 +1,4 @@
+/// @file factor.hpp
 #pragma once
 #include <graphite/active.hpp>
 #include <graphite/block.hpp>

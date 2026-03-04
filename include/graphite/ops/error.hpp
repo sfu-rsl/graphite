@@ -1,3 +1,4 @@
+/// @file error.hpp
 #pragma once
 #include <cstddef>
 #include <graphite/ops/common.hpp>
