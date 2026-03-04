@@ -5,7 +5,7 @@
 #include <Eigen/Dense>
 #include <array>
 #include <chrono>
-#include <graphite/core.hpp>
+#include <graphite/optimizer.hpp>
 #include <graphite/preconditioner/identity.hpp>
 #include <graphite/solver/pcg.hpp>
 #include <iostream>
@@ -77,7 +77,8 @@ int main(void) {
 
   using namespace graphite;
 
-  initialize_cuda();
+  // Initialize CUDA
+  cudaSetDevice(0);
 
   // Create graph
   using FP = double;

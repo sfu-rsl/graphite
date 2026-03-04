@@ -2,5 +2,5 @@ Algorithms
 ============
 
 Graphite supports the following optimization algorithms:
-- @ref levenberg_marquardt()
-- @ref levenberg_marquardt2()
+- @ref graphite::optimizer::levenberg_marquardt()
+- @ref graphite::optimizer::levenberg_marquardt2()

@@ -14,7 +14,7 @@
 
 #include "argparse/argparse.hpp"
 #include "reprojection_error.cuh"
-#include <graphite/core.hpp>
+#include <graphite/optimizer.hpp>
 #include <graphite/preconditioner/block_jacobi.hpp>
 #include <graphite/solver/cudss.hpp>
 #include <graphite/solver/eigen.hpp>
@@ -129,7 +129,8 @@ void bundle_adjustment(argparse::ArgumentParser &program) {
             << " and solver precision = " << get_type_name<SP>() << std::endl;
   std::string file_path = program.get<std::string>("file");
 
-  initialize_cuda();
+  // Initialize CUDA
+  cudaSetDevice(0);
 
   // Create graph
   Graph<FP, SP> graph;
