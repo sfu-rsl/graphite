@@ -162,12 +162,12 @@ void bundle_adjustment(argparse::ArgumentParser &program) {
 
   auto camera_desc = CameraDescriptor<FP, SP>();
   camera_desc.reserve(num_cameras);
-  graph.add_vertex_descriptor(&camera_desc);
+  graph.add_descriptor(&camera_desc);
 
   // Create edges
   auto r_desc = ReprojectionError<FP, SP>(&camera_desc, &point_desc);
   r_desc.reserve(num_observations);
-  graph.add_factor_descriptor(&r_desc);
+  graph.add_descriptor(&r_desc);
   // r_desc.set_jacobian_storage(false);
 
   auto start = std::chrono::steady_clock::now();

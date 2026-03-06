@@ -53,12 +53,25 @@ public:
 
   thrust::device_vector<T> &get_jacobian_scales() { return jacobian_scales; }
 
-  void add_vertex_descriptor(BaseVertexDescriptor<T, S> *descriptor) {
+  template <typename V> void add_vertex_descriptor(V *descriptor) {
     vertex_descriptors.push_back(descriptor);
   }
 
   template <typename F> void add_factor_descriptor(F *factor) {
     factor_descriptors.push_back(factor);
+  }
+
+  template <typename D> void add_descriptor(D *descriptor) {
+    if constexpr (std::is_base_of<BaseVertexDescriptor<T, S>, D>::value) {
+      add_vertex_descriptor(descriptor);
+    } else if constexpr (std::is_base_of<BaseFactorDescriptor<T, S>,
+                                         D>::value) {
+      add_factor_descriptor(descriptor);
+    } else {
+      static_assert(std::is_base_of<BaseVertexDescriptor<T, S>, D>::value ||
+                        std::is_base_of<BaseFactorDescriptor<T, S>, D>::value,
+                    "You tried to add something strange to the graph.");
+    }
   }
 
   bool initialize_optimization(const uint8_t level) {

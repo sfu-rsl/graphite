@@ -89,7 +89,7 @@ int main(void) {
   // Create vertices
   auto point_desc = PointDescriptor<FP, SP>();
   point_desc.reserve(num_vertices);
-  graph.add_vertex_descriptor(&point_desc);
+  graph.add_descriptor(&point_desc);
 
   FP center[2] = {0.0, 0.0};
 
@@ -121,7 +121,7 @@ int main(void) {
   // Create edges
   auto factor_desc = CircleFactor<FP, SP>(&point_desc);
   factor_desc.reserve(num_vertices);
-  graph.add_factor_descriptor(&factor_desc);
+  graph.add_descriptor(&factor_desc);
 
   const auto loss = DefaultLoss<FP, 1>();
   for (size_t vertex_id = 0; vertex_id < num_vertices; ++vertex_id) {
