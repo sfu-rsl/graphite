@@ -28,7 +28,7 @@ To use a data type as an optimizable variable, you need to define
 its properties so that Graphite knows how to interact with it.
 
 Suppose you want to perform bundle adjustment to optimize camera parameters
-and 3D points, and you represent a camera as a $9\times1$ vector.
+and 3D points, and you represent a camera as a \f$9\times1\f$ vector.
 
 ```cpp
 template <typename T> using Camera = Eigen::Matrix<T, 9, 1>;
@@ -183,13 +183,13 @@ using VertexDescriptors =
       std::tuple<CameraDescriptor<T, S>, PointDescriptor<T, S>>;
 ```
 
-We use a $2\times1$ vector to represent the observation.
+We use a \f$2\times1\f$ vector to represent the observation.
 
 ```cpp
 using Observation = Eigen::Matrix<T, dimension, 1>;
 ```
 
-\tip
+\note
 Some factors may not need an observation data type. For those cases, Graphite provides `graphite::Empty`.
 
 

@@ -8,9 +8,9 @@ EXTENSION_MAPPING      = cu=C++ cuh=C++
 RECURSIVE              = YES
 EXTRACT_PRIVATE        = YES
 GENERATE_HTML          = YES
-GENERATE_XML           = YES
+GENERATE_XML           = NO
+GENERATE_LATEX         = NO
 EXAMPLE_PATH           = ../examples
-
 
 GENERATE_TREEVIEW      = YES
 DISABLE_INDEX          = NO
@@ -23,3 +23,4 @@ HTML_EXTRA_STYLESHEET  = doxygen-awesome-css/doxygen-awesome.css \
 HTML_COLORSTYLE        = LIGHT 
 HTML_HEADER = ../docs/header.html
 HTML_COPY_CLIPBOARD = NO
+USE_MATHJAX            = YES
