@@ -97,8 +97,9 @@ public:
 };
 
 /**
-* @brief Represents a collection of optimizable variables to be processed together on the GPU.
-*/
+ * @brief Represents a collection of optimizable variables to be processed
+ * together on the GPU.
+ */
 template <typename T, typename S, typename VTraits>
 class VertexDescriptor : public BaseVertexDescriptor<T, S> {
 public:
@@ -130,7 +131,7 @@ public:
 
   /**
    * @brief Applies an update to the vertex parameters asynchronously.
-  */
+   */
   void apply_update_async(const T *delta_x, T *jacobian_scales,
                           cudaStream_t stream) override {
     ops::apply_update<T, S>(this, delta_x, jacobian_scales, stream);
@@ -154,21 +155,22 @@ public:
   }
 
   /**
-  * @brief Prepares descriptor for GPU processing.
-  */
+   * @brief Prepares descriptor for GPU processing.
+   */
   virtual void to_device() override {
     x_device = x_host;
     hessian_ids = local_to_hessian_offsets;
   }
 
   /**
-   * @brief Returns a pointer to the array of vertex pointers for the descriptor.
+   * @brief Returns a pointer to the array of vertex pointers for the
+   * descriptor.
    */
   VertexType **vertices() { return x_device.data().get(); }
 
   /**
-  * @brief Backs up the state of the vertices asynchronously.
-  */
+   * @brief Backs up the state of the vertices asynchronously.
+   */
   virtual void backup_parameters_async() override {
     VertexType **vertices = x_device.data().get();
 
@@ -184,8 +186,8 @@ public:
   }
 
   /**
-  * @brief Restores the state of the vertices from the backup asynchronously.
-  */
+   * @brief Restores the state of the vertices from the backup asynchronously.
+   */
   virtual void restore_parameters_async() override {
     VertexType **vertices = x_device.data().get();
 
@@ -199,14 +201,16 @@ public:
   }
 
   /**
-  * @brief Returns the number of vertices in the descriptor (including fixed vertices).
-  */
+   * @brief Returns the number of vertices in the descriptor (including fixed
+   * vertices).
+   */
   virtual size_t count() const override { return x_host.size(); }
 
   /**
-  * @brief Reserves memory for the specified number of vertices. You should call this before constructing the graph to avoid excessive reallocations.
-  * @param size The number of vertices to reserve space for.
-  */
+   * @brief Reserves memory for the specified number of vertices. You should
+   * call this before constructing the graph to avoid excessive reallocations.
+   * @param size The number of vertices to reserve space for.
+   */
   void reserve(size_t size) {
     x_host.reserve(size);
     global_to_local_map.reserve(size);
@@ -217,9 +221,9 @@ public:
   }
 
   /**
-    * @brief Removes a vertex from the descriptor by its ID.
-    * @param id The ID of the vertex to remove.
-  */
+   * @brief Removes a vertex from the descriptor by its ID.
+   * @param id The ID of the vertex to remove.
+   */
   void remove_vertex(const size_t id) {
     if (count() == 0) {
       return;
@@ -261,10 +265,10 @@ public:
   }
 
   /**
-  * @brief Replaces a vertex pointer in the descriptor for the given ID.
-  * @param id The ID of the vertex to replace.
-  * @param vertex The new pointer of the vertex.
-  */
+   * @brief Replaces a vertex pointer in the descriptor for the given ID.
+   * @param id The ID of the vertex to replace.
+   * @param vertex The new pointer of the vertex.
+   */
   void replace_vertex(const size_t id, VertexType *vertex) {
     if (global_to_local_map.find(id) == global_to_local_map.end()) {
       std::cerr << "Vertex with id " << id << " not found." << std::endl;
@@ -276,11 +280,12 @@ public:
   }
 
   /**
-  * @brief Adds a vertex to the descriptor.
-  * @param id The ID of the vertex to add. Must be unique across all vertex descriptors in the same graph.
-  * @param vertex The pointer of the vertex to add.
-  * @param fixed Whether the vertex is fixed or not.
-  */
+   * @brief Adds a vertex to the descriptor.
+   * @param id The ID of the vertex to add. Must be unique across all vertex
+   * descriptors in the same graph.
+   * @param vertex The pointer of the vertex to add.
+   * @param fixed Whether the vertex is fixed or not.
+   */
   void add_vertex(const size_t id, VertexType *vertex,
                   const bool fixed = false) {
     x_host.push_back(vertex);
@@ -295,10 +300,10 @@ public:
   }
 
   /**
-  * @brief Sets the fixed state of a vertex.
-  * @param id The ID of the vertex to update.
-  * @param fixed Whether the vertex is fixed (true) or not (false).
-  */
+   * @brief Sets the fixed state of a vertex.
+   * @param id The ID of the vertex to update.
+   * @param fixed Whether the vertex is fixed (true) or not (false).
+   */
   void set_fixed(const size_t id, const bool fixed) {
     const auto local_id = global_to_local_map.at(id);
     // Don't preserve MSB flag
@@ -306,46 +311,47 @@ public:
   }
 
   /**
-  * @brief Checks if a vertex is fixed.
-  * @param id The ID of the vertex to check.
-  * @return True if the vertex is fixed, false otherwise.
-  */
+   * @brief Checks if a vertex is fixed.
+   * @param id The ID of the vertex to check.
+   * @return True if the vertex is fixed, false otherwise.
+   */
   bool is_fixed(const size_t id) const override {
     const auto local_id = global_to_local_map.at(id);
     return (active_state[local_id] & 0x1) > 0;
   }
 
   /**
-  * @brief Checks if a vertex is active.
-  * @param id The ID of the vertex to check.
-  * @return True if the vertex is active, false otherwise.
-  */
+   * @brief Checks if a vertex is active.
+   * @param id The ID of the vertex to check.
+   * @return True if the vertex is active, false otherwise.
+   */
   bool is_active(const size_t id) const override {
     const auto local_id = global_to_local_map.at(id);
     return is_vertex_active(active_state.data().get(), local_id);
   }
 
   /**
-  * @brief Retrieves a pointer to the active state array for the vertices.
-  * @return A pointer to the active state array.
-  */
+   * @brief Retrieves a pointer to the active state array for the vertices.
+   * @return A pointer to the active state array.
+   */
   uint8_t *get_active_state() const override {
     return active_state.data().get();
   }
 
   /**
-  * @brief Retrieves a pointer to the block IDs array for the vertices.
-  * @return A pointer to the block IDs array.
-  */
+   * @brief Retrieves a pointer to the block IDs array for the vertices.
+   * @return A pointer to the block IDs array.
+   */
   const size_t *get_block_ids() const override {
     return block_ids.data().get();
   }
 
   /**
-  * @brief Retrieves a pointer to the vertex associated with the given ID.
-  * @param id The ID of the vertex to retrieve.
-  * @return A pointer to the vertex if found, or nullptr if the vertex does not exist in the descriptor.
-  */
+   * @brief Retrieves a pointer to the vertex associated with the given ID.
+   * @param id The ID of the vertex to retrieve.
+   * @return A pointer to the vertex if found, or nullptr if the vertex does not
+   * exist in the descriptor.
+   */
   VertexType *get_vertex(const size_t id) {
     auto it = global_to_local_map.find(id);
     if (it != global_to_local_map.end()) {
@@ -357,10 +363,10 @@ public:
   }
 
   /**
-  * @brief Checks if a vertex exists in the descriptor.
-  * @param id The ID of the vertex to check.
-  * @return True if the vertex exists, false otherwise.
-  */
+   * @brief Checks if a vertex exists in the descriptor.
+   * @param id The ID of the vertex to check.
+   * @return True if the vertex exists, false otherwise.
+   */
   bool exists(const size_t id) const {
     return global_to_local_map.find(id) != global_to_local_map.end();
   }
@@ -370,9 +376,9 @@ public:
   }
 
   /**
-  * @brief Returns the dimension of the vertex parameterization.
-  * @return The dimension of the vertex parameterization.
-  */
+   * @brief Returns the dimension of the vertex parameterization.
+   * @return The dimension of the vertex parameterization.
+   */
   size_t dimension() const override { return dim; }
 
   const size_t *get_hessian_ids() const override {
@@ -380,11 +386,11 @@ public:
   }
 
   /**
-  * @brief Sets the Hessian column and block index for a vertex.
-  * @param global_id The global ID of the vertex.
-  * @param hessian_column The Hessian column index.
-  * @param block_index The block index.
-  */
+   * @brief Sets the Hessian column and block index for a vertex.
+   * @param global_id The global ID of the vertex.
+   * @param hessian_column The Hessian column index.
+   * @param block_index The block index.
+   */
   void set_hessian_column(const size_t global_id, const size_t hessian_column,
                           const size_t block_index) {
     const auto local_id = global_to_local_map.at(global_id);
@@ -393,8 +399,8 @@ public:
   }
 
   /**
-  * @brief Clears all vertices and resets the descriptor to an empty state.
-  */
+   * @brief Clears all vertices and resets the descriptor to an empty state.
+   */
   void clear() {
     x_device.clear();
     x_host.clear();
