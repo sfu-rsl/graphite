@@ -20,6 +20,9 @@
 
 namespace graphite {
 
+/**
+ * @brief Storage class for Jacobians of a factor.
+ */
 template <typename S> class JacobianStorage {
 public:
   std::pair<size_t, size_t> dimensions;
@@ -27,6 +30,9 @@ public:
   thrust::device_vector<S> data;
 };
 
+/**
+ * @brief Base class for factor descriptors.
+ */
 template <typename T, typename S> class BaseFactorDescriptor {
 public:
   using InvP = std::conditional_t<is_low_precision<S>::value, T, S>;
@@ -49,7 +55,7 @@ public:
       std::unordered_map<BaseVertexDescriptor<T, S> *,
                          thrust::device_vector<InvP>> &block_diagonals,
       const T *jacobian_scales, cudaStream_t stream) = 0;
-  // Computes the scalar hessian diagonal
+
   virtual void
   compute_hessian_scalar_diagonal_async(T *diagonal,
                                         const T *jacobian_scales) = 0;
@@ -110,6 +116,10 @@ struct transform_tuple<std::tuple<Ts...>, MetaFunc> {
 template <typename Tuple, template <typename> class MetaFunc>
 using transform_tuple_t = typename transform_tuple<Tuple, MetaFunc>::type;
 
+/**
+ * @brief Represents a group of factors which will be processed together on the
+ * GPU.
+ */
 template <typename T, typename S, typename FTraits>
 class FactorDescriptor : public BaseFactorDescriptor<T, S> {
 
@@ -164,6 +174,11 @@ public:
   std::array<JacobianStorage<S>, N> jacobians;
   std::array<S, Traits::dimension * Traits::dimension> default_precision_matrix;
 
+  /**
+   * @brief Constructs a FactorDescriptor with the given vertex descriptors.
+   * @tparam VertexDescPtrs Types of the vertex descriptor pointers.
+   * @param vertex_descriptors Pointers to the vertex descriptors.
+   */
   template <typename... VertexDescPtrs,
             typename = std::enable_if_t<sizeof...(VertexDescPtrs) == N>>
   FactorDescriptor(VertexDescPtrs... vertex_descriptors)
@@ -173,21 +188,37 @@ public:
     default_precision_matrix = get_default_precision_matrix();
   }
 
+  /**
+   * @brief Computes the residuals across all factors in the descriptor.
+   */
   void compute_error() override { ops::compute_error<T>(this); }
 
+  /**
+   * @brief Simultaneously computes the residuals and corresponding Jacobians
+   * using automatic differentiation.
+   */
   void compute_error_autodiff(StreamPool &streams) override {
     ops::compute_error_autodiff<T, S>(this, streams);
   }
 
+  /**
+   * @brief Computes the gradient vector b asynchronously.
+   */
   void compute_b_async(T *b, const T *jacobian_scales) override {
     ops::compute_b_async<T, S>(this, b, jacobian_scales);
   }
 
+  /**
+   * @brief Computes the product of the Jacobian matrix and a vector.
+   */
   void compute_Jv(T *out, T *in, const T *jacobian_scales,
                   StreamPool &streams) override {
     ops::compute_Jv<T, S>(this, out, in, jacobian_scales, streams);
   }
 
+  /**
+   * @brief Computes the product of the transposed Jacobian matrix and a vector.
+   */
   void compute_Jtv(T *out, T *in, const T *jacobian_scales,
                    StreamPool &streams) override {
     ops::compute_Jtv<T, S>(this, out, in, jacobian_scales, streams);
@@ -197,6 +228,9 @@ public:
     ops::flag_active_vertices(this, level);
   }
 
+  /**
+   * @brief Computes the Jacobians using manual differentiation.
+   */
   void compute_jacobians(StreamPool &streams) override {
     if constexpr (std::is_same_v<typename Traits::Differentiation,
                                  DifferentiationMode::Manual>) {
@@ -204,6 +238,9 @@ public:
     }
   }
 
+  /**
+   * @brief Computes the block diagonal of the Hessian matrix asynchronously.
+   */
   void compute_hessian_block_diagonal_async(
       std::unordered_map<BaseVertexDescriptor<T, S> *,
                          thrust::device_vector<InvP>> &block_diagonals,
@@ -218,18 +255,37 @@ public:
                                       stream);
   }
 
+  /**
+   * @brief Computes the scalar diagonal of the Hessian matrix asynchronously.
+   */
   void
   compute_hessian_scalar_diagonal_async(T *diagonal,
                                         const T *jacobian_scales) override {
     ops::compute_hessian_scalar_diagonal<T, S>(this, diagonal, jacobian_scales);
   }
 
+  /**
+   * @brief Returns the number of vertices connected to each factor.
+   */
   static constexpr size_t get_num_vertices() { return N; }
 
+  /**
+   * @brief Returns the number of vertex descriptors (same as the number of
+   * vertices for each factor).
+   */
   size_t get_num_descriptors() const override { return N; }
 
+  /**
+   * @brief Returns the Jacobian storage for the factor.
+   */
   JacobianStorage<S> *get_jacobians() override { return jacobians.data(); }
 
+  /**
+   * @brief Reserves memory for the factor. Generally, you should always reserve
+   * the memory you need before adding factors, because reallocating GPU memory
+   * is expensive.
+   * @param size The number of factors to reserve memory for.
+   */
   void reserve(size_t size) {
     global_ids.reserve(N * size);
     host_ids.reserve(N * size);
@@ -245,6 +301,11 @@ public:
     active.reserve(size);
   }
 
+  /**
+   * @brief Removes a factor by its id.
+   * @param id The id of the factor to remove (i.e. the id returned by
+   * add_factor).
+   */
   void remove_factor(const size_t id) {
     if (global_to_local_map.find(id) == global_to_local_map.end()) {
       std::cerr << "Factor with id " << id << " not found." << std::endl;
@@ -299,6 +360,17 @@ public:
     hm.release(id);
   }
 
+  /**
+   * @brief Adds a factor to the descriptor.
+   * @param ids The ids of the vertices connected to the factor. Note that later
+   * arguments have default values.
+   * @param obs The observation associated with the factor.
+   * @param precision_matrix The precision matrix for the factor (default
+   * nullptr is the identity matrix).
+   * @param constraint_data The constraint data for the factor.
+   * @param loss_func The loss function for the factor.
+   * @return The id of the added factor.
+   */
   size_t
   add_factor(const std::array<size_t, N> &ids,
              const ObservationType &obs = ObservationType(),
@@ -340,6 +412,11 @@ public:
     return id; // only global within this class (it's just an external id)
   }
 
+  /**
+   * @brief Sets the active state of a factor.
+   * @param id The id of the factor.
+   * @param active_value The active state value to set (e.g 0).
+   */
   void set_active(size_t id, const uint8_t active_value) {
     if (global_to_local_map.find(id) == global_to_local_map.end()) {
       std::cerr << "Factor with id " << id << " not found." << std::endl;
@@ -353,13 +430,29 @@ public:
         NOT_MSB & active_value; // we reserve the MSB for later use
   }
 
+  /**
+   * @brief Resets the active state of all factors to 0x1.
+   */
   void reset_active() {
     thrust::fill(thrust::device, active.begin(), active.end(), 0x1);
   }
 
+  /**
+   * @brief Returns the number of all active and inactive factors.
+   * @return The internal count of all factors.
+   */
   size_t internal_count() const { return global_ids.size() / N; }
+
+  /**
+   * @brief Returns the number of active factors.
+   * @return The count of active factors.
+   */
   size_t active_count() const override { return _active_count; }
 
+  /**
+   * @brief Initializes the device ids and a list of active factors.
+   * @param optimization_level The optimization level to use.
+   */
   void initialize_device_ids(const uint8_t optimization_level) override {
     // Map constraint ids to local ids
     host_ids.resize(global_ids.size());
@@ -374,6 +467,9 @@ public:
                                          internal_count(), optimization_level);
   }
 
+  /**
+   * @brief Prepares descriptor for GPU processing.
+   */
   void to_device() override {
     chi2_vec.resize(internal_count());
     chi2_derivative.resize(internal_count());
@@ -383,6 +479,11 @@ public:
     thrust::fill(residuals.begin(), residuals.end(), 0);
   }
 
+  /**
+   * @brief Links the factor to the given vertex descriptors. This is already
+   * called during construction.
+   * @param vertex_descriptors The array of vertex descriptors to link.
+   */
   void link_factors(
       const std::array<BaseVertexDescriptor<T, S> *, N> &vertex_descriptors) {
     this->vertex_descriptors = vertex_descriptors;
@@ -396,7 +497,11 @@ public:
              ->vertices())...);
   }
 
-  // Return tuple of N vertex pointers
+  /**
+   * @brief Returns a tuple of vertex pointers.
+   * @return A tuple containing pointers to the vertex data for each vertex
+   * descriptor.
+   */
   VertexPointerPointerTuple get_vertices() {
     return get_vertices_impl(std::make_index_sequence<N>{});
   }
@@ -408,10 +513,17 @@ public:
         std::tuple_element_t<I, VertexDescriptorTuple>::dim...};
   }
 
+  /**
+   * @brief Returns the sizes (dimensions) of the vertices.
+   * @return An array containing the sizes of the vertices.
+   */
   static constexpr std::array<size_t, N> get_vertex_sizes() {
     return get_vertex_sizes_impl(std::make_index_sequence<N>{});
   }
 
+  /**
+   * @brief Allocates memory for the Jacobians.
+   */
   void initialize_jacobian_storage() override {
     for (size_t i = 0; i < N; i++) {
       if (store_jacobians() || !std::is_same_v<typename Traits::Differentiation,
@@ -424,18 +536,32 @@ public:
     }
   }
 
+  /**
+   * @brief Returns the size of the vector for all active and inactive
+   * residuals.
+   * @return The size of the residuals.
+   */
   virtual size_t get_residual_size() const override {
     return error_dim * internal_count();
   }
 
-  // TODO: Make this consider kernels and active edges
+  /**
+   * @brief Computes the chi-squared value for all active and inactive factors.
+   * @return The chi-squared value.
+   */
   virtual T chi2() override {
     ops::compute_chi2_async<T, S>(this); // runs on stream 0
+    // TODO: Make this consider kernels and active edges
     return thrust::reduce(thrust::cuda::par.on(0), chi2_vec.begin(),
                           chi2_vec.end(), static_cast<T>(0.0),
                           thrust::plus<T>()); // want to sync here on stream 0
   }
 
+  /**
+   * @brief Returns the chi-squared value for a specific factor.
+   * @param id The id of the factor.
+   * @return The chi-squared value for the specified factor.
+   */
   T chi2(const size_t id) const {
     auto it = global_to_local_map.find(id);
     if (it == global_to_local_map.end()) {
@@ -445,6 +571,13 @@ public:
     return chi2_vec[it->second];
   }
 
+  /**
+   * @brief Returns the constraint data for a specific factor.
+   * @param id The id of the factor.
+   * @return A pointer to the constraint data for the specified factor, or
+   * nullptr if not found. The memory can be accessed on both the host and the
+   * device.
+   */
   ConstraintDataType *get_constraint_data(const size_t id) {
     auto it = global_to_local_map.find(id);
     if (it == global_to_local_map.end()) {
@@ -454,6 +587,12 @@ public:
     return &data[it->second];
   }
 
+  /**
+   * @brief Returns the vertex ids connected to a specific factor.
+   * @param id The id of the factor.
+   * @return An array containing the vertex ids connected to the specified
+   * factor.
+   */
   std::array<size_t, N> get_vertex_ids(const size_t id) const {
     auto it = global_to_local_map.find(id);
     if (it == global_to_local_map.end()) {
@@ -468,25 +607,54 @@ public:
     return ids;
   }
 
+  /**
+   * @brief Scales the Jacobians asynchronously.
+   * @param jacobian_scales Pointer to the array of scales for the Jacobians.
+   */
   virtual void scale_jacobians_async(T *jacobian_scales) override {
     ops::scale_jacobians<T, S>(this, jacobian_scales);
   }
 
+  /**
+   * @brief Determines whether to use automatic differentiation based on the
+   * traits of the factor.
+   * @return True if automatic differentiation should be used, false otherwise.
+   */
   virtual bool use_autodiff() override {
     return use_autodiff_impl<typename Traits::Differentiation>();
   }
 
+  /**
+   * @brief Sets whether to store the Jacobians. If false, Jacobians will be
+   * computed dynamically (on-the-fly), which requires manual differentiation.
+   * @param store True to store the Jacobians (default mode), false to compute
+   * them dynamically.
+   */
   virtual void set_jacobian_storage(const bool store) {
     _store_jacobians = store;
   }
 
+  /**
+   * @brief Returns whether the Jacobians are stored.
+   * @return True if the Jacobians are stored, false otherwise.
+   */
   virtual bool store_jacobians() override { return _store_jacobians; }
 
+  /**
+   * @brief Determines whether dynamic Jacobian computation is supported (only
+   * supported for manual differentiation).
+   * @return True if dynamic Jacobian computation is supported, false otherwise.
+   */
   virtual bool supports_dynamic_jacobians() override {
     return std::is_same_v<typename Traits::Differentiation,
                           DifferentiationMode::Manual>;
   }
 
+  /**
+   * @brief Determines which Hessian blocks are filled in (upper triangle).
+   * @param block_coords A vector to be filled with the coordinates of the
+   * Hessian blocks that are filled in by this factor descriptor.
+   */
   virtual void get_hessian_block_coordinates(
       thrust::device_vector<BlockCoordinates> &block_coords) override {
     const size_t num_vertices = get_num_vertices();
@@ -526,6 +694,12 @@ public:
     }
   }
 
+  /**
+   * @brief Sets up data needed to compute the upper triangle of the Hessian
+   * matrix on the GPU.
+   * @returns The number of multiplications that will be performed by this
+   * descriptor.
+   */
   virtual size_t setup_hessian_computation(
       std::unordered_map<BlockCoordinates, size_t> &block_indices,
       thrust::device_vector<S> &d_hessian, size_t *h_block_offsets,
@@ -589,6 +763,12 @@ public:
     return mul_count;
   }
 
+  /**
+   * @brief Executes the Hessian block computations for this descriptor using
+   * the data from setup_hessian_computation.
+   * @returns The number of multiplications that were performed by this
+   * descriptor.
+   */
   virtual size_t execute_hessian_computation(
       std::unordered_map<BlockCoordinates, size_t> &block_indices,
       thrust::device_vector<S> &d_hessian, size_t *d_block_offsets,
@@ -645,6 +825,9 @@ public:
     return mul_count;
   }
 
+  /**
+   * @brief Clears all data associated with this factor descriptor.
+   */
   void clear() {
     global_ids.clear();
     global_to_local_map.clear();
@@ -675,6 +858,10 @@ public:
   }
 
 private:
+  /**
+   * @brief Gets the default precision matrix (identity matrix).
+   * @return An array representing the default precision matrix.
+   */
   constexpr static std::array<S, error_dim * error_dim>
   get_default_precision_matrix() {
     constexpr size_t E = error_dim;
