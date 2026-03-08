@@ -74,6 +74,33 @@ if (BUILD_DOCS)
     message(WARNING "Doxygen not found! 'docs' target will not be available.")
   endif()
 
+endif()
+
+option(BUILD_TESTS "Build unit tests" ON)
+
+if (BUILD_TESTS)
+
+  FetchContent_Declare(
+    googletest
+    URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
+  )
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(googletest)
+
+  enable_testing()
+
+  add_executable(
+    tests
+    tests/tests.cu
+  )
+  target_link_libraries(
+    tests
+    PRIVATE graphite
+    PRIVATE GTest::gtest_main
+  )
+
+  include(GoogleTest)
+  gtest_discover_tests(tests)
 
 endif()
 
@@ -84,7 +111,7 @@ find_program(CLANG_FORMAT_BIN NAMES clang-format)
 if(CLANG_FORMAT_BIN)
   file(GLOB_RECURSE FORMAT_FILES
     "include/graphite/*.cpp" "include/graphite/*.hpp" "include/graphite/*.c" "include/graphite/*.h" "include/graphite/*.cu" "include/graphite/*.cuh"
-    "examples/*.cpp" "examples/*.hpp" "examples/*.c" "examples/*.h" "examples/*.cu" "examples/*.cuh"
+    "examples/*.cpp" "examples/*.hpp" "examples/*.c" "examples/*.h" "examples/*.cu" "examples/*.cuh" "tests/*.cu"
   )
   list(FILTER FORMAT_FILES EXCLUDE REGEX "examples/argparse/*")
   add_custom_target(format
