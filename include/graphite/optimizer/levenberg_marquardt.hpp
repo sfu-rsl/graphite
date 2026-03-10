@@ -1,19 +1,19 @@
-/// @file optimizer.hpp
+/// @file levenberg_marquardt.hpp
 #pragma once
 #include <graphite/graph.hpp>
 #include <graphite/solver/solver.hpp>
 #include <iomanip>
 
 /**
-* @namespace graphite
-* @brief The top-level namespace for Graphite
-*/
+ * @namespace graphite
+ * @brief The top-level namespace for Graphite
+ */
 namespace graphite {
 
 /**
-* @namespace graphite::optimizer
-* @brief Optimization algorithms for Graphite
-*/
+ * @namespace graphite::optimizer
+ * @brief Optimization algorithms for Graphite
+ */
 namespace optimizer {
 
 template <typename T, typename S>

@@ -5,9 +5,9 @@
 namespace graphite {
 
 /**
-* @namespace graphite::ops
-* @brief Operations for Graphite
-*/
+ * @namespace graphite::ops
+ * @brief Operations for Graphite
+ */
 namespace ops {
 
 // For flagging active vertices of a factor

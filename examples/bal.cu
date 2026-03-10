@@ -14,7 +14,7 @@
 
 #include "argparse/argparse.hpp"
 #include "reprojection_error.cuh"
-#include <graphite/optimizer.hpp>
+#include <graphite/optimizer/levenberg_marquardt.hpp>
 #include <graphite/preconditioner/block_jacobi.hpp>
 #include <graphite/solver/cudss.hpp>
 #include <graphite/solver/eigen.hpp>

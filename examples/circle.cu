@@ -5,7 +5,7 @@
 #include <Eigen/Dense>
 #include <array>
 #include <chrono>
-#include <graphite/optimizer.hpp>
+#include <graphite/optimizer/levenberg_marquardt.hpp>
 #include <graphite/preconditioner/identity.hpp>
 #include <graphite/solver/pcg.hpp>
 #include <iostream>
