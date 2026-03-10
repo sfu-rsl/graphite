@@ -138,8 +138,9 @@ TEST(FactorDescriptorTests, UseAutodiffReflectsDifferentiationMode) {
 
 TEST(FactorDescriptorTests, ComputeError) {
   Vec2Descriptor vertex_desc;
-  test_types::Vec2 v{7.0f, 0.0f};
-  vertex_desc.add_vertex(10, &v, false);
+  graphite::managed_vector<Vec2> vertices;
+  vertices.push_back(Vec2{7.0f, 0.0f});
+  vertex_desc.add_vertex(10, vertices.data().get(), false);
   vertex_desc.to_device();
 
   ManualFactor factor(&vertex_desc);
@@ -157,12 +158,15 @@ TEST(FactorDescriptorTests, ComputeError) {
 
 TEST(FactorDescriptorTests, AddFactor) {
   Vec2Descriptor vertex_desc;
-  test_types::Vec2 v0{1.0f, 0.0f};
-  test_types::Vec2 v1{2.0f, 0.0f};
-  test_types::Vec2 v2{3.0f, 0.0f};
-  vertex_desc.add_vertex(10, &v0, false);
-  vertex_desc.add_vertex(20, &v1, false);
-  vertex_desc.add_vertex(30, &v2, false);
+  graphite::managed_vector<Vec2> vertices;
+  vertices.reserve(3);
+  vertices.push_back(Vec2{1.0f, 0.0f});
+  vertices.push_back(Vec2{2.0f, 0.0f});
+  vertices.push_back(Vec2{3.0f, 0.0f});
+  Vec2 *v0 = vertices.data().get();
+  vertex_desc.add_vertex(10, v0, false);
+  vertex_desc.add_vertex(20, v0 + 1, false);
+  vertex_desc.add_vertex(30, v0 + 2, false);
 
   ManualFactor factor(&vertex_desc);
   const auto f0 = factor.add_factor({10}, 1.5f);
@@ -182,12 +186,15 @@ TEST(FactorDescriptorTests, AddFactor) {
 
 TEST(FactorDescriptorTests, RemoveFactorFromBeginning) {
   Vec2Descriptor vertex_desc;
-  test_types::Vec2 v0{1.0f, 0.0f};
-  test_types::Vec2 v1{2.0f, 0.0f};
-  test_types::Vec2 v2{3.0f, 0.0f};
-  vertex_desc.add_vertex(10, &v0, false);
-  vertex_desc.add_vertex(20, &v1, false);
-  vertex_desc.add_vertex(30, &v2, false);
+  graphite::managed_vector<Vec2> vertices;
+  vertices.reserve(3);
+  vertices.push_back(Vec2{1.0f, 0.0f});
+  vertices.push_back(Vec2{2.0f, 0.0f});
+  vertices.push_back(Vec2{3.0f, 0.0f});
+  Vec2 *v0 = vertices.data().get();
+  vertex_desc.add_vertex(10, v0, false);
+  vertex_desc.add_vertex(20, v0 + 1, false);
+  vertex_desc.add_vertex(30, v0 + 2, false);
 
   ManualFactor factor(&vertex_desc);
   const auto f0 = factor.add_factor({10}, 1.5f);
@@ -205,12 +212,15 @@ TEST(FactorDescriptorTests, RemoveFactorFromBeginning) {
 
 TEST(FactorDescriptorTests, RemoveFactorFromMiddle) {
   Vec2Descriptor vertex_desc;
-  test_types::Vec2 v0{1.0f, 0.0f};
-  test_types::Vec2 v1{2.0f, 0.0f};
-  test_types::Vec2 v2{3.0f, 0.0f};
-  vertex_desc.add_vertex(10, &v0, false);
-  vertex_desc.add_vertex(20, &v1, false);
-  vertex_desc.add_vertex(30, &v2, false);
+  graphite::managed_vector<Vec2> vertices;
+  vertices.reserve(3);
+  vertices.push_back(Vec2{1.0f, 0.0f});
+  vertices.push_back(Vec2{2.0f, 0.0f});
+  vertices.push_back(Vec2{3.0f, 0.0f});
+  Vec2 *v0 = vertices.data().get();
+  vertex_desc.add_vertex(10, v0, false);
+  vertex_desc.add_vertex(20, v0 + 1, false);
+  vertex_desc.add_vertex(30, v0 + 2, false);
 
   ManualFactor factor(&vertex_desc);
   const auto f0 = factor.add_factor({10}, 1.5f);
@@ -228,12 +238,15 @@ TEST(FactorDescriptorTests, RemoveFactorFromMiddle) {
 
 TEST(FactorDescriptorTests, RemoveFactorFromEnd) {
   Vec2Descriptor vertex_desc;
-  test_types::Vec2 v0{1.0f, 0.0f};
-  test_types::Vec2 v1{2.0f, 0.0f};
-  test_types::Vec2 v2{3.0f, 0.0f};
-  vertex_desc.add_vertex(10, &v0, false);
-  vertex_desc.add_vertex(20, &v1, false);
-  vertex_desc.add_vertex(30, &v2, false);
+  graphite::managed_vector<Vec2> vertices;
+  vertices.reserve(3);
+  vertices.push_back(Vec2{1.0f, 0.0f});
+  vertices.push_back(Vec2{2.0f, 0.0f});
+  vertices.push_back(Vec2{3.0f, 0.0f});
+  Vec2 *v0 = vertices.data().get();
+  vertex_desc.add_vertex(10, v0, false);
+  vertex_desc.add_vertex(20, v0 + 1, false);
+  vertex_desc.add_vertex(30, v0 + 2, false);
 
   ManualFactor factor(&vertex_desc);
   const auto f0 = factor.add_factor({10}, 1.5f);
@@ -251,12 +264,15 @@ TEST(FactorDescriptorTests, RemoveFactorFromEnd) {
 
 TEST(FactorDescriptorTests, RemoveAllFactors) {
   Vec2Descriptor vertex_desc;
-  test_types::Vec2 v0{1.0f, 0.0f};
-  test_types::Vec2 v1{2.0f, 0.0f};
-  test_types::Vec2 v2{3.0f, 0.0f};
-  vertex_desc.add_vertex(10, &v0, false);
-  vertex_desc.add_vertex(20, &v1, false);
-  vertex_desc.add_vertex(30, &v2, false);
+  graphite::managed_vector<Vec2> vertices;
+  vertices.reserve(3);
+  vertices.push_back(Vec2{1.0f, 0.0f});
+  vertices.push_back(Vec2{2.0f, 0.0f});
+  vertices.push_back(Vec2{3.0f, 0.0f});
+  Vec2 *v0 = vertices.data().get();
+  vertex_desc.add_vertex(10, v0, false);
+  vertex_desc.add_vertex(20, v0 + 1, false);
+  vertex_desc.add_vertex(30, v0 + 2, false);
 
   ManualFactor factor(&vertex_desc);
   const auto f0 = factor.add_factor({10}, 1.5f);
@@ -279,8 +295,9 @@ TEST(FactorDescriptorTests, RemoveAllFactors) {
 
 TEST(FactorDescriptorTests, ComputeErrorAutodiff) {
   Vec2Descriptor vertex_desc;
-  test_types::Vec2 v{7.0f, 0.0f};
-  vertex_desc.add_vertex(10, &v, false);
+  graphite::managed_vector<Vec2> vertices;
+  vertices.push_back(Vec2{7.0f, 0.0f});
+  vertex_desc.add_vertex(10, vertices.data().get(), false);
   vertex_desc.to_device();
 
   AutoFactor factor(&vertex_desc);
@@ -306,10 +323,13 @@ TEST(FactorDescriptorTests, ComputeErrorAutodiff) {
 
 TEST(FactorDescriptorTests, FlagActiveVerticesAsync) {
   Vec2Descriptor vertex_desc;
-  test_types::Vec2 v0{7.0f, 0.0f};
-  test_types::Vec2 v1{9.0f, 1.0f};
-  vertex_desc.add_vertex(10, &v0, false);
-  vertex_desc.add_vertex(20, &v1, false);
+  graphite::managed_vector<Vec2> vertices;
+  vertices.reserve(2);
+  vertices.push_back(Vec2{7.0f, 0.0f});
+  vertices.push_back(Vec2{9.0f, 1.0f});
+  Vec2 *v0 = vertices.data().get();
+  vertex_desc.add_vertex(10, v0, false);
+  vertex_desc.add_vertex(20, v0 + 1, false);
   vertex_desc.to_device();
 
   ManualFactor factor(&vertex_desc);
@@ -339,8 +359,9 @@ TEST(FactorDescriptorTests, FlagActiveVerticesAsync) {
 
 TEST(FactorDescriptorTests, ComputeJacobians) {
   Vec2Descriptor vertex_desc;
-  test_types::Vec2 v{7.0f, 0.0f};
-  vertex_desc.add_vertex(10, &v, false);
+  graphite::managed_vector<Vec2> vertices;
+  vertices.push_back(Vec2{7.0f, 0.0f});
+  vertex_desc.add_vertex(10, vertices.data().get(), false);
   vertex_desc.to_device();
 
   ManualFactor factor(&vertex_desc);
@@ -361,8 +382,9 @@ TEST(FactorDescriptorTests, ComputeJacobians) {
 
 TEST(FactorDescriptorTests, ScaleJacobiansAsync) {
   Vec2Descriptor vertex_desc;
-  test_types::Vec2 v{7.0f, 0.0f};
-  vertex_desc.add_vertex(10, &v, false);
+  graphite::managed_vector<Vec2> vertices;
+  vertices.push_back(Vec2{7.0f, 0.0f});
+  vertex_desc.add_vertex(10, vertices.data().get(), false);
   vertex_desc.set_hessian_column(10, 0, 0);
   vertex_desc.to_device();
 
@@ -402,8 +424,9 @@ TEST(FactorDescriptorTests, ScaleJacobiansAsync) {
 
 TEST(FactorDescriptorTests, ComputeB) {
   Vec2Descriptor vertex_desc;
-  test_types::Vec2 v{7.0f, 0.0f};
-  vertex_desc.add_vertex(10, &v, false);
+  graphite::managed_vector<Vec2> vertices;
+  vertices.push_back(Vec2{7.0f, 0.0f});
+  vertex_desc.add_vertex(10, vertices.data().get(), false);
   vertex_desc.set_hessian_column(10, 0, 0);
   vertex_desc.to_device();
 
@@ -444,8 +467,9 @@ TEST(FactorDescriptorTests, ComputeB) {
 
 TEST(FactorDescriptorTests, ComputeBHuberLoss) {
   Vec2Descriptor vertex_desc;
-  test_types::Vec2 v{7.0f, 0.0f};
-  vertex_desc.add_vertex(10, &v, false);
+  graphite::managed_vector<Vec2> vertices;
+  vertices.push_back(Vec2{7.0f, 0.0f});
+  vertex_desc.add_vertex(10, vertices.data().get(), false);
   vertex_desc.set_hessian_column(10, 0, 0);
   vertex_desc.to_device();
 
@@ -486,8 +510,9 @@ TEST(FactorDescriptorTests, ComputeBHuberLoss) {
 
 TEST(FactorDescriptorTests, ComputeHessianBlockDiagonal) {
   Vec2Descriptor vertex_desc;
-  test_types::Vec2 v{7.0f, 0.0f};
-  vertex_desc.add_vertex(10, &v, false);
+  graphite::managed_vector<Vec2> vertices;
+  vertices.push_back(Vec2{7.0f, 0.0f});
+  vertex_desc.add_vertex(10, vertices.data().get(), false);
   vertex_desc.set_hessian_column(10, 0, 0);
   vertex_desc.to_device();
 
@@ -531,8 +556,9 @@ TEST(FactorDescriptorTests, ComputeHessianBlockDiagonal) {
 
 TEST(FactorDescriptorTests, ComputeHessianScalarDiagonal) {
   Vec2Descriptor vertex_desc;
-  test_types::Vec2 v{7.0f, 0.0f};
-  vertex_desc.add_vertex(10, &v, false);
+  graphite::managed_vector<Vec2> vertices;
+  vertices.push_back(Vec2{7.0f, 0.0f});
+  vertex_desc.add_vertex(10, vertices.data().get(), false);
   vertex_desc.set_hessian_column(10, 0, 0);
   vertex_desc.to_device();
 
@@ -570,8 +596,9 @@ TEST(FactorDescriptorTests, ComputeHessianScalarDiagonal) {
 
 TEST(FactorDescriptorTests, ComputeJvHuberLoss) {
   Vec2Descriptor vertex_desc;
-  test_types::Vec2 v{7.0f, 0.0f};
-  vertex_desc.add_vertex(10, &v, false);
+  graphite::managed_vector<Vec2> vertices;
+  vertices.push_back(Vec2{7.0f, 0.0f});
+  vertex_desc.add_vertex(10, vertices.data().get(), false);
   vertex_desc.set_hessian_column(10, 0, 0);
   vertex_desc.to_device();
 
@@ -647,8 +674,9 @@ TEST(FactorDescriptorTests, ComputeJvHuberLoss) {
 
 TEST(FactorDescriptorTests, ComputeJtvHuberLoss) {
   Vec2Descriptor vertex_desc;
-  test_types::Vec2 v{7.0f, 0.0f};
-  vertex_desc.add_vertex(10, &v, false);
+  graphite::managed_vector<Vec2> vertices;
+  vertices.push_back(Vec2{7.0f, 0.0f});
+  vertex_desc.add_vertex(10, vertices.data().get(), false);
   vertex_desc.set_hessian_column(10, 0, 0);
   vertex_desc.to_device();
 
@@ -729,8 +757,9 @@ TEST(FactorDescriptorTests, ComputeJtvHuberLoss) {
 
 TEST(FactorDescriptorTests, Chi2HuberLoss) {
   Vec2Descriptor vertex_desc;
-  test_types::Vec2 v{7.0f, 0.0f};
-  vertex_desc.add_vertex(10, &v, false);
+  graphite::managed_vector<Vec2> vertices;
+  vertices.push_back(Vec2{7.0f, 0.0f});
+  vertex_desc.add_vertex(10, vertices.data().get(), false);
   vertex_desc.to_device();
 
   ManualHuberFactor factor(&vertex_desc);
@@ -756,8 +785,9 @@ TEST(FactorDescriptorTests, Chi2HuberLoss) {
 
 TEST(FactorDescriptorTests, GetDefaultPrecisionMatrix) {
   Vec2Descriptor vertex_desc;
-  test_types::Vec2 v{7.0f, 5.0f};
-  vertex_desc.add_vertex(10, &v, false);
+  graphite::managed_vector<Vec2> vertices;
+  vertices.push_back(Vec2{7.0f, 5.0f});
+  vertex_desc.add_vertex(10, vertices.data().get(), false);
   vertex_desc.to_device();
 
   Residual2ManualFactor factor(&vertex_desc);
@@ -772,10 +802,13 @@ TEST(FactorDescriptorTests, GetDefaultPrecisionMatrix) {
 
 TEST(FactorDescriptorTests, ClearResetsStorage) {
   Vec2Descriptor vertex_desc;
-  test_types::Vec2 v0{7.0f, 5.0f};
-  test_types::Vec2 v1{11.0f, 13.0f};
-  vertex_desc.add_vertex(10, &v0, false);
-  vertex_desc.add_vertex(20, &v1, false);
+  graphite::managed_vector<Vec2> vertices;
+  vertices.reserve(2);
+  vertices.push_back(Vec2{7.0f, 5.0f});
+  vertices.push_back(Vec2{11.0f, 13.0f});
+  Vec2 *v0 = vertices.data().get();
+  vertex_desc.add_vertex(10, v0, false);
+  vertex_desc.add_vertex(20, v0 + 1, false);
   vertex_desc.to_device();
 
   BinaryManualFactor factor(&vertex_desc, &vertex_desc);
@@ -820,10 +853,13 @@ TEST(FactorDescriptorTests, ClearResetsStorage) {
 
 TEST(FactorDescriptorTests, ComputeHessian) {
   Vec2Descriptor vertex_desc;
-  test_types::Vec2 v0{7.0f, 5.0f};
-  test_types::Vec2 v1{11.0f, 13.0f};
-  vertex_desc.add_vertex(10, &v0, false);
-  vertex_desc.add_vertex(20, &v1, false);
+  graphite::managed_vector<Vec2> vertices;
+  vertices.reserve(2);
+  vertices.push_back(Vec2{7.0f, 5.0f});
+  vertices.push_back(Vec2{11.0f, 13.0f});
+  Vec2 *v0 = vertices.data().get();
+  vertex_desc.add_vertex(10, v0, false);
+  vertex_desc.add_vertex(20, v0 + 1, false);
   vertex_desc.set_hessian_column(10, 0, 0);
   vertex_desc.set_hessian_column(20, 2, 1);
   vertex_desc.to_device();
