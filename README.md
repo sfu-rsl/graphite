@@ -3,7 +3,7 @@
 Graphite is a GPU-accelerated nonlinear least squares graph optimization framework based on CUDA. It lets you define an optimization problem in terms of unary, binary, and n-ary constraints (e.g. pose graph optimization, bundle adjustment), using data structures defined in C++, which may be useful for applications in robotics and computer vision such as SLAM. Graphite also supports configurable floating point precisions as well as mixed-precision solving.
 
 > [!WARNING]
-> Graphite is experimental. There may be several bugs, performance issues, and limitations. The interface and implementation may change over time.
+> Graphite is a work-in-progress research prototype. It may have several bugs, performance issues, and other limitations. The interface and implementation may change over time.
 
 ### Important Links
 
