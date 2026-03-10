@@ -1,5 +1,7 @@
 # Statically generated file for GitHub actions
 PROJECT_NAME = "Graphite"
+PROJECT_BRIEF = "GPU-accelerated graph optimization framework"
+PROJECT_NUMBER = "0.4.0"
 OUTPUT_DIRECTORY       = ../docs/
 INPUT                  = ../src/ ../include/ ../docs/markdown/ ../examples/
 EXCLUDE_PATTERNS       = */argparse/*
@@ -24,3 +26,4 @@ HTML_COLORSTYLE        = LIGHT
 HTML_HEADER = ../docs/header.html
 HTML_COPY_CLIPBOARD = NO
 USE_MATHJAX            = YES
+HTML_FOOTER = ../docs/footer.html

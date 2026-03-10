@@ -6,9 +6,9 @@ Graphite is a GPU-accelerated nonlinear least squares graph optimization framewo
 > Graphite is a work-in-progress research prototype. It may have several bugs, performance issues, and other limitations. The interface and implementation may change over time.
 
 ### Important Links
-
-- [Paper](https://arxiv.org/abs/2509.26581)
 - [Documentation](https://sfu-rsl.github.io/graphite/)
+- [GitHub Repository](https://github.com/sfu-rsl/graphite)
+- [Paper](https://arxiv.org/abs/2509.26581)
 
 ## License
 

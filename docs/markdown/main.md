@@ -10,9 +10,23 @@ To get started, you may find it helpful to view the [examples](./examples.html).
 \warning
 Graphite is a work-in-progress research prototype. It may have several bugs, performance issues, and other limitations. The interface and implementation may change over time.
 
+### Important Links
+- [Documentation](https://sfu-rsl.github.io/graphite/)
+- [GitHub Repository](https://github.com/sfu-rsl/graphite)
+- [Paper](https://arxiv.org/abs/2509.26581)
+
 ## Building
 
-You need a recent version of the CUDA Toolkit (e.g. >= 12.0), Eigen3, and cuDSS 0.7.0. Graphite can be built using CMake. A Dockerfile for development is also included, which can be used to create a devcontainer for VS Code (requires the NVIDIA Container Toolkit).
+You need the following dependencies:
+- CMake
+- Eigen3
+- CUDA Toolkit (e.g. >= 12.0)
+- cuDSS 0.7.0
+- Doxygen (optional, for documentation)
+
+Other dependencies are automatically fetched by CMake.
+
+We also provide a Dockerfile for development, along with a devcontainer configuration for Visual Studio Code (requires the NVIDIA Container Toolkit). 
 
 You can build Graphite and its examples using the following commands:
 
@@ -21,6 +35,8 @@ git clone https://github.com/sfu-rsl/graphite.git
 cmake -DCMAKE_BUILD_TYPE=Release graphite -B build
 cmake --build build
 ```
+
+You may also need to define `-DCMAKE_CUDA_ARCHITECTURES` if CMake cannot detect your GPU architecture. For example, for an NVIDIA RTX 3090, you can set it to `86`. You can look up the compute capability number for recent GPUs [here](https://developer.nvidia.com/cuda/gpus) and for older GPUs [here](https://developer.nvidia.com/cuda/gpus/legacy).
 
 ## Project Integration
 
