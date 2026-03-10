@@ -47,10 +47,4 @@ public:
   bool cleanup_streams;
 };
 
-StreamPool create_default_stream_pool() {
-  static cudaStream_t default_stream = cudaStreamPerThread;
-  static StreamPool default_pool(&default_stream, 1);
-  return default_pool;
-}
-
 } // namespace graphite

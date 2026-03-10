@@ -7,7 +7,7 @@
 
 namespace graphite {
 
-__device__ size_t get_thread_id() {
+__device__ __forceinline__ size_t get_thread_id() {
   return static_cast<size_t>(blockIdx.x) * static_cast<size_t>(blockDim.x) +
          static_cast<size_t>(threadIdx.x);
 }

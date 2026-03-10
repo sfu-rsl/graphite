@@ -1,5 +1,6 @@
 /// @file vertex.hpp
 #pragma once
+#include <graphite/active.hpp>
 #include <graphite/common.hpp>
 #include <graphite/ops/hessian.hpp>
 #include <graphite/ops/update.hpp>
