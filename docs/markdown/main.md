@@ -7,6 +7,35 @@ algorithm such as Levenberg-Marquardt.
 
 To get started, you may find it helpful to view the [examples](./examples.html).
 
+\warning
+Graphite is a work-in-progress research prototype. It may have several bugs, performance issues, and other limitations. The interface and implementation may change over time.
+
+## Building
+
+You need a recent version of the CUDA Toolkit (e.g. >= 12.0), Eigen3, and cuDSS 0.7.0. Graphite can be built using CMake. A Dockerfile for development is also included, which can be used to create a devcontainer for VS Code (requires the NVIDIA Container Toolkit).
+
+You can build Graphite and its examples using the following commands:
+
+```bash
+git clone https://github.com/sfu-rsl/graphite.git
+cmake -DCMAKE_BUILD_TYPE=Release graphite -B build
+cmake --build build
+```
+
+## Project Integration
+
+To instead use Graphite as a library inside an existing CMake project,
+you can add it as a dependency using the [`add_subdirectory(...)`](https://cmake.org/cmake/help/latest/command/add_subdirectory.html) command in your `CMakeLists.txt` file. You can then link `graphite` to your build target. 
+
+You may also have to adjust the following settings near the top of your project's CMakeLists.txt file, before adding the subdirectory:
+```cmake
+project(YourProject LANGUAGES CUDA CXX)
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --extended-lambda --default-stream per-thread")
+set(CMAKE_CUDA_ARCHITECTURES 86) # You may need to look up the correct CC number for your GPU
+```
+
+\note
+Graphite code should be called inside a .cu file to avoid compile errors.
 
 ## Workflow
 
