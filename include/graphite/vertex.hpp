@@ -3,66 +3,13 @@
 #include <graphite/active.hpp>
 #include <graphite/common.hpp>
 #include <graphite/ops/hessian.hpp>
+#include <graphite/ops/state.hpp>
 #include <graphite/ops/update.hpp>
 #include <graphite/stream.hpp>
 #include <graphite/vector.hpp>
 #include <type_traits>
 
 namespace graphite {
-
-template <typename, typename = void>
-struct has_type_alias_State : std::false_type {};
-
-template <typename T>
-struct has_type_alias_State<T, std::void_t<typename T::State>>
-    : std::true_type {};
-
-template <typename T, typename Fallback, typename = void> struct get_State_or {
-  using type = Fallback;
-};
-
-// Specialization: use T::State if it exists
-template <typename T, typename Fallback>
-struct get_State_or<T, Fallback, std::void_t<typename T::State>> {
-  using type = typename T::State;
-};
-
-// Helper alias
-template <typename T, typename Fallback>
-using get_State_or_t = typename get_State_or<T, Fallback>::type;
-
-template <typename VertexType, typename State, typename Traits, typename T>
-__global__ void backup_state_kernel(VertexType **vertices, State *dst,
-                                    const uint8_t *active_state,
-                                    const size_t num_vertices) {
-
-  const size_t vertex_id = get_thread_id();
-
-  if (vertex_id >= num_vertices || !is_vertex_active(active_state, vertex_id))
-    return;
-  if constexpr (has_type_alias_State<Traits>::value) {
-    dst[vertex_id] = Traits::get_state(*vertices[vertex_id]);
-  } else {
-    dst[vertex_id] = *vertices[vertex_id];
-  }
-}
-
-template <typename VertexType, typename State, typename Traits, typename T>
-__global__ void set_state_kernel(VertexType **vertices, const State *src,
-                                 const uint8_t *active_state,
-                                 const size_t num_vertices) {
-
-  const size_t vertex_id = get_thread_id();
-
-  if (vertex_id >= num_vertices || !is_vertex_active(active_state, vertex_id))
-    return;
-
-  if constexpr (has_type_alias_State<Traits>::value) {
-    Traits::set_state(*vertices[vertex_id], src[vertex_id]);
-  } else {
-    *vertices[vertex_id] = src[vertex_id];
-  }
-}
 
 template <typename T, typename S> class BaseVertexDescriptor {
 public:
@@ -181,7 +128,7 @@ public:
     const auto num_blocks = (num_threads + block_size - 1) / block_size;
     backup_state.resize(num_vertices);
 
-    backup_state_kernel<VertexType, State, Traits, T>
+    ops::backup_state_kernel<VertexType, State, Traits, T>
         <<<num_blocks, block_size>>>(vertices, backup_state.data().get(),
                                      active_state.data().get(), num_vertices);
   }
@@ -196,7 +143,7 @@ public:
     const int num_threads = num_vertices;
     const int block_size = 256;
     const auto num_blocks = (num_threads + block_size - 1) / block_size;
-    set_state_kernel<VertexType, State, Traits, T>
+    ops::set_state_kernel<VertexType, State, Traits, T>
         <<<num_blocks, block_size>>>(vertices, backup_state.data().get(),
                                      active_state.data().get(), num_vertices);
   }
