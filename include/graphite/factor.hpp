@@ -113,9 +113,6 @@ struct transform_tuple<std::tuple<Ts...>, MetaFunc> {
   using type = std::tuple<typename MetaFunc<Ts>::type...>;
 };
 
-template <typename Tuple, template <typename> class MetaFunc>
-using transform_tuple_t = typename transform_tuple<Tuple, MetaFunc>::type;
-
 /**
  * @brief Represents a group of factors which will be processed together on the
  * GPU.
@@ -146,11 +143,13 @@ public:
 
   using VertexDescriptorTuple = typename Traits::VertexDescriptors;
   using VertexTypesTuple =
-      transform_tuple_t<VertexDescriptorTuple, get_vertex_type>;
+      typename transform_tuple<VertexDescriptorTuple, get_vertex_type>::type;
   using VertexPointerTuple =
-      transform_tuple_t<VertexDescriptorTuple, get_vertex_pointer_type>;
+      typename transform_tuple<VertexDescriptorTuple,
+                               get_vertex_pointer_type>::type;
   using VertexPointerPointerTuple =
-      transform_tuple_t<VertexDescriptorTuple, get_vertex_pointer_pointer_type>;
+      typename transform_tuple<VertexDescriptorTuple,
+                               get_vertex_pointer_pointer_type>::type;
 
   using ObservationType = typename Traits::Observation;
   using ConstraintDataType = typename Traits::Data;
