@@ -25,7 +25,6 @@ struct get_State_or<T, Fallback, std::void_t<typename T::State>> {
 template <typename T, typename Fallback>
 using get_State_or_t = typename get_State_or<T, Fallback>::type;
 
-
 namespace ops {
 
 template <typename VertexType, typename State, typename Traits, typename T>

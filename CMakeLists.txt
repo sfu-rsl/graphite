@@ -26,7 +26,7 @@ find_package(Eigen3 3.1 REQUIRED)
 find_package(cudss 0.7.0 REQUIRED)
 
 # Setup graphite library
-add_library(graphite src/active.cu src/eigen_solver.cpp)
+add_library(graphite src/active.cu src/stream.cpp src/eigen_solver.cpp)
 target_include_directories(graphite PUBLIC include)
 target_link_libraries(graphite PUBLIC CUDA::cublas Eigen3::Eigen cudss)
 
