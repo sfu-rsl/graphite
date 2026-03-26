@@ -1,61 +1,40 @@
-/// @file cudss.hpp
+/// @file cudss_schur.hpp
 #pragma once
-#include <cstdint>
+
 #include <cuda_runtime.h>
 #include <cudss.h>
 #include <graphite/hessian.hpp>
+#include <graphite/schur.hpp>
+#include <graphite/solver/cudss.hpp>
 #include <graphite/solver/solver.hpp>
-#include <type_traits>
 
 namespace graphite {
 
-class cudssSolverOptions {
-public:
-  /// Default is true, which enables cudss hybrid execution modewhere
-  bool use_hybrid_execution;
-
-  /// Setting this to a value > 0 DISABLES hybrid execution mode and instead
-  /// enables hybrid memory mode. Use this when your problem size is too large
-  /// to fit in GPU memory.
-  int64_t hybrid_memory;
-
-  /// The matrix type to use for cudss. Default is CUDSS_MTYPE_SYMMETRIC, which
-  /// is appropriate for Hessian matrices. You may also try CUDSS_MTYPE_SPD.
-  cudssMatrixType_t matrix_type;
-
-  cudssSolverOptions() {
-    use_hybrid_execution = true;
-    hybrid_memory = -1;
-    matrix_type = CUDSS_MTYPE_SYMMETRIC;
-  }
-};
-
-template <typename T> cudaDataType_t get_cuda_data_type();
-
-template <> inline cudaDataType_t get_cuda_data_type<double>() {
-  return CUDA_R_64F;
-}
-
-template <> inline cudaDataType_t get_cuda_data_type<float>() {
-  return CUDA_R_32F;
-}
-
-template <typename Index> inline cudaDataType_t get_cuda_index_type() {
-  static_assert(std::is_same<Index, int32_t>::value ||
-                    std::is_same<Index, int64_t>::value,
-                "cudssSolver index type must be int32_t or int64_t");
-  if (std::is_same<Index, int32_t>::value) {
-    return CUDA_R_32I;
-  }
-  return CUDA_R_64I;
-}
-
 template <typename T, typename S, typename Index = int32_t>
-class cudssSolver : public Solver<T, S> {
+class cudssSchurSolver : public Solver<T, S> {
 private:
   static_assert(std::is_same<Index, int32_t>::value ||
                     std::is_same<Index, int64_t>::value,
-                "cudssSolver index type must be int32_t or int64_t");
+                "cudssSchurSolver index type must be int32_t or int64_t");
+
+  Hessian<T, S> H;
+  SchurComplement<T, S> schur;
+  CSCMatrix<S, Index> d_matrix;
+  cudssMatrixType_t matrix_type;
+
+  bool factorization_failed;
+
+  cudaStream_t stream;
+  cudssHandle_t handle;
+
+  cudssConfig_t solver_config;
+  cudssData_t solver_data;
+
+  cudssMatrix_t m_x, m_b, m_A;
+
+  thrust::device_vector<T> solver_x;
+  size_t schur_dim;
+  int64_t configured_hybrid_memory_limit;
 
   void fill_matrix_structure() {
     const auto dim = d_matrix.d_pointers.size() - 1;
@@ -79,31 +58,14 @@ private:
     cudssMatrixSetValues(m_A, d_matrix.d_values.data().get());
   }
 
-  Hessian<T, S> H;
-  CSCMatrix<S, Index> d_matrix;
-  cudssMatrixType_t matrix_type;
-
-  bool factorization_failed;
-
-  cudaStream_t stream;
-  cudssHandle_t handle;
-
-  cudssConfig_t solver_config;
-  cudssData_t solver_data;
-
-  cudssMatrix_t m_x, m_b, m_A;
-
-  thrust::device_vector<T> solver_x;
-  int64_t configured_hybrid_memory_limit;
-
 public:
-  explicit cudssSolver(
-      const cudssSolverOptions &options = cudssSolverOptions()) {
+  explicit cudssSchurSolver(
+      const cudssSolverOptions &options = cudssSolverOptions())
+      : schur(H), factorization_failed(false), schur_dim(0) {
     stream = NULL;
     m_x = NULL;
     m_b = NULL;
     m_A = NULL;
-    factorization_failed = false;
     matrix_type = options.matrix_type;
     configured_hybrid_memory_limit = options.hybrid_memory;
 
@@ -131,7 +93,7 @@ public:
     cudssDataCreate(handle, &solver_data);
   }
 
-  ~cudssSolver() {
+  ~cudssSchurSolver() {
     if (m_A != NULL) {
       cudssMatrixDestroy(m_A);
       m_A = NULL;
@@ -155,36 +117,37 @@ public:
   virtual void update_structure(Graph<T, S> *graph,
                                 StreamPool &streams) override {
     H.build_structure(graph, streams);
-    H.build_csc_structure(graph, d_matrix);
+    schur.build_structure(graph, streams);
+    schur.build_csc_structure(graph, d_matrix);
     fill_matrix_structure();
 
-    // Create matrices for b and x
+    const auto &offsets = graph->get_offset_vector();
+    schur_dim = offsets[schur.lowest_eliminated_block_col];
+
     if (m_b != NULL) {
       cudssMatrixDestroy(m_b);
       m_b = NULL;
     }
-    const auto dim = graph->get_hessian_dimension();
-    auto &b = graph->get_b();
-    int ldb = dim;
-    int ldx = dim;
-    cudssMatrixCreateDn(&m_b, dim, 1, ldb, b.data().get(),
+    int ldb = static_cast<int>(schur_dim);
+    cudssMatrixCreateDn(&m_b, schur_dim, 1, ldb,
+                        schur.get_b_Schur().data().get(),
                         get_cuda_data_type<T>(), CUDSS_LAYOUT_COL_MAJOR);
 
     if (m_x != NULL) {
       cudssMatrixDestroy(m_x);
       m_x = NULL;
     }
-    solver_x.resize(b.size());
-    cudssMatrixCreateDn(&m_x, dim, 1, ldx, solver_x.data().get(),
+    solver_x.resize(schur_dim);
+    int ldx = static_cast<int>(schur_dim);
+    cudssMatrixCreateDn(&m_x, schur_dim, 1, ldx, solver_x.data().get(),
                         get_cuda_data_type<T>(), CUDSS_LAYOUT_COL_MAJOR);
 
-    // Factorize
     factorization_failed = false;
     auto status = cudssExecute(handle, CUDSS_PHASE_ANALYSIS, solver_config,
                                solver_data, m_A, m_x, m_b);
     if (status != CUDSS_STATUS_SUCCESS) {
       factorization_failed = true;
-      std::cerr << "cudss Analysis failed with error code: " << status
+      std::cerr << "cudss Schur analysis failed with error code: " << status
                 << std::endl;
     } else if (configured_hybrid_memory_limit > 0) {
       int64_t min_hybrid_memory = 0;
@@ -195,8 +158,8 @@ public:
       if (status == CUDSS_STATUS_SUCCESS &&
           configured_hybrid_memory_limit < min_hybrid_memory) {
         configured_hybrid_memory_limit = min_hybrid_memory;
-        std::cerr << "Requested cuDSS hybrid memory limit is too low; raising "
-                     "to minimum required "
+        std::cerr << "Requested cuDSS Schur hybrid memory limit is too low; "
+                     "raising to minimum required "
                   << configured_hybrid_memory_limit << " bytes." << std::endl;
         status = cudssConfigSet(solver_config,
                                 CUDSS_CONFIG_HYBRID_DEVICE_MEMORY_LIMIT,
@@ -204,9 +167,10 @@ public:
                                 sizeof(configured_hybrid_memory_limit));
         if (status != CUDSS_STATUS_SUCCESS) {
           factorization_failed = true;
-          std::cerr << "Failed to update cuDSS hybrid memory limit with error "
-                       "code: "
-                    << status << std::endl;
+          std::cerr
+              << "Failed to update cuDSS Schur hybrid memory limit with error "
+                 "code: "
+              << status << std::endl;
         }
       }
     }
@@ -215,54 +179,57 @@ public:
 
   virtual void update_values(Graph<T, S> *graph, StreamPool &streams) override {
     H.update_values(graph, streams);
-    H.update_csc_values(graph, d_matrix);
-    fill_matrix_values(); // for CPU matrix
+    schur.update_values(graph, streams);
+    schur.update_csc_values(graph, d_matrix);
+    fill_matrix_values();
   }
 
   virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor,
                                   const bool use_identity,
                                   StreamPool &streams) override {
     H.apply_damping(graph, damping_factor, use_identity, streams);
-    H.update_csc_values(graph, d_matrix);
-    fill_matrix_values(); // TODO: Use a more lightweight method to just update
-                          // diagonal
+    schur.update_values(graph, streams);
+    schur.update_csc_values(graph, d_matrix);
+    fill_matrix_values();
   }
 
   virtual bool solve(Graph<T, S> *graph, T *x, StreamPool &streams) override {
-
     if (factorization_failed) {
       return false;
     }
 
-    auto dim = graph->get_hessian_dimension();
+    const auto dim = graph->get_hessian_dimension();
 
     thrust::fill(thrust::device, x, x + dim, static_cast<T>(0.0));
-    thrust::copy(thrust::device, x, x + dim, solver_x.data());
+    thrust::fill(thrust::device, solver_x.begin(), solver_x.end(),
+                 static_cast<T>(0.0));
 
     cudssStatus_t status;
 
-    // set values for b and x
-    cudssMatrixSetValues(m_b, graph->get_b().data().get());
+    cudssMatrixSetValues(m_b, schur.get_b_Schur().data().get());
     cudssMatrixSetValues(m_x, solver_x.data().get());
 
     status = cudssExecute(handle, CUDSS_PHASE_FACTORIZATION, solver_config,
                           solver_data, m_A, m_x, m_b);
     if (status != CUDSS_STATUS_SUCCESS) {
-      std::cerr << "cudss Factorization failed with error code: " << status
-                << std::endl;
+      std::cerr << "cudss Schur factorization failed with error code: "
+                << status << std::endl;
       return false;
     }
 
     status = cudssExecute(handle, CUDSS_PHASE_SOLVE, solver_config, solver_data,
                           m_A, m_x, m_b);
     if (status != CUDSS_STATUS_SUCCESS) {
-      std::cerr << "cudss Solve failed with error code: " << status
+      std::cerr << "cudss Schur solve failed with error code: " << status
                 << std::endl;
       return false;
     }
     cudaStreamSynchronize(stream);
 
-    thrust::copy(thrust::device, solver_x.data(), solver_x.data() + dim, x);
+    thrust::copy(thrust::device, solver_x.data(), solver_x.data() + schur_dim,
+                 x);
+
+    schur.compute_landmark_update(graph, streams, x + schur_dim, x);
 
     return true;
   }

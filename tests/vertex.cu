@@ -147,7 +147,7 @@ TEST(VertexDescriptorTests, AugmentBlockDiagonal) {
 
   const float mu = 0.5f;
   desc.augment_block_diagonal_async(block_diagonal.data().get(),
-                                    scalar_diagonal.data().get(), mu, 0);
+                                    scalar_diagonal.data().get(), mu, false, 0);
   ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
 
   // Active vertex (block 0): only diagonal entries are updated.

@@ -114,6 +114,7 @@ public:
   };
 
   virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor,
+                                  const bool use_identity,
                                   StreamPool &streams) {
 
     const cudaStream_t stream = 0;
@@ -126,7 +127,7 @@ public:
     for (auto &desc : vertex_descriptors) {
       desc->augment_block_diagonal_async(block_diagonals[desc].data().get(),
                                          scalar_diagonals[desc].data().get(),
-                                         damping_factor, stream);
+                                         damping_factor, use_identity, stream);
 
       // Invert the block diagonal using cublas
       const auto d = desc->dimension();

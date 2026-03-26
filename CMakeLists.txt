@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(Graphite LANGUAGES CUDA CXX VERSION 0.4.0)
+project(Graphite LANGUAGES CUDA CXX VERSION 0.5.0)
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --extended-lambda")
 
 if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES OR CMAKE_CUDA_ARCHITECTURES EQUAL 52) # Newer versions default to 52 which is incompatible
@@ -25,10 +25,18 @@ find_package(CUDAToolkit REQUIRED)
 find_package(Eigen3 3.1 REQUIRED)
 find_package(cudss 0.7.0 REQUIRED)
 
+if(POLICY CMP0167)
+  cmake_policy(SET CMP0167 NEW)
+endif()
+if(POLICY CMP0135)
+  cmake_policy(SET CMP0135 NEW)
+endif()
+find_package(Boost REQUIRED)
+
 # Setup graphite library
 add_library(graphite src/stream.cpp src/eigen_solver.cpp)
 target_include_directories(graphite PUBLIC include)
-target_link_libraries(graphite PUBLIC CUDA::cublas Eigen3::Eigen cudss)
+target_link_libraries(graphite PUBLIC CUDA::cublas Eigen3::Eigen cudss Boost::boost)
 
 
 # Examples
@@ -79,10 +87,9 @@ endif()
 option(BUILD_TESTS "Build unit tests" ON)
 
 if (BUILD_TESTS)
-
   FetchContent_Declare(
     googletest
-    URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
+    URL https://github.com/google/googletest/archive/refs/tags/v1.16.0.zip
   )
   set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(googletest)
@@ -90,21 +97,22 @@ if (BUILD_TESTS)
   enable_testing()
 
   add_executable(
-    tests
-    tests/dual.cu
+    graphite_tests
     tests/factor.cu
+    tests/schur.cu
+    tests/schur_cpu_ref.cpp
     tests/vector.cu
     tests/vertex.cu
   )
 
   target_link_libraries(
-    tests
+    graphite_tests
     graphite
     GTest::gtest_main
   )
 
   include(GoogleTest)
-  gtest_discover_tests(tests)
+  gtest_discover_tests(graphite_tests)
 
 endif()
 

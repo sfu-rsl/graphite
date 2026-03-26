@@ -27,6 +27,7 @@ private:
   T tol;
   T rejection_ratio;
   T damping_factor;
+  bool use_identity_damping;
 
   Preconditioner<T, S> *preconditioner;
 
@@ -34,7 +35,8 @@ public:
   PCGSolver(size_t max_iter, T tol, T rejection_ratio,
             Preconditioner<T, S> *preconditioner)
       : max_iter(max_iter), tol(tol), rejection_ratio(rejection_ratio),
-        damping_factor(0), preconditioner(preconditioner) {}
+        damping_factor(0), use_identity_damping(false),
+        preconditioner(preconditioner) {}
 
   virtual void update_structure(Graph<T, S> *graph,
                                 StreamPool &streams) override {
@@ -47,9 +49,12 @@ public:
   }
 
   virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor,
+                                  const bool use_identity,
                                   StreamPool &streams) override {
     this->damping_factor = damping_factor;
-    preconditioner->set_damping_factor(graph, damping_factor, streams);
+    this->use_identity_damping = use_identity;
+    preconditioner->set_damping_factor(graph, damping_factor, use_identity,
+                                       streams);
   }
 
   // Assumes that x is already initialized
@@ -161,7 +166,8 @@ public:
       // Add damping factor
       // v2 += damping_factor*diag(H)*p
       ops::damp_by_factor_async(stream, dim_h, v2.data().get(), damping_factor,
-                                diag.data().get(), p.data().get());
+                                use_identity_damping, diag.data().get(),
+                                p.data().get());
 
       // 4. Compute alpha = dot(r, z) / dot(p, v2)
       T alpha = (rz) / thrust::inner_product(thrust::cuda::par.on(stream),

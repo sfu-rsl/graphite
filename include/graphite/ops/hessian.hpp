@@ -80,6 +80,7 @@ __global__ void compute_hessian_block_kernel(
 template <typename S, int D>
 __global__ void augment_hessian_diagonal_kernel(S *diagonal_blocks,
                                                 S *scalar_diagonal, const S mu,
+                                                const bool use_identity,
                                                 const uint8_t *active_state,
                                                 const size_t num_threads) {
   const size_t idx = get_thread_id();
@@ -97,21 +98,21 @@ __global__ void augment_hessian_diagonal_kernel(S *diagonal_blocks,
 
   S *block = diagonal_blocks + vertex_id * block_size;
   for (size_t i = 0; i < D; i++) {
-
-    // const double diag = static_cast<double>(block[i * D + i]);
     const double diag = static_cast<double>(scalar_diagonal[vertex_id * D + i]);
-    const double new_diag =
-        diag + static_cast<double>(mu) * std::clamp(diag, 1.0e-6, 1.0e32);
-    // const double new_diag =
-    //     diag + static_cast<double>(mu) * diag;
+    double new_diag = diag;
+    if (use_identity) {
+      new_diag += static_cast<double>(mu);
+    } else {
+      new_diag += static_cast<double>(mu) * std::clamp(diag, 1.0e-6, 1.0e32);
+    }
     block[i * D + i] = static_cast<S>(new_diag);
   }
 }
 
 template <typename T, typename S, typename V>
 void augment_block_diagonal(V *v, InvP<T, S> *block_diagonal,
-                            InvP<T, S> *scalar_diagonal, T mu,
-                            cudaStream_t stream) {
+                            InvP<T, S> *scalar_diagonal, const T mu,
+                            const bool use_identity, cudaStream_t stream) {
   const size_t num_threads = v->count();
   const auto threads_per_block = 256;
   const auto num_blocks =
@@ -119,7 +120,7 @@ void augment_block_diagonal(V *v, InvP<T, S> *block_diagonal,
 
   augment_hessian_diagonal_kernel<InvP<T, S>, V::dim>
       <<<num_blocks, threads_per_block, 0, stream>>>(
-          block_diagonal, scalar_diagonal, (InvP<T, S>)mu,
+          block_diagonal, scalar_diagonal, (InvP<T, S>)mu, use_identity,
           v->get_active_state(), num_threads);
 }
 

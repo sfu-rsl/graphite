@@ -14,6 +14,7 @@ public:
   virtual ~Solver() = default;
 
   virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor,
+                                  const bool use_identity,
                                   StreamPool &streams) = 0;
 
   virtual void update_structure(Graph<T, S> *graph, StreamPool &streams) = 0;

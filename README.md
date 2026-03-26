@@ -16,4 +16,10 @@ Graphite is released under the [MIT License](LICENSE.md).
 
 ## Contributing
 
-If you would like to contribute features, bug fixes, code improvements, or tests, please open an issue or discussion first. Questions about usage are better suited for discussion.
+If you would like to contribute features, bug fixes, code improvements, documentation, or tests, please open an issue or discussion first. Questions about usage are better suited for discussion.
+
+## Projects using Graphite
+
+- [FastLoop](https://github.com/sfu-rsl/FastLoop)
+
+If your project is using Graphite, please let us know so we can add it to the list!

@@ -4,9 +4,19 @@
 #include <graphite/stream.hpp>
 #include <graphite/vertex.hpp>
 #include <limits>
+#include <thrust/copy.h>
 #include <thrust/execution_policy.h>
+#include <thrust/host_vector.h>
+#include <thrust/sort.h>
 
 namespace graphite {
+
+struct GlobalToLocalEntry {
+  size_t global_id;
+  size_t descriptor_index;
+  size_t local_index;
+  bool eliminated;
+};
 
 /**
  * @brief Graph class which stores references to vertex and factor descriptors,
@@ -22,11 +32,14 @@ template <typename T, typename S> class Graph {
 private:
   std::vector<BaseVertexDescriptor<T, S> *> vertex_descriptors;
   std::vector<BaseFactorDescriptor<T, S> *> factor_descriptors;
+  thrust::host_vector<GlobalToLocalEntry> global_to_local_combined;
+  thrust::device_vector<GlobalToLocalEntry> d_global_to_local_combined;
   thrust::device_vector<T> b;
   thrust::device_vector<T> jacobian_scales;
   size_t hessian_column;
   std::vector<size_t> hessian_offsets;
   bool scale_jacobians;
+  size_t elimination_block;
 
 public:
   Graph() : scale_jacobians(true) {}
@@ -74,24 +87,39 @@ public:
     }
   }
 
+  size_t get_elimination_block_column() const { return elimination_block; }
+
   bool initialize_optimization(const uint8_t level) {
 
     // For each vertex descriptor, take global to local id mapping and transform
     // it into a Hessian column to local id mapping.
 
-    std::vector<std::pair<size_t, std::pair<size_t, size_t>>>
-        global_to_local_combined;
+    global_to_local_combined.clear();
+    d_global_to_local_combined.clear();
 
     for (size_t i = 0; i < vertex_descriptors.size(); ++i) {
       const auto &map = vertex_descriptors[i]->get_global_map();
+      const bool eliminated = vertex_descriptors[i]->get_eliminate();
       for (const auto &entry : map) {
-        global_to_local_combined.push_back({entry.first, {i, entry.second}});
+        global_to_local_combined.push_back(
+            GlobalToLocalEntry{entry.first, i, entry.second, eliminated});
       }
     }
 
-    // Sort the combined list by global ID
-    std::sort(global_to_local_combined.begin(), global_to_local_combined.end(),
-              [](const auto &a, const auto &b) { return a.first < b.first; });
+    // Sort the combined list by global ID on the GPU.
+    d_global_to_local_combined = global_to_local_combined;
+
+    thrust::sort(thrust::device, d_global_to_local_combined.begin(),
+                 d_global_to_local_combined.end(),
+                 [] __host__ __device__(const GlobalToLocalEntry &a,
+                                        const GlobalToLocalEntry &b) {
+                   if (a.eliminated != b.eliminated) {
+                     return !a.eliminated;
+                   }
+                   return a.global_id < b.global_id;
+                 });
+
+    global_to_local_combined = d_global_to_local_combined;
 
     // Initialize device ids and copy over factor and current vertex state
     for (auto &desc : factor_descriptors) {
@@ -103,12 +131,18 @@ public:
     hessian_column = 0;
     size_t hessian_block_index = 0;
     hessian_offsets.clear();
+    elimination_block = std::numeric_limits<size_t>::max();
     for (const auto &entry : global_to_local_combined) {
-      if (vertex_descriptors[entry.second.first]->is_active(entry.first)) {
-        vertex_descriptors[entry.second.first]->set_hessian_column(
-            entry.first, hessian_column, hessian_block_index);
+      if (vertex_descriptors[entry.descriptor_index]->is_active(
+              entry.global_id)) {
+        if (vertex_descriptors[entry.descriptor_index]->get_eliminate()) {
+          elimination_block = std::min(elimination_block, hessian_block_index);
+        }
+        vertex_descriptors[entry.descriptor_index]->set_hessian_column(
+            entry.global_id, hessian_column, hessian_block_index);
         hessian_offsets.push_back(hessian_column);
-        hessian_column += vertex_descriptors[entry.second.first]->dimension();
+        hessian_column +=
+            vertex_descriptors[entry.descriptor_index]->dimension();
         hessian_block_index++;
       }
     }
@@ -286,6 +320,8 @@ public:
   void clear() {
     vertex_descriptors.clear();
     factor_descriptors.clear();
+    global_to_local_combined.clear();
+    d_global_to_local_combined.clear();
     b.clear();
     jacobian_scales.clear();
     hessian_column = 0;

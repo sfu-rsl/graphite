@@ -1,6 +1,8 @@
-/// @file eigen.hpp
+/// @file eigen_schur_ldlt.hpp
 #pragma once
+
 #include <graphite/hessian.hpp>
+#include <graphite/schur.hpp>
 #include <graphite/solver/eigen_solver_interface.hpp>
 #include <graphite/solver/solver.hpp>
 
@@ -9,13 +11,14 @@ namespace graphite {
 template <typename T, typename S,
           typename Index =
               typename Eigen::SparseMatrix<S, Eigen::ColMajor>::StorageIndex>
-class EigenLDLTSolver : public Solver<T, S> {
+class EigenSchurLDLTSolver : public Solver<T, S> {
 private:
   EigenLDLTWrapper<S, Index> solver;
 
   Eigen::SparseMatrix<S, Eigen::ColMajor, Index> matrix;
 
   Hessian<T, S> H;
+  SchurComplement<T, S> schur;
   CSCMatrix<S, Index> d_matrix;
 
   thrust::host_vector<S> h_x;
@@ -44,55 +47,62 @@ private:
   }
 
 public:
-  EigenLDLTSolver() : solver() {}
+  EigenSchurLDLTSolver() : solver(), schur(H) {}
 
   virtual void update_structure(Graph<T, S> *graph,
                                 StreamPool &streams) override {
     H.build_structure(graph, streams);
-    H.build_csc_structure(graph, d_matrix);
-    fill_matrix_structure(); // for CPU matrix
+    schur.build_structure(graph, streams);
+    schur.build_csc_structure(graph, d_matrix);
+    fill_matrix_structure();
     solver.analyze_pattern(matrix);
   }
 
   virtual void update_values(Graph<T, S> *graph, StreamPool &streams) override {
     H.update_values(graph, streams);
-    H.update_csc_values(graph, d_matrix);
-    fill_matrix_values(); // for CPU matrix
+    schur.update_values(graph, streams);
+    schur.update_csc_values(graph, d_matrix);
+    fill_matrix_values();
   }
 
   virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor,
                                   const bool use_identity,
                                   StreamPool &streams) override {
     H.apply_damping(graph, damping_factor, use_identity, streams);
-    H.update_csc_values(graph, d_matrix);
-    fill_matrix_values(); // TODO: Use a more lightweight method to just update
-                          // diagonal
+    schur.update_values(graph, streams);
+    schur.update_csc_values(graph, d_matrix);
+    fill_matrix_values();
   }
 
   virtual bool solve(Graph<T, S> *graph, T *x, StreamPool &streams) override {
-
-    auto dim = graph->get_hessian_dimension();
-
     if (!solver.factorize(matrix)) {
-      std::cerr << "LDLT matrix decomposition failed!";
+      std::cerr << "Schur LDLT matrix decomposition failed!";
       return false;
     }
 
+    const auto dim = graph->get_hessian_dimension();
+    const auto &offsets = graph->get_offset_vector();
+    const auto p_block_col = schur.lowest_eliminated_block_col;
+    const auto p_dim = offsets[p_block_col];
+
     thrust::fill(thrust::device, x, x + dim, static_cast<T>(0.0));
 
-    thrust::copy(graph->get_b().begin(), graph->get_b().end(), h_b.data());
-    thrust::device_ptr<T> d_x(
-        x); // If you don't wrap the pointer, thrust breaks on older toolkits
-    thrust::copy(d_x, d_x + dim, h_x.data());
+    thrust::copy(schur.get_b_Schur().begin(), schur.get_b_Schur().end(),
+                 h_b.begin());
 
-    auto map_b = VecMap<S>(h_b.data(), dim, 1);
-    auto map_x = VecMap<S>(h_x.data(), dim, 1);
+    thrust::device_ptr<T> d_x(x);
+    thrust::copy(d_x, d_x + p_dim, h_x.data());
+
+    auto map_b = VecMap<S>(h_b.data(), p_dim, 1);
+    auto map_x = VecMap<S>(h_x.data(), p_dim, 1);
     if (!solver.solve(map_b, map_x)) {
-      std::cerr << "LDLT solve failed!";
+      std::cerr << "Schur LDLT solve failed!";
       return false;
     }
 
     thrust::copy(h_x.begin(), h_x.end(), d_x);
+
+    schur.compute_landmark_update(graph, streams, x + p_dim, x);
 
     return true;
   }

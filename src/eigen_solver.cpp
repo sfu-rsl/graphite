@@ -9,20 +9,22 @@ class Decomp : public Method {
 };
 
 
-template <typename T>
+template <typename T, typename Index>
 class EigenLDLTSolverImpl {
   public:
 
   using decomp_method =
-      Eigen::SimplicialLDLT<Eigen::SparseMatrix<T, Eigen::ColMajor>, Eigen::Upper>;
+      Eigen::SimplicialLDLT<Eigen::SparseMatrix<T, Eigen::ColMajor, Index>,
+                            Eigen::Upper>;
   Decomp<decomp_method> decomp;
 
-  bool analyze_pattern(const Eigen::SparseMatrix<T, Eigen::ColMajor> &matrix) {
+  bool analyze_pattern(
+      const Eigen::SparseMatrix<T, Eigen::ColMajor, Index> &matrix) {
     decomp.analyzePattern(matrix);
     return decomp.info() == Eigen::Success;
   }
 
-  bool factorize(const Eigen::SparseMatrix<T, Eigen::ColMajor> &matrix) {
+  bool factorize(const Eigen::SparseMatrix<T, Eigen::ColMajor, Index> &matrix) {
     decomp.factorize(matrix);
     return decomp.info() == Eigen::Success;
   }
@@ -37,58 +39,74 @@ class EigenLDLTSolverImpl {
 // Implementation for solver creation
 
 template <>
-EigenLDLTSolverImpl<double>* create_eigen_ldlt_solver<EigenLDLTSolverImpl<double>>() {
-  return new EigenLDLTSolverImpl<double>();
+EigenLDLTSolverImpl<double, int32_t> *
+create_eigen_ldlt_solver<EigenLDLTSolverImpl<double, int32_t>>() {
+  return new EigenLDLTSolverImpl<double, int32_t>();
 }
 
 template <>
-EigenLDLTSolverImpl<float>* create_eigen_ldlt_solver<EigenLDLTSolverImpl<float>>() {
-  return new EigenLDLTSolverImpl<float>();
+EigenLDLTSolverImpl<float, int32_t> *
+create_eigen_ldlt_solver<EigenLDLTSolverImpl<float, int32_t>>() {
+  return new EigenLDLTSolverImpl<float, int32_t>();
+}
+
+template <>
+EigenLDLTSolverImpl<double, int64_t> *
+create_eigen_ldlt_solver<EigenLDLTSolverImpl<double, int64_t>>() {
+  return new EigenLDLTSolverImpl<double, int64_t>();
+}
+
+template <>
+EigenLDLTSolverImpl<float, int64_t> *
+create_eigen_ldlt_solver<EigenLDLTSolverImpl<float, int64_t>>() {
+  return new EigenLDLTSolverImpl<float, int64_t>();
 }
 
 // Implementation for solver destruction
 template <>
-void destroy_eigen_ldlt_solver<EigenLDLTSolverImpl<double>>(EigenLDLTSolverImpl<double>* solver) {
+void destroy_eigen_ldlt_solver<EigenLDLTSolverImpl<double, int32_t>>(
+    EigenLDLTSolverImpl<double, int32_t> *solver) {
     delete solver;
 }
 
 template <>
-void destroy_eigen_ldlt_solver<EigenLDLTSolverImpl<float>>(EigenLDLTSolverImpl<float>* solver) {
+void destroy_eigen_ldlt_solver<EigenLDLTSolverImpl<float, int32_t>>(
+    EigenLDLTSolverImpl<float, int32_t> *solver) {
     delete solver;
 }
 
-// Implementations of wrapper function specializations
+template <>
+void destroy_eigen_ldlt_solver<EigenLDLTSolverImpl<double, int64_t>>(
+    EigenLDLTSolverImpl<double, int64_t> *solver) {
+    delete solver;
+}
 
 template <>
-bool EigenLDLTWrapper<double>::analyze_pattern(const Eigen::SparseMatrix<double, Eigen::ColMajor> &matrix) {
+void destroy_eigen_ldlt_solver<EigenLDLTSolverImpl<float, int64_t>>(
+    EigenLDLTSolverImpl<float, int64_t> *solver) {
+    delete solver;
+}
+
+template <typename T, typename Index>
+bool EigenLDLTWrapper<T, Index>::analyze_pattern(
+    const Eigen::SparseMatrix<T, Eigen::ColMajor, Index> &matrix) {
   return solver->analyze_pattern(matrix);
 }
 
-template <>
-bool EigenLDLTWrapper<double>::factorize(const Eigen::SparseMatrix<double, Eigen::ColMajor> &matrix) {
+template <typename T, typename Index>
+bool EigenLDLTWrapper<T, Index>::factorize(
+    const Eigen::SparseMatrix<T, Eigen::ColMajor, Index> &matrix) {
   return solver->factorize(matrix);
 }
 
-template <>
-bool EigenLDLTWrapper<double>::solve(const VecMap<double> &b,
-                                     VecMap<double> &x) {
+template <typename T, typename Index>
+bool EigenLDLTWrapper<T, Index>::solve(const VecMap<T> &b, VecMap<T> &x) {
   return solver->solve(b, x);
 }
 
-template <>
-bool EigenLDLTWrapper<float>::analyze_pattern(const Eigen::SparseMatrix<float, Eigen::ColMajor> &matrix) {
-  return solver->analyze_pattern(matrix);
-}
-
-template <>
-bool EigenLDLTWrapper<float>::factorize(const Eigen::SparseMatrix<float, Eigen::ColMajor> &matrix) {
-  return solver->factorize(matrix);
-}
-
-template <>
-bool EigenLDLTWrapper<float>::solve(const VecMap<float> &b,
-                                     VecMap<float> &x) {
-  return solver->solve(b, x);
-}
+template class EigenLDLTWrapper<double, int32_t>;
+template class EigenLDLTWrapper<float, int32_t>;
+template class EigenLDLTWrapper<double, int64_t>;
+template class EigenLDLTWrapper<float, int64_t>;
 
 } // namespace graphite

@@ -13,99 +13,17 @@
 #include <vector>
 
 #include "argparse/argparse.hpp"
-#include "reprojection_error.cuh"
+#include "bal.cuh"
 #include <graphite/optimizer/levenberg_marquardt.hpp>
 #include <graphite/preconditioner/block_jacobi.hpp>
 #include <graphite/solver/cudss.hpp>
+#include <graphite/solver/cudss_schur.hpp>
 #include <graphite/solver/eigen.hpp>
+#include <graphite/solver/eigen_schur.hpp>
 #include <graphite/solver/pcg.hpp>
 #include <graphite/solver/solver.hpp>
 #include <graphite/stream.hpp>
 #include <graphite/types.hpp>
-
-namespace graphite {
-
-template <typename T> using Point = Eigen::Matrix<T, 3, 1>;
-
-template <typename T> using Camera = Eigen::Matrix<T, 9, 1>;
-
-template <typename T> struct PointTraits {
-  static constexpr size_t dimension = 3;
-  using Vertex = Point<T>;
-
-  template <typename P>
-  d_fn static void parameters(const Vertex &vertex, P *parameters) {
-    Eigen::Map<Eigen::Matrix<P, dimension, 1>> params_map(parameters);
-    params_map = vertex.template cast<P>();
-  }
-
-  d_fn static void update(Vertex &vertex, const T *delta) {
-    Eigen::Map<const Eigen::Matrix<T, dimension, 1>> d(delta);
-    vertex += d;
-  }
-};
-
-template <typename T> struct CameraTraits {
-  static constexpr size_t dimension = 9;
-  using State = Camera<T>; // State can be optionally defined
-  using Vertex = Camera<T>;
-
-  template <typename P>
-  d_fn static void parameters(const Vertex &vertex, P *parameters) {
-    Eigen::Map<Eigen::Matrix<P, dimension, 1>> params_map(parameters);
-    params_map = vertex.template cast<P>();
-  }
-
-  d_fn static void update(Vertex &vertex, const T *delta) {
-    Eigen::Map<const Eigen::Matrix<T, dimension, 1>> d(delta);
-    vertex += d;
-  }
-
-  // Defining the state requires custom setters and getters
-  d_fn static State get_state(const Vertex &vertex) { return vertex; }
-
-  d_fn static void set_state(Vertex &vertex, const State &state) {
-    vertex = state;
-  }
-};
-
-template <typename T, typename S>
-using PointDescriptor = VertexDescriptor<T, S, PointTraits<T>>;
-
-template <typename T, typename S>
-using CameraDescriptor = VertexDescriptor<T, S, CameraTraits<T>>;
-
-template <typename T, typename S> struct ReprojectionErrorTraits {
-  static constexpr size_t dimension = 2;
-  using VertexDescriptors =
-      std::tuple<CameraDescriptor<T, S>, PointDescriptor<T, S>>;
-  using Observation = Eigen::Matrix<T, dimension, 1>;
-  using Data = Empty;
-  using Loss = DefaultLoss<T, dimension>;
-  // using Differentiation = DifferentiationMode::Auto;
-  using Differentiation = DifferentiationMode::Manual;
-
-  // You can pass in vertex references (class references), parameter blocks
-  // (pointer to 1D parameters), or both. The framework will automatically call
-  // your function with the correct arguments.
-  template <typename D>
-  d_fn static void error(const D *camera, const D *point,
-                         const Observation &obs, D *error) {
-    bal_reprojection_error_simple<D, Observation, T>(camera, point, &obs,
-                                                     error);
-  }
-
-  template <typename D, size_t I>
-  d_fn static void jacobian(const Camera<T> &camera, const Point<T> &point,
-                            const Observation &obs, D *jacobian) {
-    bal_jacobian_simple<T, D, I>(camera.data(), point.data(), &obs, jacobian);
-  }
-};
-
-template <typename T, typename S>
-using ReprojectionError = FactorDescriptor<T, S, ReprojectionErrorTraits<T, S>>;
-
-} // namespace graphite
 
 template <typename T> const char *get_type_name() {
   if (std::is_same<T, double>::value) {
@@ -231,6 +149,9 @@ void bundle_adjustment(argparse::ArgumentParser &program) {
   graphite::BlockJacobiPreconditioner<FP, SP> preconditioner;
 
   const auto solver_type = program.get<std::string>("--solver");
+  const bool use_schur_solver =
+      (solver_type == "eigen-schur") || (solver_type == "cudss-schur");
+  point_desc.set_eliminate(use_schur_solver);
 
   std::unique_ptr<Solver<FP, SP>> solver_ptr;
 
@@ -250,6 +171,18 @@ void bundle_adjustment(argparse::ArgumentParser &program) {
       std::cout << "Using Eigen LDLT solver." << std::endl;
       solver_ptr = std::make_unique<EigenLDLTSolver<FP, SP>>();
     }
+  } else if (solver_type == "eigen-schur") {
+    if constexpr (std::is_same<SP, __nv_bfloat16>::value) {
+      std::cerr << "Eigen Schur solver does not support bfloat16 precision."
+                << std::endl;
+    } else if constexpr (!std::is_same<FP, SP>::value) {
+      std::cerr << "Eigen Schur solver requires graph and solver precision to "
+                   "be the same."
+                << std::endl;
+    } else {
+      std::cout << "Using Eigen Schur LDLT solver." << std::endl;
+      solver_ptr = std::make_unique<EigenSchurLDLTSolver<FP, SP>>();
+    }
   } else if (solver_type == "cudss") {
     if constexpr (std::is_same<SP, __nv_bfloat16>::value) {
       std::cerr << "cuDSS solver does not support bfloat16 precision."
@@ -259,8 +192,28 @@ void bundle_adjustment(argparse::ArgumentParser &program) {
           << "cuDSS solver requires graph and solver precision to be the same."
           << std::endl;
     } else {
+      cudssSolverOptions cudss_options;
+      const auto hybrid_memory_mb = program.get<int64_t>("--hybrid_memory");
+      cudss_options.hybrid_memory = 1000000 * hybrid_memory_mb;
       std::cout << "Using cuDSS solver." << std::endl;
-      solver_ptr = std::make_unique<cudssSolver<FP, SP>>(true);
+      solver_ptr = std::make_unique<cudssSolver<FP, SP>>(cudss_options);
+    }
+  } else if (solver_type == "cudss-schur") {
+    if constexpr (std::is_same<SP, __nv_bfloat16>::value) {
+      std::cerr << "cuDSS Schur solver does not support bfloat16 precision."
+                << std::endl;
+    } else if constexpr (!std::is_same<FP, SP>::value) {
+      std::cerr << "cuDSS Schur solver requires graph and solver precision to "
+                   "be the same."
+                << std::endl;
+    } else {
+      cudssSolverOptions cudss_options;
+      const auto hybrid_memory_mb = program.get<int64_t>("--hybrid_memory");
+      cudss_options.hybrid_memory = 1000000 * hybrid_memory_mb;
+      std::cout << "Using cuDSS Schur solver with hybrid memory limit = "
+                << cudss_options.hybrid_memory << std::endl;
+      std::cout << "Using cuDSS Schur solver." << std::endl;
+      solver_ptr = std::make_unique<cudssSchurSolver<FP, SP>>(cudss_options);
     }
   } else {
     throw std::runtime_error("Unsupported solver option");
@@ -286,6 +239,7 @@ void bundle_adjustment(argparse::ArgumentParser &program) {
   options.optimization_level = optimization_level;
   options.verbose = program.get<bool>("--verbose");
   options.streams = &streams;
+  options.use_identity = program.get<bool>("--identity_damping");
 
   start = std::chrono::steady_clock::now();
   optimizer::levenberg_marquardt<FP, SP>(&graph, &options);
@@ -343,7 +297,15 @@ int main(int argc, char *argv[]) {
   program.add_argument("--solver")
       .help("Linear solver type")
       .default_value(std::string("pcg"))
-      .choices("pcg", "cudss", "eigen");
+      .choices("pcg", "cudss", "eigen", "eigen-schur", "cudss-schur");
+  program.add_argument("--identity_damping")
+      .help("Use identity damping instead of Hessian diagonal")
+      .flag();
+  program.add_argument("--hybrid_memory")
+      .help("Sets the memory limit in MB for cuDSS hybrid memory mode; "
+            "values > 0 disable hybrid execute mode")
+      .default_value(static_cast<int64_t>(0))
+      .scan<'i', int64_t>();
 
   try {
     program.parse_args(argc, argv);

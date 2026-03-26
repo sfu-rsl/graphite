@@ -17,7 +17,13 @@ public:
   virtual void update_values(Graph<T, S> *graph, StreamPool &streams){};
 
   virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor,
-                                  StreamPool &streams){};
+                                  const bool use_identity,
+                                  StreamPool &streams) {
+    (void)graph;
+    (void)damping_factor;
+    (void)use_identity;
+    (void)streams;
+  };
 
   void apply(Graph<T, S> *graph, T *z, const T *r,
              StreamPool &streams) override {

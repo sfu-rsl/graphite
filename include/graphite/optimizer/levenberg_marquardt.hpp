@@ -54,7 +54,7 @@ public:
   LevenbergMarquardtOptions()
       : solver(nullptr), iterations(10), initial_damping(1e-4),
         optimization_level(0), verbose(false), stop_flag(nullptr),
-        streams(nullptr) {}
+        use_identity(false), streams(nullptr) {}
 
   /// Pointer to the linear solver to use for the optimization
   Solver<T, S> *solver;
@@ -68,6 +68,8 @@ public:
   bool verbose;
   /// Pointer to a stop flag which can be used to terminate the optimization
   bool *stop_flag;
+  /// If true, use identity damping instead of diagonal-scaled damping
+  bool use_identity;
   /// Pointer to a pool of streams
   StreamPool *streams;
 
@@ -165,7 +167,8 @@ bool levenberg_marquardt(Graph<T, S> *graph,
 
     start = std::chrono::steady_clock::now();
 
-    solver->set_damping_factor(graph, static_cast<T>(mu), *streams);
+    solver->set_damping_factor(graph, static_cast<T>(mu), options->use_identity,
+                               *streams);
     bool solve_ok = solver->solve(graph, delta_x.data().get(), *streams);
 
     graph->backup_parameters();
@@ -310,7 +313,8 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
     T initial_chi2 = chi2;
     T end_chi2 = initial_chi2;
 
-    solver->set_damping_factor(graph, static_cast<T>(mu), *streams);
+    solver->set_damping_factor(graph, static_cast<T>(mu), options->use_identity,
+                               *streams);
 
     bool solve_ok = solver->solve(graph, delta_x.data().get(), *streams);
 

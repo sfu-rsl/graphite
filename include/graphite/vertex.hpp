@@ -21,7 +21,8 @@ public:
   virtual void apply_update_async(const T *delta_x, T *jacobian_scales,
                                   cudaStream_t stream) = 0;
   virtual void augment_block_diagonal_async(InvP *block_diagonal,
-                                            InvP *scalar_diagonal, T mu,
+                                            InvP *scalar_diagonal, const T mu,
+                                            const bool use_identity,
                                             cudaStream_t stream) = 0;
   virtual void apply_block_jacobi(T *z, const T *r, InvP *block_diagonal,
                                   cudaStream_t stream) = 0;
@@ -40,6 +41,8 @@ public:
                                   const size_t block_index) = 0;
   virtual bool is_fixed(const size_t id) const = 0;
   virtual bool is_active(const size_t id) const = 0;
+  virtual void set_eliminate(bool eliminate) = 0;
+  virtual bool get_eliminate() const = 0;
   virtual uint8_t *get_active_state() const = 0;
   virtual const size_t *get_block_ids() const = 0;
 };
@@ -62,6 +65,7 @@ private:
   thrust::device_vector<VertexType *> x_device;
   thrust::host_vector<VertexType *> x_host;
   thrust::device_vector<State> backup_state;
+  bool eliminate;
 
 public:
   // Mappings
@@ -75,6 +79,8 @@ public:
   static constexpr size_t dim = Traits::dimension;
 
 public:
+  VertexDescriptor() : eliminate(false) {}
+
   virtual ~VertexDescriptor(){};
 
   /**
@@ -89,9 +95,10 @@ public:
    * @brief Adds damping to the Hessian block diagonal asynchronously.
    */
   void augment_block_diagonal_async(InvP *block_diagonal, InvP *scalar_diagonal,
-                                    T mu, cudaStream_t stream) override {
+                                    const T mu, const bool use_identity,
+                                    cudaStream_t stream) override {
     ops::augment_block_diagonal<T, S>(this, block_diagonal, scalar_diagonal, mu,
-                                      stream);
+                                      use_identity, stream);
   }
 
   /**
@@ -277,6 +284,19 @@ public:
     const auto local_id = global_to_local_map.at(id);
     return is_vertex_active(active_state.data().get(), local_id);
   }
+
+  /**
+   * @brief Sets the eliminate flag for the vertex descriptor. All vertices will
+   * be excluded from the Schur complement.
+   * @param eliminate Whether to eliminate the vertex (true) or not (false).
+   */
+  void set_eliminate(bool eliminate) override { this->eliminate = eliminate; }
+
+  /**
+   * @brief Gets the eliminate flag for the vertex descriptor.
+   * @return True if the vertices are to be eliminated, false otherwise.
+   */
+  bool get_eliminate() const override { return eliminate; }
 
   /**
    * @brief Retrieves a pointer to the active state array for the vertices.

@@ -22,23 +22,30 @@ void axpy_async(cudaStream_t stream, size_t n, T *z, const T a, const T *x,
 }
 
 template <typename T>
-__global__ void damping_kernel(size_t n, T *z, const T a, const T *diag,
+__global__ void damping_kernel(size_t n, T *z, const T damping_factor,
+                               const bool use_identity, const T *diag,
                                const T *x) {
   const size_t idx =
       static_cast<size_t>(blockIdx.x) * static_cast<size_t>(blockDim.x) +
       static_cast<size_t>(threadIdx.x);
   if (idx < n) {
-    z[idx] += a * diag[idx] * x[idx];
+    if (use_identity) {
+      z[idx] += damping_factor * x[idx];
+    } else {
+      // diag should be already clamped
+      z[idx] += damping_factor * diag[idx] * x[idx];
+    }
   }
 }
 
 template <typename T>
-void damp_by_factor_async(cudaStream_t stream, size_t n, T *z, const T a,
+void damp_by_factor_async(cudaStream_t stream, size_t n, T *z,
+                          const T damping_factor, const bool use_identity,
                           const T *diag, const T *x) {
   size_t threads_per_block = 256;
   size_t num_blocks = (n + threads_per_block - 1) / threads_per_block;
-  damping_kernel<T>
-      <<<num_blocks, threads_per_block, 0, stream>>>(n, z, a, diag, x);
+  damping_kernel<T><<<num_blocks, threads_per_block, 0, stream>>>(
+      n, z, damping_factor, use_identity, diag, x);
 }
 
 template <typename T>
