@@ -19,7 +19,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y doxygen graphviz git
-          sudo apt-get install -y cudss-cuda-12 libeigen3-dev clang-format
+          sudo apt-get install -y cudss-cuda-12 libeigen3-dev clang-format libboost-dev
  
       - name: Build Graphite
         run: cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON -DCMAKE_CUDA_ARCHITECTURES=87 -B build .  && cmake --build build
