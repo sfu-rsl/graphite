@@ -130,6 +130,13 @@ public:
   std::unordered_map<MatVecDim, thrust::device_vector<ops::HplMatVecOp>>
       hplt_vec_ops;
   std::unordered_map<MatVecDim, std::vector<ops::HplMatVecOp>> h_hplt_vec_ops;
+  std::unordered_map<MatVecDim, thrust::device_vector<ops::HplMatVecOp>>
+      schur_vec_ops;
+  std::unordered_map<MatVecDim, std::vector<ops::HplMatVecOp>> h_schur_vec_ops;
+  std::unordered_map<MatVecDim, thrust::device_vector<ops::HplMatVecOp>>
+      schur_vec_t_ops;
+  std::unordered_map<MatVecDim, std::vector<ops::HplMatVecOp>>
+      h_schur_vec_t_ops;
   std::unordered_map<MatVecDim, thrust::device_vector<ops::BlockCopyOp>>
       hpp_copy_ops;
   std::unordered_map<MatVecDim, std::vector<ops::BlockCopyOp>> h_hpp_copy_ops;
@@ -290,6 +297,97 @@ public:
 
     // xl = Hll^(-1) * rhs_l
     execute_diagonal_inverse_multiply(graph, streams, xl, xl);
+
+    cudaStreamSynchronize(stream);
+  }
+
+  // Optional setup for Schur block matvec: y = S*x.
+  // This is not required by direct solvers and should only be called when
+  // iterative methods need explicit Schur matvecs.
+  void setup_schur_vector_multiply(Graph<T, S> *graph, StreamPool &streams) {
+    (void)streams;
+    const auto &offsets = graph->get_offset_vector();
+
+    schur_vec_ops.clear();
+    h_schur_vec_ops.clear();
+    schur_vec_t_ops.clear();
+    h_schur_vec_t_ops.clear();
+
+    for (const auto &entry : block_indices) {
+      const auto &coord = entry.first;
+      const size_t row = coord.row;
+      const size_t col = coord.col;
+
+      if (row >= landmark_col_start || col >= landmark_col_start) {
+        continue;
+      }
+
+      const size_t row_dim = graph->get_variable_dimension(row);
+      const size_t col_dim = graph->get_variable_dimension(col);
+      const MatVecDim mvd{row_dim, col_dim};
+
+      h_schur_vec_ops[mvd].push_back(
+          ops::HplMatVecOp{entry.second, offsets[col], offsets[row]});
+
+      if (row != col) {
+        h_schur_vec_t_ops[mvd].push_back(
+            ops::HplMatVecOp{entry.second, offsets[row], offsets[col]});
+      }
+    }
+
+    for (const auto &entry : h_schur_vec_ops) {
+      schur_vec_ops[entry.first] = entry.second;
+    }
+    for (const auto &entry : h_schur_vec_t_ops) {
+      schur_vec_t_ops[entry.first] = entry.second;
+    }
+  }
+
+  // Executes y = S*x using Schur block values in upper-triangular storage.
+  void execute_schur_vector_multiply(Graph<T, S> *graph, StreamPool &streams,
+                                     T *vec_out, const T *vec_in) {
+    (void)graph;
+    auto stream = streams.select(0);
+
+    thrust::fill(thrust::cuda::par_nosync.on(stream), vec_out,
+                 vec_out + pose_dim, static_cast<T>(0));
+
+    const S *s_values = values.data().get();
+    constexpr size_t threads_per_block = 256;
+
+    for (const auto &entry : schur_vec_ops) {
+      const auto &mvd = entry.first;
+      const auto &ops_dev = entry.second;
+      const size_t num_ops = ops_dev.size();
+      if (num_ops == 0) {
+        continue;
+      }
+
+      const size_t total_rows = num_ops * mvd.row;
+      const size_t blocks =
+          (total_rows + threads_per_block - 1) / threads_per_block;
+      ops::block_matvec_add_batched_kernel<T, S>
+          <<<blocks, threads_per_block, 0, stream>>>(
+              s_values, ops_dev.data().get(), num_ops, vec_in, vec_out, mvd.row,
+              mvd.col);
+    }
+
+    for (const auto &entry : schur_vec_t_ops) {
+      const auto &mvd = entry.first;
+      const auto &ops_dev = entry.second;
+      const size_t num_ops = ops_dev.size();
+      if (num_ops == 0) {
+        continue;
+      }
+
+      const size_t total_cols = num_ops * mvd.col;
+      const size_t blocks =
+          (total_cols + threads_per_block - 1) / threads_per_block;
+      ops::block_matvec_transpose_add_batched_kernel<T, S>
+          <<<blocks, threads_per_block, 0, stream>>>(
+              s_values, ops_dev.data().get(), num_ops, vec_in, vec_out, mvd.row,
+              mvd.col);
+    }
 
     cudaStreamSynchronize(stream);
   }
@@ -549,8 +647,8 @@ private:
   }
 
   void execute_schur_multiplication(Graph<T, S> *graph, StreamPool &streams) {
-    const auto stream = streams.select(0);
 
+    size_t stream_idx = 0;
     constexpr size_t threads_per_block = 256;
     for (auto &entry : mul_ops) {
       const auto &pd = entry.first;
@@ -558,19 +656,81 @@ private:
       const size_t num_ops = ops_dev.size();
 
       if (num_ops > 0) {
+        auto stream = streams.select(stream_idx++);
         const size_t num_threads = num_ops * pd.dim_a * pd.dim_c;
         const size_t num_blocks =
             (num_threads + threads_per_block - 1) / threads_per_block;
 
-        // auto stream = streams.select(stream_idx++);
-
-        ops::schur_block_product_kernel<T, S>
-            <<<num_blocks, threads_per_block, 0, stream>>>(
-                ops_dev.data().get(), num_ops, pd.dim_a, pd.dim_b, pd.dim_c);
+        switch (pd.dim_b) {
+        case 1:
+          ops::schur_block_product_kernel_dim_b<1, T, S>
+              <<<num_blocks, threads_per_block, 0, stream>>>(
+                  ops_dev.data().get(), num_ops, pd.dim_a, pd.dim_c);
+          break;
+        case 2:
+          ops::schur_block_product_kernel_dim_b<2, T, S>
+              <<<num_blocks, threads_per_block, 0, stream>>>(
+                  ops_dev.data().get(), num_ops, pd.dim_a, pd.dim_c);
+          break;
+        case 3:
+          ops::schur_block_product_kernel_dim_b<3, T, S>
+              <<<num_blocks, threads_per_block, 0, stream>>>(
+                  ops_dev.data().get(), num_ops, pd.dim_a, pd.dim_c);
+          break;
+        case 4:
+          ops::schur_block_product_kernel_dim_b<4, T, S>
+              <<<num_blocks, threads_per_block, 0, stream>>>(
+                  ops_dev.data().get(), num_ops, pd.dim_a, pd.dim_c);
+          break;
+        case 5:
+          ops::schur_block_product_kernel_dim_b<5, T, S>
+              <<<num_blocks, threads_per_block, 0, stream>>>(
+                  ops_dev.data().get(), num_ops, pd.dim_a, pd.dim_c);
+          break;
+        case 6:
+          ops::schur_block_product_kernel_dim_b<6, T, S>
+              <<<num_blocks, threads_per_block, 0, stream>>>(
+                  ops_dev.data().get(), num_ops, pd.dim_a, pd.dim_c);
+          break;
+        case 7:
+          ops::schur_block_product_kernel_dim_b<7, T, S>
+              <<<num_blocks, threads_per_block, 0, stream>>>(
+                  ops_dev.data().get(), num_ops, pd.dim_a, pd.dim_c);
+          break;
+        case 8:
+          ops::schur_block_product_kernel_dim_b<8, T, S>
+              <<<num_blocks, threads_per_block, 0, stream>>>(
+                  ops_dev.data().get(), num_ops, pd.dim_a, pd.dim_c);
+          break;
+        case 9:
+          ops::schur_block_product_kernel_dim_b<9, T, S>
+              <<<num_blocks, threads_per_block, 0, stream>>>(
+                  ops_dev.data().get(), num_ops, pd.dim_a, pd.dim_c);
+          break;
+        case 10:
+          ops::schur_block_product_kernel_dim_b<10, T, S>
+              <<<num_blocks, threads_per_block, 0, stream>>>(
+                  ops_dev.data().get(), num_ops, pd.dim_a, pd.dim_c);
+          break;
+        case 11:
+          ops::schur_block_product_kernel_dim_b<11, T, S>
+              <<<num_blocks, threads_per_block, 0, stream>>>(
+                  ops_dev.data().get(), num_ops, pd.dim_a, pd.dim_c);
+          break;
+        case 12:
+          ops::schur_block_product_kernel_dim_b<12, T, S>
+              <<<num_blocks, threads_per_block, 0, stream>>>(
+                  ops_dev.data().get(), num_ops, pd.dim_a, pd.dim_c);
+          break;
+        default:
+          ops::schur_block_product_kernel<T, S>
+              <<<num_blocks, threads_per_block, 0, stream>>>(
+                  ops_dev.data().get(), num_ops, pd.dim_a, pd.dim_b, pd.dim_c);
+          break;
+        }
       }
     }
-    cudaStreamSynchronize(stream);
-    // streams.sync_all();
+    streams.sync_all();
   }
 
   /*

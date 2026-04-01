@@ -4,11 +4,15 @@
 #include <graphite/factor.hpp>
 #include <graphite/graph.hpp>
 #include <graphite/ops/schur.hpp>
+#include <graphite/preconditioner/block_jacobi.hpp>
+#include <graphite/preconditioner/block_jacobi_schur.hpp>
 #include <graphite/schur.hpp>
 #include <graphite/solver/cudss.hpp>
 #include <graphite/solver/cudss_schur.hpp>
 #include <graphite/solver/eigen.hpp>
 #include <graphite/solver/eigen_schur.hpp>
+#include <graphite/solver/pcg.hpp>
+#include <graphite/solver/pcg_schur.hpp>
 #include <graphite/stream.hpp>
 #include <gtest/gtest.h>
 #include <thrust/device_vector.h>
@@ -105,68 +109,6 @@ Eigen::Matrix<T, dim, dim> make_spd_block(T scale) {
   return A.transpose() * A + static_cast<T>(0.5 + static_cast<T>(dim)) *
                                  Eigen::Matrix<T, dim, dim>::Identity();
 }
-
-/*
-template <int dim, typename T> void run_small_inverse_case(T tolerance) {
-  constexpr size_t num_blocks = 2;
-  constexpr size_t block_size = static_cast<size_t>(dim * dim);
-
-  std::array<Eigen::Matrix<T, dim, dim>, num_blocks> blocks;
-  blocks[0] = make_spd_block<dim, T>(static_cast<T>(0.25));
-  blocks[1] = make_spd_block<dim, T>(static_cast<T>(0.75));
-
-  thrust::host_vector<T> h_src(num_blocks * block_size);
-  for (size_t i = 0; i < num_blocks; ++i) {
-    Eigen::Map<Eigen::Matrix<T, dim, dim>>(h_src.data() + i * block_size) =
-        blocks[i];
-  }
-
-  thrust::device_vector<T> d_src = h_src;
-  thrust::device_vector<T> d_dst(num_blocks * block_size, static_cast<T>(0));
-
-  thrust::host_vector<T *> h_src_ptrs(num_blocks);
-  thrust::host_vector<T *> h_dst_ptrs(num_blocks);
-  T *src_base = d_src.data().get();
-  T *dst_base = d_dst.data().get();
-  for (size_t i = 0; i < num_blocks; ++i) {
-    h_src_ptrs[i] = src_base + i * block_size;
-    h_dst_ptrs[i] = dst_base + i * block_size;
-  }
-
-  thrust::device_vector<T *> d_src_ptrs = h_src_ptrs;
-  thrust::device_vector<T *> d_dst_ptrs = h_dst_ptrs;
-
-  const bool launched = ops::launch_small_block_inverse_batched<T>(
-      static_cast<size_t>(dim), d_src_ptrs.data().get(),
-      d_dst_ptrs.data().get(), num_blocks, 0);
-  ASSERT_TRUE(launched);
-  cudaDeviceSynchronize();
-
-  thrust::host_vector<T> h_dst = d_dst;
-
-  for (size_t i = 0; i < num_blocks; ++i) {
-    const Eigen::Matrix<T, dim, dim> expected = blocks[i].inverse();
-    Eigen::Map<const Eigen::Matrix<T, dim, dim>> got(h_dst.data() +
-                                                     i * block_size);
-
-    for (int c = 0; c < dim; ++c) {
-      for (int r = 0; r < dim; ++r) {
-        EXPECT_NEAR(got(r, c), expected(r, c), tolerance)
-            << "Mismatch in dim=" << dim << " block=" << i << " r=" << r
-            << " c=" << c;
-      }
-    }
-  }
-}
-
-TEST(SchurTests, SmallEigenBlockInverseKernel) {
-  using T = double;
-  run_small_inverse_case<1, T>(1e-12);
-  run_small_inverse_case<2, T>(1e-12);
-  run_small_inverse_case<3, T>(1e-12);
-  run_small_inverse_case<4, T>(1e-11);
-}
-*/
 
 TEST(SchurTests, BALTwoCamerasThreePoints) {
   using T = double;
@@ -391,6 +333,57 @@ TEST(SchurTests, CudssSchur) {
   ASSERT_EQ(h_dx_full.size(), h_dx_schur.size());
   for (size_t i = 0; i < h_dx_full.size(); ++i) {
     EXPECT_NEAR(h_dx_schur[i], h_dx_full[i], 1e-8)
+        << "delta_x mismatch at index " << i;
+  }
+}
+
+TEST(SchurTests, PCGSchur) {
+  using T = double;
+  using S = double;
+
+  Graph<T, S> graph;
+  CameraDescriptor<T, S> camera_desc;
+  PointDescriptor<T, S> point_desc;
+  ReprojectionError<T, S> reproj_desc(&camera_desc, &point_desc);
+  managed_vector<Camera<T>> cameras;
+  managed_vector<Point<T>> points;
+
+  build_bal_two_camera_three_point_problem(graph, camera_desc, point_desc,
+                                           reproj_desc, cameras, points);
+
+  ASSERT_TRUE(graph.initialize_optimization(0));
+  ASSERT_TRUE(graph.build_structure());
+
+  StreamPool streams(2);
+  graph.linearize(streams);
+
+  EigenSchurLDLTSolver<T, S> direct_solver;
+  BlockJacobiSchurPreconditioner<T, S> schur_preconditioner;
+  PCGSchurSolver<T, S> schur_solver(512, static_cast<T>(1e-14),
+                                    static_cast<T>(1e6), &schur_preconditioner);
+
+  direct_solver.update_structure(&graph, streams);
+  schur_solver.update_structure(&graph, streams);
+
+  direct_solver.update_values(&graph, streams);
+  schur_solver.update_values(&graph, streams);
+
+  const T damping = static_cast<T>(1e-4);
+  direct_solver.set_damping_factor(&graph, damping, false, streams);
+  schur_solver.set_damping_factor(&graph, damping, false, streams);
+
+  thrust::device_vector<T> d_dx_direct(graph.get_hessian_dimension());
+  thrust::device_vector<T> d_dx_schur(graph.get_hessian_dimension());
+
+  ASSERT_TRUE(direct_solver.solve(&graph, d_dx_direct.data().get(), streams));
+  ASSERT_TRUE(schur_solver.solve(&graph, d_dx_schur.data().get(), streams));
+
+  thrust::host_vector<T> h_dx_direct = d_dx_direct;
+  thrust::host_vector<T> h_dx_schur = d_dx_schur;
+
+  ASSERT_EQ(h_dx_direct.size(), h_dx_schur.size());
+  for (size_t i = 0; i < h_dx_direct.size(); ++i) {
+    EXPECT_NEAR(h_dx_schur[i], h_dx_direct[i], 5e-4)
         << "delta_x mismatch at index " << i;
   }
 }

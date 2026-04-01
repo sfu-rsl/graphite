@@ -16,11 +16,13 @@
 #include "bal.cuh"
 #include <graphite/optimizer/levenberg_marquardt.hpp>
 #include <graphite/preconditioner/block_jacobi.hpp>
+#include <graphite/preconditioner/block_jacobi_schur.hpp>
 #include <graphite/solver/cudss.hpp>
 #include <graphite/solver/cudss_schur.hpp>
 #include <graphite/solver/eigen.hpp>
 #include <graphite/solver/eigen_schur.hpp>
 #include <graphite/solver/pcg.hpp>
+#include <graphite/solver/pcg_schur.hpp>
 #include <graphite/solver/solver.hpp>
 #include <graphite/stream.hpp>
 #include <graphite/types.hpp>
@@ -147,11 +149,10 @@ void bundle_adjustment(argparse::ArgumentParser &program) {
 
   // Configure solver
   graphite::BlockJacobiPreconditioner<FP, SP> preconditioner;
+  std::unique_ptr<graphite::SchurPreconditioner<FP, SP>> schur_preconditioner;
 
   const auto solver_type = program.get<std::string>("--solver");
-  const bool use_schur_solver =
-      (solver_type == "eigen-schur") || (solver_type == "cudss-schur");
-  point_desc.set_eliminate(use_schur_solver);
+  point_desc.set_eliminate(true);
 
   std::unique_ptr<Solver<FP, SP>> solver_ptr;
 
@@ -163,6 +164,24 @@ void bundle_adjustment(argparse::ArgumentParser &program) {
     solver_ptr = std::make_unique<PCGSolver<FP, SP>>(
         pcg_iter, pcg_tol, rej_ratio,
         &preconditioner); // good parameters: 10, 1e0, 5
+  } else if (solver_type == "pcg-schur") {
+    if constexpr (std::is_same<SP, __nv_bfloat16>::value) {
+      std::cerr << "PCG Schur solver does not support bfloat16 precision."
+                << std::endl;
+    } else if constexpr (!std::is_same<FP, SP>::value) {
+      std::cerr << "PCG Schur solver requires graph and solver precision to "
+                   "be the same."
+                << std::endl;
+    } else {
+      std::cout << "Using PCG Schur solver." << std::endl;
+      schur_preconditioner =
+          std::make_unique<graphite::BlockJacobiSchurPreconditioner<FP, SP>>();
+      const auto pcg_iter = program.get<size_t>("--pcg_iterations");
+      const auto pcg_tol = program.get<double>("--pcg_tolerance");
+      const auto rej_ratio = program.get<double>("--rejection_ratio");
+      solver_ptr = std::make_unique<PCGSchurSolver<FP, SP>>(
+          pcg_iter, pcg_tol, rej_ratio, schur_preconditioner.get());
+    }
   } else if (solver_type == "eigen") {
     if constexpr (std::is_same<SP, __nv_bfloat16>::value) {
       std::cerr << "Eigen solver does not support bfloat16 precision."
@@ -297,7 +316,8 @@ int main(int argc, char *argv[]) {
   program.add_argument("--solver")
       .help("Linear solver type")
       .default_value(std::string("pcg"))
-      .choices("pcg", "cudss", "eigen", "eigen-schur", "cudss-schur");
+      .choices("pcg", "pcg-schur", "cudss", "eigen", "eigen-schur",
+               "cudss-schur");
   program.add_argument("--identity_damping")
       .help("Use identity damping instead of Hessian diagonal")
       .flag();

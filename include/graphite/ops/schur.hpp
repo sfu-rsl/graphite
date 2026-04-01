@@ -60,13 +60,11 @@ __global__ void count_pose_rows_per_landmark_column_kernel(
   pose_counts[idx] = count;
 }
 
-__global__ void fill_schur_structure_pairs_kernel(const size_t *col_pointers,
-                                                  const size_t *row_indices,
-                                                  size_t landmark_col_start,
-                                                  size_t num_block_columns,
-                                                  const size_t *pose_counts,
-                                                  const size_t *pair_offsets,
-                                                  BlockCoordinates *pairs_out) {
+__global__ void fill_schur_structure_pairs_kernel(
+    const size_t *col_pointers, const size_t *row_indices,
+    const size_t landmark_col_start, const size_t num_block_columns,
+    const size_t *pose_counts, const size_t *pair_offsets,
+    BlockCoordinates *pairs_out) {
   const size_t idx = get_thread_id();
   const size_t num_landmark_cols = num_block_columns - landmark_col_start;
   if (idx >= num_landmark_cols) {
@@ -117,9 +115,10 @@ __global__ void fill_schur_mul_tuples_kernel(
 }
 
 template <typename T, typename S>
-__global__ void schur_block_product_kernel(const MulOp<S> *ops, size_t num_ops,
-                                           size_t dim_a, size_t dim_b,
-                                           size_t dim_c) {
+__global__ void
+schur_block_product_kernel(const MulOp<S> *ops, const size_t num_ops,
+                           const size_t dim_a, const size_t dim_b,
+                           const size_t dim_c) {
   const size_t idx = get_thread_id();
   const size_t block_size = dim_a * dim_c;
   const size_t op_id = idx / block_size;
@@ -138,13 +137,51 @@ __global__ void schur_block_product_kernel(const MulOp<S> *ops, size_t num_ops,
 
   // Computes destination -= left * middle * right^T.
   T value = 0;
+#pragma unroll
   for (size_t k = 0; k < dim_b; k++) {
     T m_rt = 0;
+#pragma unroll
     for (size_t j = 0; j < dim_b; j++) {
       m_rt += static_cast<T>(middle[k + j * dim_b]) *
               static_cast<T>(right[col + j * dim_c]);
     }
     value += static_cast<T>(left[row + k * dim_a]) * m_rt;
+  }
+
+  atomicAdd(op.destination + (row + col * dim_a), static_cast<S>(-value));
+}
+
+template <int DIM_B, typename T, typename S>
+__global__ void
+schur_block_product_kernel_dim_b(const MulOp<S> *ops, const size_t num_ops,
+                                 const size_t dim_a, const size_t dim_c) {
+  const size_t idx = get_thread_id();
+  const size_t block_size = dim_a * dim_c;
+  const size_t op_id = idx / block_size;
+  if (op_id >= num_ops) {
+    return;
+  }
+
+  const size_t offset = idx % block_size;
+  const size_t row = offset % dim_a;
+  const size_t col = offset / dim_a;
+
+  const auto &op = ops[op_id];
+  const S *left = op.left;
+  const S *middle = op.middle;
+  const S *right = op.right;
+
+  // Computes destination -= left * middle * right^T.
+  T value = 0;
+#pragma unroll
+  for (int k = 0; k < DIM_B; k++) {
+    T m_rt = 0;
+#pragma unroll
+    for (int j = 0; j < DIM_B; j++) {
+      m_rt += static_cast<T>(middle[k + j * DIM_B]) *
+              static_cast<T>(right[col + static_cast<size_t>(j) * dim_c]);
+    }
+    value += static_cast<T>(left[row + static_cast<size_t>(k) * dim_a]) * m_rt;
   }
 
   atomicAdd(op.destination + (row + col * dim_a), static_cast<S>(-value));
@@ -225,9 +262,9 @@ __global__ void block_matvec_transpose_add_batched_kernel(
   atomicAdd(y + col, sum);
 }
 
-template <typename S>
+template <typename Src, typename Dst = Src>
 __global__ void
-block_copy_batched_kernel(const S *src_values, S *dst_values,
+block_copy_batched_kernel(const Src *src_values, Dst *dst_values,
                           const BlockCopyOp *ops, const size_t num_ops,
                           const size_t rows, const size_t cols) {
   const size_t idx = get_thread_id();
@@ -240,70 +277,10 @@ block_copy_batched_kernel(const S *src_values, S *dst_values,
   const size_t op_id = idx / block_size;
   const size_t local_idx = idx % block_size;
   const auto &op = ops[op_id];
-  dst_values[op.dst_offset + local_idx] = src_values[op.src_offset + local_idx];
+  dst_values[op.dst_offset + local_idx] =
+      static_cast<Dst>(src_values[op.src_offset + local_idx]);
 }
 
-/*
-template <size_t dim, typename S>
-__global__ void invert_small_block_ptrs_batched_kernel(S **A_ptrs,
-                                                       S **Ainv_ptrs,
-                                                       size_t num_blocks) {
-  const size_t block_id = get_thread_id();
-  if (block_id >= num_blocks) {
-    return;
-  }
-
-  const S *A = A_ptrs[block_id];
-  S *Ainv = Ainv_ptrs[block_id];
-  using Block = Eigen::Matrix<S, dim, dim, Eigen::ColMajor>;
-  Eigen::Map<const Block> A_map(A);
-  Eigen::Map<Block> Ainv_map(Ainv);
-
-  if constexpr (dim == 1) {
-    Ainv_map(0, 0) = static_cast<S>(1) / A_map(0, 0);
-  } else if constexpr (dim == 2 || dim == 3 || dim == 4) {
-    Ainv_map = A_map.inverse();
-  }
-}
-
-template <typename S>
-bool launch_small_block_inverse_batched(size_t block_dim, S **A_ptrs_device,
-                                        S **Ainv_ptrs_device, size_t num_blocks,
-                                        cudaStream_t stream) {
-  if (num_blocks == 0) {
-    return true;
-  }
-
-  constexpr size_t threads_per_block = 128;
-  const size_t blocks =
-      (num_blocks + threads_per_block - 1) / threads_per_block;
-
-  switch (block_dim) {
-  case 1:
-    invert_small_block_ptrs_batched_kernel<1, S>
-        <<<blocks, threads_per_block, 0, stream>>>(
-            A_ptrs_device, Ainv_ptrs_device, num_blocks);
-    return true;
-  case 2:
-    invert_small_block_ptrs_batched_kernel<2, S>
-        <<<blocks, threads_per_block, 0, stream>>>(
-            A_ptrs_device, Ainv_ptrs_device, num_blocks);
-    return true;
-  case 3:
-    invert_small_block_ptrs_batched_kernel<3, S>
-        <<<blocks, threads_per_block, 0, stream>>>(
-            A_ptrs_device, Ainv_ptrs_device, num_blocks);
-    return true;
-  case 4:
-    invert_small_block_ptrs_batched_kernel<4, S>
-        <<<blocks, threads_per_block, 0, stream>>>(
-            A_ptrs_device, Ainv_ptrs_device, num_blocks);
-    return true;
-  default:
-    return false;
-  }
-}
-*/
 } // namespace ops
 
 } // namespace graphite

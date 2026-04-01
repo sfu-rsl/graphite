@@ -11,7 +11,7 @@ Graphite supports various solvers:
 
 ## PCG Solver
 
-Graphite has a preconditioned congugate gradient (PCG) solver (@ref graphite::PCGSolver) which iteratively solves the inexact LM step using implicit Hessian-vector evaluations. It supports `double`, `float`, and `__nv_bfloat16` precisions. Graphite includes two preconditioners: identity and block-Jacobi.
+Graphite has a preconditioned congugate gradient (PCG) solver (@ref graphite::PCGSolver) which iteratively solves the inexact LM step using implicit Hessian-vector evaluations. It supports `double`, `float`, and `__nv_bfloat16` precisions. Graphite includes two preconditioners: identity (@ref graphite::IdentityPreconditioner) and block-Jacobi (@ref graphite::BlockJacobiPreconditioner). Graphite also has an additional solver (@ref graphite::PCGSchurSolver) which uses the Schur complement to solve a reduced system. More details are given below.
 
 ## Direct Solvers
 

@@ -179,24 +179,23 @@ public:
 
   virtual void update_values(Graph<T, S> *graph, StreamPool &streams) override {
     H.update_values(graph, streams);
-    schur.update_values(graph, streams);
-    schur.update_csc_values(graph, d_matrix);
-    fill_matrix_values();
   }
 
   virtual void set_damping_factor(Graph<T, S> *graph, T damping_factor,
                                   const bool use_identity,
                                   StreamPool &streams) override {
     H.apply_damping(graph, damping_factor, use_identity, streams);
-    schur.update_values(graph, streams);
-    schur.update_csc_values(graph, d_matrix);
-    fill_matrix_values();
   }
 
   virtual bool solve(Graph<T, S> *graph, T *x, StreamPool &streams) override {
     if (factorization_failed) {
       return false;
     }
+
+    // Update values before solving
+    schur.update_values(graph, streams);
+    schur.update_csc_values(graph, d_matrix);
+    fill_matrix_values();
 
     const auto dim = graph->get_hessian_dimension();
 

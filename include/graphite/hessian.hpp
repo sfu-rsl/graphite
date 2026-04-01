@@ -269,6 +269,7 @@ public:
     // TODO: Maybe we can use an GPU exclusive scan instead?
     size_t num_values = 0;
     block_indices.clear();
+    block_indices.reserve(block_coords.size());
     for (const auto &coord : block_coords) {
       block_indices[coord] = num_values;
       num_values += graph->get_variable_dimension(coord.row) *
