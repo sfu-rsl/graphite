@@ -262,10 +262,10 @@ public:
       thrust::transform(
           thrust::device, jacobian_scales.begin(), jacobian_scales.end(),
           jacobian_scales.begin(), [] __device__(T value) {
+            // TODO: Make this configurable
             const double denom = std::numeric_limits<double>::epsilon() +
                                  sqrt(static_cast<double>(value));
-            // const double denom = 1.0
-            //   + sqrt(static_cast<double>(value));
+            // const double denom = 1.0 + sqrt(static_cast<double>(value));
             return static_cast<T>(1.0 / denom);
           });
     } else {

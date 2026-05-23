@@ -91,7 +91,7 @@ __global__ void compute_Jv_kernel(T *y, const T *x, const size_t *active_ids,
 
 #pragma unroll
   for (int i = 0; i < D; i++) {
-    value += (T)(jrow[i * E] * (S)x_start[i]);
+    value += (T)jrow[i * E] * x_start[i];
   }
 
   atomicAdd(&y[idx], value);
@@ -134,7 +134,7 @@ __global__ void compute_Jv_dynamic_manual2(
       for (size_t i = 0; i < D; i++) {
         const T scaled_j = static_cast<T>(jacobian[row_in_jacobian + i * E]) *
                            jacobian_scales[hess_col + i];
-        sum += static_cast<T>((S)scaled_j * (S)x_start[i]);
+        sum += scaled_j * x_start[i];
       }
       atomicAdd(&y[idx], sum);
     }
@@ -271,12 +271,12 @@ __global__ void compute_JtPv_kernel(T *y, const T *x, const size_t *active_ids,
 #pragma unroll
   for (int i = 0; i < E; i++) { // pmat row
     const auto p_row = precision_matrix + i * E;
-    S x2 = 0;
+    T x2 = 0;
 #pragma unroll
     for (int j = 0; j < E; j++) { // pmat col
-      x2 += p_row[j] * (S)x_start[j];
+      x2 += (T)p_row[j] * x_start[j];
     }
-    value += (T)(jcol[i] * x2);
+    value += (T)jcol[i] * x2;
   }
 
   value *= (T)chi2_derivative[factor_id];
@@ -338,12 +338,12 @@ __global__ void compute_JtPv_dynamic_kernel(
 #pragma unroll
   for (int i = 0; i < E; i++) { // pmat row
     const auto p_row = precision_matrix + i * E;
-    S x2 = 0;
+    T x2 = 0;
 #pragma unroll
     for (int j = 0; j < E; j++) { // pmat col
-      x2 += p_row[j] * (S)x_start[j];
+      x2 += (T)p_row[j] * x_start[j];
     }
-    value += (T)((S)jcol[i] * x2);
+    value += jcol[i] * x2;
   }
 
   value *= (T)chi2_derivative[factor_id] * scale;

@@ -130,9 +130,7 @@ public:
                                     static_cast<T>(0.0));
 
     T rz_0 = std::numeric_limits<T>::infinity();
-
     for (size_t k = 0; k < max_iter; k++) {
-
       if (rz == 0) {
         // std::cout << "rz is zero, stopping at iteration " << k << std::endl;
         break;
@@ -202,6 +200,7 @@ public:
         // std::cout << "Rejection: rz_new = " << rz_new
         //           << ", rz_0 = " << rz_0 << " at iteration " << k + 1 <<
         //           std::endl;
+        std::cout << "rejected pcg update\n";
         break;
       }
       rz_0 = std::min(rz_0, std::abs(rz_new));
@@ -210,7 +209,7 @@ public:
       // std::cout << "rz_new: " << rz_new << ", rz: " << rz
       //           << ", at iteration " << k + 1 << std::endl;
 
-      T beta = rz_new / rz;
+      T beta = rz_new / (rz);
       rz = rz_new;
 
       // 9. Update p
