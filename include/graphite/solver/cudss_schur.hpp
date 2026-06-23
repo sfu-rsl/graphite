@@ -47,11 +47,11 @@ private:
       m_A = NULL;
     }
 
-    cudssMatrixCreateCsr(&m_A, dim, dim, nnz, d_matrix.d_pointers.data().get(),
-                         nullptr, d_matrix.d_indices.data().get(),
-                         d_matrix.d_values.data().get(),
-                         get_cuda_index_type<Index>(), get_cuda_data_type<S>(),
-                         matrix_type, view_type, index_base);
+    cudssMatrixCreateCsr(
+        &m_A, dim, dim, nnz, d_matrix.d_pointers.data().get(), nullptr,
+        d_matrix.d_indices.data().get(), d_matrix.d_values.data().get(),
+        get_cuda_index_type<Index>(), get_cuda_index_type<Index>(),
+        get_cuda_data_type<S>(), matrix_type, view_type, index_base);
   }
 
   void fill_matrix_values() {
@@ -79,7 +79,7 @@ public:
     cudssConfigSet(solver_config, CUDSS_CONFIG_HYBRID_EXECUTE_MODE,
                    &enable_hybrid_exec_mode, sizeof(enable_hybrid_exec_mode));
     int enable_hybrid_memory_mode = (options.hybrid_memory > 0) ? 1 : 0;
-    cudssConfigSet(solver_config, CUDSS_CONFIG_HYBRID_MODE,
+    cudssConfigSet(solver_config, CUDSS_CONFIG_HYBRID_MEMORY_MODE,
                    &enable_hybrid_memory_mode,
                    sizeof(enable_hybrid_memory_mode));
     if (options.hybrid_memory > 0) {
@@ -87,7 +87,7 @@ public:
       cudssConfigSet(solver_config, CUDSS_CONFIG_HYBRID_DEVICE_MEMORY_LIMIT,
                      &mem_limit, sizeof(mem_limit));
     }
-    cudssAlgType_t reordering_alg = CUDSS_ALG_DEFAULT;
+    auto reordering_alg = CUDSS_REORDERING_ALG_DEFAULT;
     cudssConfigSet(solver_config, CUDSS_CONFIG_REORDERING_ALG, &reordering_alg,
                    sizeof(reordering_alg));
     cudssDataCreate(handle, &solver_data);

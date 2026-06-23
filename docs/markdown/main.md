@@ -21,7 +21,7 @@ You need the following dependencies:
 - CMake
 - Eigen3
 - CUDA Toolkit (e.g. >= 12.0)
-- cuDSS 0.7.0
+- cuDSS 0.8.0
 - Boost (ContainerHash library)
 - Doxygen (optional, for documentation)
 
