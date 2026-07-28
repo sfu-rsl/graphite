@@ -34,7 +34,7 @@ endif()
 find_package(Boost REQUIRED)
 
 # Setup graphite library
-add_library(graphite src/stream.cpp src/eigen_solver.cpp)
+add_library(graphite src/stream.cpp src/eigen_solver.cpp src/schur.cu)
 target_include_directories(graphite PUBLIC include)
 target_link_libraries(graphite PUBLIC CUDA::cublas Eigen3::Eigen cudss Boost::boost)
 
@@ -123,7 +123,7 @@ find_program(CLANG_FORMAT_BIN NAMES clang-format)
 if(CLANG_FORMAT_BIN)
   file(GLOB_RECURSE FORMAT_FILES
     "include/graphite/*.cpp" "include/graphite/*.hpp" "include/graphite/*.c" "include/graphite/*.h" "include/graphite/*.cu" "include/graphite/*.cuh"
-    "examples/*.cpp" "examples/*.hpp" "examples/*.c" "examples/*.h" "examples/*.cu" "examples/*.cuh" "tests/*.cu"
+    "examples/*.cpp" "examples/*.hpp" "examples/*.c" "examples/*.h" "examples/*.cu" "examples/*.cuh" "tests/*.cu"  "src/*.cpp" "src/*.cu"
   )
   list(FILTER FORMAT_FILES EXCLUDE REGEX "examples/argparse/*")
   add_custom_target(format

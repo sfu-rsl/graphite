@@ -3,16 +3,10 @@
 
 namespace graphite {
 
-template <class Method>
-class Decomp : public Method {
- public:
-};
+template <class Method> class Decomp : public Method { public: };
 
-
-template <typename T, typename Index>
-class EigenLDLTSolverImpl {
-  public:
-
+template <typename T, typename Index> class EigenLDLTSolverImpl {
+public:
   using decomp_method =
       Eigen::SimplicialLDLT<Eigen::SparseMatrix<T, Eigen::ColMajor, Index>,
                             Eigen::Upper>;
@@ -29,11 +23,10 @@ class EigenLDLTSolverImpl {
     return decomp.info() == Eigen::Success;
   }
 
-  bool solve(const VecMap<T> &b,
-             VecMap<T> &x) {
-        x = decomp.solve(b);
-        return decomp.info() == Eigen::Success;            
-    }
+  bool solve(const VecMap<T> &b, VecMap<T> &x) {
+    x = decomp.solve(b);
+    return decomp.info() == Eigen::Success;
+  }
 };
 
 // Implementation for solver creation
@@ -66,25 +59,25 @@ create_eigen_ldlt_solver<EigenLDLTSolverImpl<float, int64_t>>() {
 template <>
 void destroy_eigen_ldlt_solver<EigenLDLTSolverImpl<double, int32_t>>(
     EigenLDLTSolverImpl<double, int32_t> *solver) {
-    delete solver;
+  delete solver;
 }
 
 template <>
 void destroy_eigen_ldlt_solver<EigenLDLTSolverImpl<float, int32_t>>(
     EigenLDLTSolverImpl<float, int32_t> *solver) {
-    delete solver;
+  delete solver;
 }
 
 template <>
 void destroy_eigen_ldlt_solver<EigenLDLTSolverImpl<double, int64_t>>(
     EigenLDLTSolverImpl<double, int64_t> *solver) {
-    delete solver;
+  delete solver;
 }
 
 template <>
 void destroy_eigen_ldlt_solver<EigenLDLTSolverImpl<float, int64_t>>(
     EigenLDLTSolverImpl<float, int64_t> *solver) {
-    delete solver;
+  delete solver;
 }
 
 template <typename T, typename Index>
