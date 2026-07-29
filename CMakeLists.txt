@@ -34,7 +34,7 @@ endif()
 find_package(Boost REQUIRED)
 
 # Setup graphite library
-add_library(graphite src/stream.cpp src/eigen_solver.cpp src/schur.cu)
+add_library(graphite src/stream.cpp src/eigen_solver.cpp)
 target_include_directories(graphite PUBLIC include)
 target_link_libraries(graphite PUBLIC CUDA::cublas Eigen3::Eigen cudss Boost::boost)
 
