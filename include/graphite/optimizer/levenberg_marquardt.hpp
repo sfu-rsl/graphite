@@ -1,7 +1,6 @@
 /// @file levenberg_marquardt.hpp
 #pragma once
 #include <graphite/graph.hpp>
-#include <graphite/ops/vector.hpp>
 #include <graphite/solver/solver.hpp>
 #include <iomanip>
 
@@ -17,57 +16,19 @@ namespace graphite {
  */
 namespace optimizer {
 
-/// Bounds applied to diag(H) when it is used as the damping matrix. These must
-/// match the bounds used wherever the damping is applied to the linear system
-/// (Hessian::apply_damping, ops::augment_hessian_diagonal_kernel, and the
-/// matrix-free operator in PCGSolver::solve).
-template <typename T> constexpr T min_damping_diagonal() {
-  return static_cast<T>(1.0e-6);
-}
-template <typename T> constexpr T max_damping_diagonal() {
-  return static_cast<T>(1.0e32);
-}
-
-/**
- * @brief Computes the damping matrix D = clamp(diag(H)) used by non-identity
- * (diagonal-scaled) damping.
- *
- * Only needs to be recomputed when the graph is relinearized. Unused when
- * identity damping is selected.
- */
-template <typename T, typename S>
-void compute_damping_diagonal(Graph<T, S> *graph,
-                              thrust::device_vector<T> &diagonal) {
-  const auto n = graph->get_hessian_dimension();
-  diagonal.resize(n);
-  thrust::fill(thrust::cuda::par_nosync.on(0), diagonal.begin(), diagonal.end(),
-               static_cast<T>(0));
-
-  for (auto &f : graph->get_factor_descriptors()) {
-    f->compute_hessian_scalar_diagonal_async(
-        diagonal.data().get(), graph->get_jacobian_scales().data().get());
-  }
-
-  ops::clamp_async(0, n, min_damping_diagonal<T>(), max_damping_diagonal<T>(),
-                   diagonal.data().get());
-  cudaStreamSynchronize(0);
-}
-
 /**
  * @brief Computes the LM gain ratio rho = actual reduction / predicted
  * reduction.
  *
  * The step solves (H + mu*D)*dx = b, so the reduction predicted by the
- * quadratic model is dx^T * (b + mu*D*dx). D is the identity for identity
- * damping and clamp(diag(H)) otherwise, so @p damping_diagonal must be the same
- * diagonal that was used to damp the linear system.
+ * quadratic model is dx^T * (b + mu*D*dx). D is the identity when
+ * @p use_identity is set, and clamp(diag(H)) at the linearization point
+ * otherwise.
  */
 template <typename T, typename S>
 T compute_rho(Graph<T, S> *graph, thrust::device_vector<T> &delta_x,
               const T chi2, const T new_chi2, const T mu,
-              const bool use_identity,
-              const thrust::device_vector<T> &damping_diagonal,
-              const bool step_is_good) {
+              const bool use_identity, const bool step_is_good) {
   // Compute rho
   //  TODO: Don't store these in the graph
   auto &b = graph->get_b();
@@ -78,15 +39,20 @@ T compute_rho(Graph<T, S> *graph, thrust::device_vector<T> &delta_x,
     const auto n = delta_x.size();
     const auto bb = b.data().get();
     const auto dx = delta_x.data().get();
-    const auto dd = use_identity ? nullptr : damping_diagonal.data().get();
+    // nullptr selects identity damping (D = I)
+    const T *dd =
+        use_identity ? nullptr : graph->get_hessian_diagonal().data().get();
+    // Must match the bounds the linear system was actually damped with
+    const T d_min = static_cast<T>(1.0e-6);
+    const T d_max = static_cast<T>(1.0e32);
 
     denom = thrust::transform_reduce(
         thrust::device, thrust::make_counting_iterator<std::size_t>(0),
         thrust::make_counting_iterator<std::size_t>(n),
-        [dx, bb, dd, mu] __host__ __device__(const std::size_t i) {
+        [dx, bb, dd, mu, d_min,
+         d_max] __host__ __device__(const std::size_t i) {
           T x = dx[i];
-          // dd == nullptr selects identity damping (D = I)
-          const T d = (dd == nullptr) ? T{1} : dd[i];
+          const T d = (dd == nullptr) ? T{1} : std::clamp(dd[i], d_min, d_max);
           return x * (mu * d * x + bb[i]);
         },
         T{0}, thrust::plus<T>{});
@@ -195,13 +161,6 @@ bool levenberg_marquardt(Graph<T, S> *graph,
 
   thrust::device_vector<T> delta_x(graph->get_hessian_dimension());
 
-  // Damping matrix for diagonal-scaled damping. Only valid at the current
-  // linearization point, so it is refreshed whenever the graph is relinearized.
-  thrust::device_vector<T> damping_diagonal;
-  if (!options->use_identity) {
-    compute_damping_diagonal(graph, damping_diagonal);
-  }
-
   bool run = true;
 
   double time =
@@ -241,7 +200,7 @@ bool levenberg_marquardt(Graph<T, S> *graph,
     }
 
     T rho = compute_rho(graph, delta_x, chi2, new_chi2, mu,
-                        options->use_identity, damping_diagonal, solve_ok);
+                        options->use_identity, solve_ok);
 
     if (solve_ok && std::isfinite(new_chi2) && rho > 0) {
       // update hyperparameters
@@ -252,9 +211,6 @@ bool levenberg_marquardt(Graph<T, S> *graph,
       // Relinearize since step is accepted
       graph->linearize(*streams);
       solver->update_values(graph, *streams);
-      if (!options->use_identity) {
-        compute_damping_diagonal(graph, damping_diagonal);
-      }
       // std::cout << "Good step" << std::endl;
       // std::cout << "rho: " << rho << std::endl;
     } else {
@@ -350,13 +306,6 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
 
   thrust::device_vector<T> delta_x(graph->get_hessian_dimension());
 
-  // Damping matrix for diagonal-scaled damping. Only valid at the current
-  // linearization point, so it is refreshed whenever the graph is relinearized.
-  thrust::device_vector<T> damping_diagonal;
-  if (!options->use_identity) {
-    compute_damping_diagonal(graph, damping_diagonal);
-  }
-
   bool run = true;
 
   double time =
@@ -401,7 +350,7 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
     }
 
     T rho = compute_rho(graph, delta_x, chi2, new_chi2, mu,
-                        options->use_identity, damping_diagonal, solve_ok);
+                        options->use_identity, solve_ok);
 
     bool step_accepted = false;
     if (solve_ok && std::isfinite(new_chi2) && rho > 0) {
@@ -414,10 +363,6 @@ bool levenberg_marquardt2(Graph<T, S> *graph,
       graph->linearize(*streams);
 
       solver->update_values(graph, *streams);
-
-      if (!options->use_identity) {
-        compute_damping_diagonal(graph, damping_diagonal);
-      }
 
       // H and b are valid
       // residuals should be valid

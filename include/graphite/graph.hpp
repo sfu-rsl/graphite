@@ -36,6 +36,7 @@ private:
   thrust::device_vector<GlobalToLocalEntry> d_global_to_local_combined;
   thrust::device_vector<T> b;
   thrust::device_vector<T> jacobian_scales;
+  thrust::device_vector<T> hessian_diagonal;
   size_t hessian_column;
   std::vector<size_t> hessian_offsets;
   bool scale_jacobians;
@@ -55,6 +56,8 @@ public:
   }
 
   thrust::device_vector<T> &get_b() { return b; }
+
+  thrust::device_vector<T> &get_hessian_diagonal() { return hessian_diagonal; }
 
   std::vector<BaseVertexDescriptor<T, S> *> &get_vertex_descriptors() {
     return vertex_descriptors;
@@ -250,23 +253,32 @@ public:
     // Compute chi2
     chi2();
 
+    // Compute the unscaled Hessian diagonal at this linearization point for the
+    // Jacobian scales and the damping matrix.
+    hessian_diagonal.resize(get_hessian_dimension());
+    thrust::fill(hessian_diagonal.begin(), hessian_diagonal.end(), 0);
+    for (auto &factor : factor_descriptors) {
+      factor->compute_hessian_scalar_diagonal_async(
+          hessian_diagonal.data().get(), nullptr);
+    }
+    cudaStreamSynchronize(0);
+
     // Compute Jacobian scale
     if (scale_jacobians) {
-      thrust::fill(jacobian_scales.begin(), jacobian_scales.end(), 0);
-      for (auto &factor : factor_descriptors) {
-        factor->compute_hessian_scalar_diagonal_async(
-            jacobian_scales.data().get(), nullptr);
-      }
-      cudaStreamSynchronize(0);
-
-      thrust::transform(
-          thrust::device, jacobian_scales.begin(), jacobian_scales.end(),
-          jacobian_scales.begin(), [] __device__(T value) {
+      auto d = hessian_diagonal.data().get();
+      auto s = jacobian_scales.data().get();
+      thrust::for_each(
+          thrust::device, thrust::make_counting_iterator<size_t>(0),
+          thrust::make_counting_iterator<size_t>(hessian_diagonal.size()),
+          [d, s] __device__(const size_t i) {
+            const double value = static_cast<double>(d[i]);
             // TODO: Make this configurable
-            const double denom = std::numeric_limits<double>::epsilon() +
-                                 sqrt(static_cast<double>(value));
-            // const double denom = 1.0 + sqrt(static_cast<double>(value));
-            return static_cast<T>(1.0 / denom);
+            const double denom =
+                std::numeric_limits<double>::epsilon() + sqrt(value);
+            // const double denom = 1.0 + sqrt(value);
+            const double scale = 1.0 / denom;
+            s[i] = static_cast<T>(scale);
+            d[i] = static_cast<T>(scale * scale * value);
           });
     } else {
       thrust::fill(jacobian_scales.begin(), jacobian_scales.end(), 1.0);
@@ -324,6 +336,7 @@ public:
     d_global_to_local_combined.clear();
     b.clear();
     jacobian_scales.clear();
+    hessian_diagonal.clear();
     hessian_column = 0;
     hessian_offsets.clear();
   }
