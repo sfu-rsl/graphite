@@ -25,5 +25,6 @@ If you would like to contribute features, bug fixes, code improvements, document
 ## Projects using Graphite
 
 - [FastLoop](https://github.com/sfu-rsl/FastLoop)
+- [Nitro-SLAM](https://github.com/sfu-rsl/Nitro-SLAM)
 
 If your project is using Graphite, please let us know so we can add it to the list!
