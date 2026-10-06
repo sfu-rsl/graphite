@@ -1,5 +1,7 @@
 /// @file vector.hpp
 #pragma once
+#include <cuda_runtime.h>
+#include <new>
 #include <thrust/device_ptr.h>
 #include <thrust/universal_vector.h>
 namespace graphite {
@@ -20,6 +22,30 @@ struct uninitialized_allocator : thrust::cuda::universal_allocator<T> {
   };
 
   __host__ __device__ void construct(T *) {}
+
+#ifdef DEVICE_JETSON
+  // Integrated Tegra parts report concurrentManagedAccess == 0: the host may not
+  // touch managed memory while any kernel is running, and such an access
+  // segfaults on the spot rather than returning an error. managed_vector is
+  // dereferenced from the host all over the graph-building code while the other
+  // Nitro-SLAM threads keep kernels in flight, so managed memory is not usable
+  // here. Pinned mapped memory is physically shared on Tegra, reachable from the
+  // device through the same address (unifiedAddressing == 1), and has no such
+  // restriction.
+  __host__ thrust::universal_ptr<T> allocate(std::size_t n) {
+    void *raw = nullptr;
+    if (n != 0 &&
+        cudaHostAlloc(&raw, n * sizeof(T), cudaHostAllocMapped) != cudaSuccess) {
+      cudaGetLastError(); // do not leave the failure latched for the next launch
+      throw std::bad_alloc();
+    }
+    return thrust::universal_ptr<T>(static_cast<T *>(raw));
+  }
+
+  __host__ void deallocate(thrust::universal_ptr<T> p, std::size_t) {
+    cudaFreeHost(thrust::raw_pointer_cast(p));
+  }
+#endif
 };
 
 template <typename T> class managed_vector {
