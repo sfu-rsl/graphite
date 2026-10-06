@@ -13,7 +13,26 @@ Graphite is a work-in-progress research prototype. It may have several bugs, per
 ### Important Links
 - [Documentation](https://sfu-rsl.github.io/graphite/)
 - [GitHub Repository](https://github.com/sfu-rsl/graphite)
-- [Paper](https://arxiv.org/abs/2509.26581)
+- [Paper](https://ieeexplore.ieee.org/document/11697143)
+- [arXiv](https://arxiv.org/abs/2509.26581)
+
+## Citation
+
+If Graphite is relevant to your academic work, please cite the paper.
+
+```bibtex
+@INPROCEEDINGS{GraphiteICRA2026,
+  author={Gopinath, Shishir and Dantu, Karthik and Ko, Steven Y.},
+  booktitle={2026 IEEE International Conference on Robotics and Automation (ICRA)},
+  title={{Graphite: A GPU-Accelerated Mixed-Precision Graph Optimization Framework}},
+  year={2026},
+  volume={},
+  number={},
+  pages={18759-18766},
+  keywords={Graphics processing units;Optimization;Memory;Graphite;Bundle adjustment;Timing;Printing;Visualization;Modeling;Simultaneous localization and mapping},
+  doi={10.1109/ICRA57385.2026.11697143}
+}
+```
 
 ## Building
 

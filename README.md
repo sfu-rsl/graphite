@@ -7,12 +7,13 @@ Graphite is a GPU-accelerated nonlinear least squares graph optimization framewo
 
 ### News
 
-- [May 2026] Graphite was accepted to IEEE ICRA 2026! Feel free to drop by the poster session!
+- [May 2026] Graphite was accepted to IEEE ICRA 2026!
 
 ### Important Links
 - [Documentation](https://sfu-rsl.github.io/graphite/)
 - [GitHub Repository](https://github.com/sfu-rsl/graphite)
-- [Paper](https://arxiv.org/abs/2509.26581)
+- [Paper](https://ieeexplore.ieee.org/document/11697143)
+- [arXiv](https://arxiv.org/abs/2509.26581)
 
 ## License
 
@@ -28,3 +29,21 @@ If you would like to contribute features, bug fixes, code improvements, document
 - [Nitro-SLAM](https://github.com/sfu-rsl/Nitro-SLAM)
 
 If your project is using Graphite, please let us know so we can add it to the list!
+
+## Citation
+
+If Graphite is relevant to your academic work, please cite the paper.
+
+```bibtex
+@INPROCEEDINGS{GraphiteICRA2026,
+  author={Gopinath, Shishir and Dantu, Karthik and Ko, Steven Y.},
+  booktitle={2026 IEEE International Conference on Robotics and Automation (ICRA)},
+  title={{Graphite: A GPU-Accelerated Mixed-Precision Graph Optimization Framework}},
+  year={2026},
+  volume={},
+  number={},
+  pages={18759-18766},
+  keywords={Graphics processing units;Optimization;Memory;Graphite;Bundle adjustment;Timing;Printing;Visualization;Modeling;Simultaneous localization and mapping},
+  doi={10.1109/ICRA57385.2026.11697143}
+}
+```
